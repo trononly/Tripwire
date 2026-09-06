@@ -312,7 +312,7 @@ function TxDataTable({ txs }: { txs: Transaction[] }) {
   );
 }
 
-export default function Transactions({ txs }: { txs: parser.Transaction[] }) {
+export default function Transactions({ transactions }: { transactions: parser.Transaction[] }) {
   return (
     <div className="space-y-6">
       <div>
@@ -325,13 +325,13 @@ export default function Transactions({ txs }: { txs: parser.Transaction[] }) {
         <CardHeader>
           <CardTitle>All Transactions</CardTitle>
           <CardDescription>
-            {txs.length > 0
-              ? `${txs.length} transactions from your latest statement.`
+            {transactions.length > 0
+              ? `${transactions.length} transactions from your latest statement.`
               : "Your transactions will show up here once you load a statement."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {txs.length > 0 ? <TxDataTable txs={txs} /> : (
+          {transactions.length > 0 ? <TxDataTable txs={transactions} /> : (
             <p className="text-sm text-muted-foreground">
               Nothing to display yet. Use “Import statement” to load one.
             </p>
