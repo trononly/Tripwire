@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ParsePDF, PickFile } from "../../wailsjs/go/main/App";
-import { parser } from "wailsjs/go/models";
+import type { parser } from "wailsjs/go/models";
 import { toast } from "sonner";
 
 export function ImportStatementDialog({onImported}: {onImported: (txs:parser.Transaction[]) => void}) {

@@ -34,7 +34,7 @@ function App() {
           <main className="flex-1 space-y-4 p-6">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/transactions" element={<Transactions />} />
+              <Route path="/transactions" element={<Transactions transactions={txs} />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>
