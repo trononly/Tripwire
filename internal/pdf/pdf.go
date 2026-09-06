@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -18,9 +20,22 @@ func ReadPDF(path string, password string) (string, error) {
 		return "", err
 	}
 
-	reader, err := pdf.NewReaderEncrypted(file, fi.Size(), func() string { return password })
+	// The library calls this function repeatedly with candidate passwords
+	// until it returns "". Hand out the password exactly once, then return
+	// "" so a wrong PIN fails fast instead of looping forever.
+	tried := false
+	reader, err := pdf.NewReaderEncrypted(file, fi.Size(), func() string {
+		if tried {
+			return ""
+		}
+		tried = true
+		return password
+	})
 
 	if err != nil {
+		if errors.Is(err, pdf.ErrInvalidPassword) {
+			return "", fmt.Errorf("invalid PIN")
+		}
 		return "", err
 	}
 	var b strings.Builder

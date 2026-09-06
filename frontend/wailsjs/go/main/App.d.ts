@@ -3,3 +3,5 @@
 import {parser} from '../models';
 
 export function ParsePDF(arg1:string,arg2:string):Promise<Array<parser.Transaction>>;
+
+export function PickFile():Promise<string>;

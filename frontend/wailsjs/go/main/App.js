@@ -5,3 +5,7 @@
 export function ParsePDF(arg1, arg2) {
   return window['go']['main']['App']['ParsePDF'](arg1, arg2);
 }
+
+export function PickFile() {
+  return window['go']['main']['App']['PickFile']();
+}
