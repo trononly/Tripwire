@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
-import type { analysis } from "../../wailsjs/go/models";
+import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 
 function KpiCard({
   label,
