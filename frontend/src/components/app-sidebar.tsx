@@ -29,7 +29,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation()
 
   return (
-    <Sidebar {...props}>
+    <Sidebar className="border-r border-sidebar-border" {...props}>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
           <span className="text-lg font-bold tracking-tight">Mpesa Analyzer</span>
