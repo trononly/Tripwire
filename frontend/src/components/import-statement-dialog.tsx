@@ -43,15 +43,14 @@ export function ImportStatementDialog({onImported}: {onImported: (txs:parser.Tra
     try {
       const txs = await ParsePDF(filePath, pin);
       onImported(txs);
-      toast.success(`Imported ${txs.length} transactions`);
       setOpen(false);
+      setIsLoading(false)
+      toast.success(`Imported ${txs.length} transactions`);
       setPin("");
       setFilePath("");
     } catch (err) {
-      toast.error(String(err), {
-      });
-    } finally {
       setIsLoading(false);
+      toast.error	(String(err))
     }
   }
 
