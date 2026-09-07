@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/dslipak/pdf v0.0.2
+	github.com/razvandimescu/gopdf v0.10.0
 	github.com/wailsapp/wails/v2 v2.12.0
 )
 
