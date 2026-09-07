@@ -198,7 +198,15 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/* Mobile drawer is fixed-position, so body padding does not apply;
+              add the top safe-area inset so the header stays clear of the
+              system status bar (Android edge-to-edge). 0px on desktop. */}
+          <div
+            className="flex h-full w-full flex-col"
+            style={{ paddingTop: "var(--safe-area-top, 0px)" }}
+          >
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
