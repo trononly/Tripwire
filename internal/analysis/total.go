@@ -1,4 +1,4 @@
-package internal
+package analysis
 
 import (
 	"mpesa-analyzer/internal/parser"

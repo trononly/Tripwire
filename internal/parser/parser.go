@@ -30,7 +30,9 @@ func cleanRubbish(data string) string {
 	return data
 }
 
-func parseMoney(data string) (int64, error) {
+// ParseMoney parses a money string such as "1,204.50" or "-50.00" into
+// integer cents.
+func ParseMoney(data string) (int64, error) {
 	value := strings.ReplaceAll(data, ",", "")
 	parts := strings.SplitN(value, ".", 2)
 
@@ -72,11 +74,11 @@ func ParseTX(data string) ([]Transaction, error) {
 		}
 		formattedDate := date.Format("2006-01-02 15:04:05")
 
-		amount, err := parseMoney(match[5])
+		amount, err := ParseMoney(match[5])
 		if err != nil {
 			return nil, fmt.Errorf("invalid amount %q: %w", match[5], err)
 		}
-		balance, err := parseMoney(match[6])
+		balance, err := ParseMoney(match[6])
 		if err != nil {
 			return nil, fmt.Errorf("invalid balance %q: %w", match[6], err)
 		}
