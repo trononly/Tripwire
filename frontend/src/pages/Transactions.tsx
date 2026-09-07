@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -6,9 +7,9 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { TransactionCategories } from "../../wailsjs/go/main/App";
 import {
   type ColumnDef,
-  type ColumnFiltersState,
   type PaginationState,
   type SortingState,
   flexRender,
@@ -49,6 +50,14 @@ type Transaction = parser.Transaction;
 const PAGE_SIZES = [10, 20, 30, 50];
 const DEFAULT_PAGE_SIZE = 20;
 
+const CATEGORY_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
 function formatMoney(cents: number): string {
   const value = (cents / 100).toLocaleString("en-KE", {
     minimumFractionDigits: 2,
@@ -85,98 +94,141 @@ function SortButton({
   );
 }
 
-const columns: ColumnDef<Transaction>[] = [
-  {
-    accessorKey: "date",
-    header: ({ column }) => <SortButton column={column}>Date</SortButton>,
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap text-muted-foreground">
-        {formatDate(row.original.date)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "description",
-    header: ({ column }) => <SortButton column={column}>Description</SortButton>,
-    cell: ({ row }) => (
-      <span className="block max-w-[16rem] truncate sm:max-w-xs md:max-w-sm" title={row.original.description}>
-        {row.original.description}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "status",
-    meta: { thClass: "hidden md:table-cell", tdClass: "hidden md:table-cell" },
-    header: ({ column }) => (
-      <div className="hidden md:table-cell">
-        <SortButton column={column}>Status</SortButton>
-      </div>
-    ),
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">{row.original.status}</span>
-    ),
-  },
-  {
-    accessorKey: "amount",
-    enableGlobalFilter: false,
-    header: ({ column }) => (
-      <div className="text-right">
-        <SortButton column={column}>Amount</SortButton>
-      </div>
-    ),
-    cell: ({ row }) => (
-      <span
-        className={`whitespace-nowrap tabular-nums ${
-          row.original.amount < 0
-            ? "text-red-600 dark:text-red-400"
-            : "text-emerald-600 dark:text-emerald-400"
-        }`}
-      >
-        {formatMoney(row.original.amount)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "balance",
-    enableGlobalFilter: false,
-    meta: { thClass: "hidden sm:table-cell", tdClass: "hidden sm:table-cell" },
-    header: ({ column }) => (
-      <div className="hidden sm:table-cell text-right">
-        <SortButton column={column}>Balance</SortButton>
-      </div>
-    ),
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap text-right tabular-nums">
-        {formatMoney(row.original.balance)}
-      </span>
-    ),
-  },
-];
+function buildColumns(categories: Map<string, string>, allCategories: string[]): ColumnDef<Transaction>[] {
+  return [
+    {
+      accessorKey: "date",
+      header: ({ column }) => <SortButton column={column}>Date</SortButton>,
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap text-muted-foreground">
+          {formatDate(row.original.date)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "description",
+      header: ({ column }) => <SortButton column={column}>Description</SortButton>,
+      cell: ({ row }) => (
+        <span className="block max-w-[14rem] truncate sm:max-w-xs md:max-w-sm" title={row.original.description}>
+          {row.original.description}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "category",
+      meta: { thClass: "hidden lg:table-cell", tdClass: "hidden lg:table-cell" },
+      header: () => <div className="hidden lg:table-cell text-muted-foreground">Category</div>,
+      cell: ({ row }) => {
+        const cat = categories.get(row.original.id) ?? "Other";
+        const i = allCategories.indexOf(cat);
+        return (
+          <span className="hidden lg:inline-flex items-center gap-1.5 text-muted-foreground">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: CATEGORY_COLORS[(i < 0 ? 0 : i) % CATEGORY_COLORS.length] }}
+            />
+            {cat}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "amount",
+      enableGlobalFilter: false,
+      header: ({ column }) => (
+        <div className="text-right">
+          <SortButton column={column}>Amount</SortButton>
+        </div>
+      ),
+      cell: ({ row }) => (
+        <span
+          className={`whitespace-nowrap tabular-nums ${
+            row.original.amount < 0
+              ? "text-red-600 dark:text-red-400"
+              : "text-emerald-600 dark:text-emerald-400"
+          }`}
+        >
+          {formatMoney(row.original.amount)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "balance",
+      enableGlobalFilter: false,
+      meta: { thClass: "hidden sm:table-cell", tdClass: "hidden sm:table-cell" },
+      header: ({ column }) => (
+        <div className="hidden sm:table-cell text-right">
+          <SortButton column={column}>Balance</SortButton>
+        </div>
+      ),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap text-right tabular-nums">
+          {formatMoney(row.original.balance)}
+        </span>
+      ),
+    },
+  ];
+}
 
 function TxDataTable({ txs }: { txs: Transaction[] }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [sorting, setSorting] = useState<SortingState>([{ id: "date", desc: true }]);
   const [globalFilter, setGlobalFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: DEFAULT_PAGE_SIZE,
   });
 
-  const statuses = useMemo(
-    () => [...new Set(txs.map((t) => t.status))].sort(),
-    [txs],
+  // Filters: category (deep-linkable via ?category=), direction, date range.
+  const [categories, setCategories] = useState<Map<string, string>>(new Map());
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "all");
+  const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("category");
+    if (fromUrl) setCategoryFilter(fromUrl);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (txs.length === 0) return;
+    let cancelled = false;
+    TransactionCategories(txs).then((m) => {
+      if (!cancelled) setCategories(new Map(Object.entries(m)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [txs]);
+
+  const allCategories = useMemo(
+    () => [...new Set(txs.map((t) => categories.get(t.id) ?? "Other"))].sort(),
+    [txs, categories],
   );
 
-  // derived, pure: the Select maps to a column filter
-  const columnFilters = useMemo<ColumnFiltersState>(
-    () => (statusFilter === "all" ? [] : [{ id: "status", value: statusFilter }]),
-    [statusFilter],
+  const filtered = useMemo(() => {
+    return txs.filter((t) => {
+      if (categoryFilter !== "all" && (categories.get(t.id) ?? "Other") !== categoryFilter) return false;
+      if (directionFilter === "in" && t.amount < 0) return false;
+      if (directionFilter === "out" && t.amount >= 0) return false;
+      const day = t.date.slice(0, 10);
+      if (fromDate && day < fromDate) return false;
+      if (toDate && day > toDate) return false;
+      return true;
+    });
+  }, [txs, categories, categoryFilter, directionFilter, fromDate, toDate]);
+
+  const columns = useMemo(
+    () => buildColumns(categories, allCategories),
+    [categories, allCategories],
   );
 
   const table = useReactTable({
-    data: txs,
+    data: filtered,
     columns,
-    state: { sorting, globalFilter, columnFilters, pagination },
+    state: { sorting, globalFilter, pagination },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onPaginationChange: setPagination,
@@ -188,33 +240,84 @@ function TxDataTable({ txs }: { txs: Transaction[] }) {
 
   const totalFiltered = table.getFilteredRowModel().rows.length;
   const pageCount = table.getPageCount();
+  const activeFilters =
+    (categoryFilter !== "all" ? 1 : 0) +
+    (directionFilter !== "all" ? 1 : 0) +
+    (fromDate ? 1 : 0) +
+    (toDate ? 1 : 0);
 
   return (
     <div className="space-y-4">
-      {/* toolbar: search + status filter */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      {/* toolbar: search + filters */}
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search transactions…"
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
           className="sm:max-w-xs"
         />
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select
+          value={categoryFilter}
+          onValueChange={(v) => {
+            setCategoryFilter(v);
+            if (v === "all") setSearchParams({}, { replace: true });
+          }}
+        >
           <SelectTrigger className="sm:w-44">
-            <SelectValue placeholder="Filter by status" />
+            <SelectValue placeholder="Filter by category" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {statuses.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
+            <SelectItem value="all">All categories</SelectItem>
+            {allCategories.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}>
+          <SelectTrigger className="sm:w-32">
+            <SelectValue placeholder="Direction" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Money in & out</SelectItem>
+            <SelectItem value="in">Money in</SelectItem>
+            <SelectItem value="out">Money out</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-[9.5rem]"
+          />
+          <span>to</span>
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-[9.5rem]"
+          />
+        </div>
+        {activeFilters > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setCategoryFilter("all");
+              setDirectionFilter("all");
+              setFromDate("");
+              setToDate("");
+              setSearchParams({}, { replace: true });
+            }}
+          >
+            Clear filters ({activeFilters})
+          </Button>
+        )}
       </div>
 
-      <div className="rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[540px]">
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -253,7 +356,7 @@ function TxDataTable({ txs }: { txs: Transaction[] }) {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No transactions match your search or filter.
+                  No transactions match your search or filters.
                 </TableCell>
               </TableRow>
             )}
