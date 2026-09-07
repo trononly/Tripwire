@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ParsePDF, PickFile } from "../../wailsjs/go/main/App";
-import type { parser } from "wailsjs/go/models";
+import { ParsePDF, PickFile } from "../../bindings/mpesa-analyzer/parseservice";
+import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 import { toast } from "sonner";
 
 export function ImportStatementDialog({onImported}: {onImported: (txs:parser.Transaction[]) => void}) {
@@ -41,7 +41,7 @@ export function ImportStatementDialog({onImported}: {onImported: (txs:parser.Tra
     }
     setIsLoading(true);
     try {
-      const txs = await ParsePDF(filePath, pin);
+      const txs = (await ParsePDF(filePath, pin)) ?? [];
       onImported(txs);
       setOpen(false);
       setIsLoading(false)

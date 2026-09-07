@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:dev": "tsc && vite build --minify false --mode development",
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -14,6 +15,7 @@
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@tanstack/react-table": "^8.21.3",
+    "@wailsio/runtime": "3.0.0-beta.17",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.2.5",

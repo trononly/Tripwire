@@ -10,7 +10,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { formatMoney } from "@/lib/format";
-import type { analysis } from "../../../wailsjs/go/models";
+import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const COLORS = [
   "var(--chart-1)",

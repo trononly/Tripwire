@@ -11,7 +11,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { formatBucketLabel, formatMoney } from "@/lib/format";
-import type { analysis } from "../../../wailsjs/go/models";
+import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
   in: { label: "In", color: "var(--chart-2)" },

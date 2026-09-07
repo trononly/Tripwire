@@ -20,6 +20,9 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@wailsio/runtime':
+        specifier: 3.0.0-beta.17
+        version: 3.0.0-beta.17
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1613,6 +1616,9 @@ packages:
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
+
+  '@wailsio/runtime@3.0.0-beta.17':
+    resolution: {integrity: sha512-Q7aL/8PjIQiYYIneeu3a9ximNT4vjTQbjhIWkzKBAu9XkBQlvW8tGOSt+ORCv/S27y/dumlEK1eO71GSJ9E+jA==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -4853,6 +4859,8 @@ snapshots:
       vite: 5.4.21(@types/node@22.20.1)(lightningcss@1.32.0)
     transitivePeerDependencies:
       - supports-color
+
+  '@wailsio/runtime@3.0.0-beta.17': {}
 
   accepts@2.0.0:
     dependencies:

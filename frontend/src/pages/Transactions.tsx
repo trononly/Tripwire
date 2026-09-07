@@ -7,7 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { TransactionCategories } from "../../wailsjs/go/main/App";
+import { TransactionCategories } from "../../bindings/mpesa-analyzer/parseservice";
 import {
   type ColumnDef,
   type PaginationState,
@@ -43,7 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { parser } from "../../wailsjs/go/models";
+import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
 type Transaction = parser.Transaction;
 
@@ -196,7 +196,9 @@ function TxDataTable({ txs }: { txs: Transaction[] }) {
     if (txs.length === 0) return;
     let cancelled = false;
     TransactionCategories(txs).then((m) => {
-      if (!cancelled) setCategories(new Map(Object.entries(m)));
+      if (cancelled || !m) return;
+      const entries = Object.entries(m).filter(([, v]) => v !== undefined) as [string, string][];
+      setCategories(new Map(entries));
     });
     return () => {
       cancelled = true;

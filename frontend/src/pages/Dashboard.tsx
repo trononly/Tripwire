@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
-import { AnalyzeTransactions } from "../../wailsjs/go/main/App";
-import { analysis, parser } from "../../wailsjs/go/models";
+import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
+import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
+import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -183,11 +184,11 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
     if (!result) return [];
     switch (granularity) {
       case "week":
-        return result.cashflowWeekly;
+        return result.cashflowWeekly ?? [];
       case "month":
-        return result.cashflowMonthly;
+        return result.cashflowMonthly ?? [];
       default:
-        return result.cashflowDaily;
+        return result.cashflowDaily ?? [];
     }
   }, [result, granularity]);
 
@@ -247,13 +248,13 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
               onGranularityChange={setGranularity}
             />
             <CategoryDonut
-              categories={result.categories}
+              categories={result.categories ?? []}
               onSelectCategory={(category) =>
                 navigate(`/transactions?category=${encodeURIComponent(category)}`)
               }
             />
-            <BalanceChart data={result.balanceSeries} />
-            <CounterpartyChart counterparties={result.topCounterparties} />
+            <BalanceChart data={result.balanceSeries ?? []} />
+            <CounterpartyChart counterparties={result.topCounterparties ?? []} />
           </div>
           <Card>
             <CardHeader>
@@ -262,7 +263,7 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
                 Same payment detected 3 or more times. Search and sort to explore.
               </CardDescription>
             </CardHeader>
-            <RecurringTable recurring={result.recurring} />
+            <RecurringTable recurring={result.recurring ?? []} />
           </Card>
         </>
       )}

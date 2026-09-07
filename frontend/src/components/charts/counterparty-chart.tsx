@@ -8,7 +8,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { formatMoney } from "@/lib/format";
-import type { analysis } from "../../../wailsjs/go/models";
+import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
   count: { label: "Transactions", color: "var(--chart-3)" },
