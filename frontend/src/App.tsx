@@ -3,7 +3,7 @@ import { AppSidebar } from "./components/app-sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ImportStatementDialog } from "@/components/import-statement-dialog";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -11,7 +11,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 // Dashboard route actually renders, keeping first load snappy.
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 
-import type { parser } from "../wailsjs/go/models";
+import type * as parser from "../bindings/mpesa-analyzer/internal/parser/models";
+import { SafeArea } from "../bindings/mpesa-analyzer/mobileinfoservice";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
 
@@ -25,6 +26,28 @@ function PageFallback() {
 
 function App() {
   const [txs, setTxs] = useState<parser.Transaction[]>([])
+
+  // Apply native system-bar insets (Android edge-to-edge) as CSS variables.
+  // Physical pixels are divided by devicePixelRatio to get CSS pixels.
+  useEffect(() => {
+    const apply = async () => {
+      try {
+        const insets = await SafeArea();
+        const dpr = window.devicePixelRatio || 1;
+        const style = document.documentElement.style;
+        style.setProperty("--safe-area-top", `${(insets.top ?? 0) / dpr}px`);
+        style.setProperty("--safe-area-bottom", `${(insets.bottom ?? 0) / dpr}px`);
+        style.setProperty("--safe-area-left", `${(insets.left ?? 0) / dpr}px`);
+        style.setProperty("--safe-area-right", `${(insets.right ?? 0) / dpr}px`);
+      } catch {
+        // Desktop stub or runtime not ready: keep the env() CSS fallback.
+      }
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [])
+
   return (
     <ThemeProvider
       attribute="class"
