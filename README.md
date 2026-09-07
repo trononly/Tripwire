@@ -1,104 +1,59 @@
-# Wails + Vite + React + Tailwind CSS v4 + shadcn/ui + TypeScript
+# Welcome to Your New Wails3 Project!
 
-A modern Wails template featuring the latest technologies for building beautiful desktop applications.
+Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
 
-## 🚀 Features
+## Getting Started
 
-- **[Wails v2.11.0](https://wails.io/)** - Build desktop apps using Go & Web Technologies
-- **[React 18.3](https://react.dev/)** - Modern React with hooks
-- **[TypeScript 5.7](https://www.typescriptlang.org/)** - Type safety and better DX
-- **[Vite 5.4](https://vitejs.dev/)** - Lightning-fast HMR and build tool
-- **[Tailwind CSS v4](https://tailwindcss.com/)** - Latest Tailwind with new Vite plugin
-- **[shadcn/ui](https://ui.shadcn.com/)** - Beautiful, accessible component library
-- **[ESLint 9](https://eslint.org/)** - Code quality with flat config
-- **Cross-platform build scripts** - Easy builds for Windows, macOS, and Linux
+1. Navigate to your project directory in the terminal.
 
-## 📦 Installation
+2. To run your application in development mode, use the following command:
 
-```bash
-wails init -n myapp -t https://github.com/Mahcks/wails-vite-react-tailwind-shadcnui-ts
-cd myapp
-```
+   ```
+   wails3 dev
+   ```
 
-## 🛠️ Development
+   This will start your application and enable hot-reloading for both frontend and backend changes.
 
-Run the app in development mode with hot reload:
+3. To build your application for production, use:
 
-```bash
-wails dev
-```
+   ```
+   wails3 build
+   ```
 
-The frontend dev server runs on http://localhost:5173 with Vite's fast HMR.
+   This will create a production-ready executable in the `build` directory.
 
-## 🏗️ Building
+## Exploring Wails3 Features
 
-### Current Platform
-```bash
-wails build
-# or
-./scripts/build.sh
-```
+Now that you have your project set up, it's time to explore the features that Wails3 offers:
 
-### Cross-Platform Builds
-```bash
-# Build for all platforms
-./scripts/build-all.sh
+1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
 
-# Individual platforms
-./scripts/build-windows.sh      # Windows AMD64
-./scripts/build-linux.sh         # Linux AMD64
-./scripts/build-macos-arm.sh     # macOS Apple Silicon
-./scripts/build-macos-intel.sh   # macOS Intel
-./scripts/build-macos-universal.sh  # macOS Universal Binary
-```
+2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
 
-Built applications will be in `build/bin/`
+   ```
+   go run .
+   ```
 
-## 🎨 shadcn/ui Components
+   Note: Some examples may be under development during the alpha phase.
 
-This template includes pre-configured shadcn/ui components:
-- Button
-- Input
-- Label
-- Card
+3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
 
-Add more components:
-```bash
-npx shadcn@latest add [component-name]
-```
+4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
 
-Browse components at [ui.shadcn.com](https://ui.shadcn.com/)
+## Project Structure
 
-## 📁 Project Structure
+Take a moment to familiarize yourself with your project structure:
 
-```
-.
-├── app.tmpl.go              # Main application logic
-├── main.tmpl.go             # Entry point
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx          # Main React component
-│   │   ├── components/ui/   # shadcn/ui components
-│   │   └── lib/utils.ts     # Utility functions
-│   ├── vite.config.ts       # Vite configuration
-│   └── package.json         # Frontend dependencies
-└── scripts/                 # Build scripts
-```
+- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
+- `main.go`: The entry point of your Go backend
+- `app.go`: Define your application structure and methods here
+- `wails.json`: Configuration file for your Wails project
 
-## 🔧 Configuration
+## Next Steps
 
-Project configuration is in `wails.json` (auto-generated on `wails init`). 
+1. Modify the frontend in the `frontend/` directory to create your desired UI.
+2. Add backend functionality in `main.go`.
+3. Use `wails3 dev` to see your changes in real-time.
+4. When ready, build your application with `wails3 build`.
 
-See [Wails documentation](https://wails.io/docs/reference/project-config) for all options.
-
-## 📚 Learn More
-
-- [Wails Documentation](https://wails.io/docs/introduction)
-- [React Documentation](https://react.dev/)
-- [Vite Documentation](https://vitejs.dev/)
-- [Tailwind CSS Documentation](https://tailwindcss.com/)
-- [shadcn/ui Documentation](https://ui.shadcn.com/)
-
-## 📝 License
-
-This template is available as open source under the terms of the MIT License.
+Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
