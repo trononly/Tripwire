@@ -32,6 +32,12 @@ tasks:
   run:
     summary: Runs the application
     cmds:
+      # Wait for the Vite dev server (started in background by dev_mode) to
+      # bind its port before launching the binary. Without this the app can
+      # fatal with "unable to connect to frontend server" when the background
+      # frontend task hasn't bound 127.0.0.1:{{.VITE_PORT}} yet (race in
+      # wails v3 beta.17 dev orchestration).
+      - go run scripts/portwait.go {{.VITE_PORT}}
       - task: "{{.GOOS}}:run"
 
   dev:
