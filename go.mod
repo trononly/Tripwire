@@ -1,6 +1,6 @@
 module mpesa-analyzer
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/dslipak/pdf v0.0.2
