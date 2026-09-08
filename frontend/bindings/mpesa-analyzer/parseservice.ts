@@ -14,7 +14,7 @@ import * as parser$0 from "./internal/parser/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type $models from "./models.js";
+import * as $models from "./models.js";
 
 /**
  * AnalyzeTransactions computes all dashboard analytics for the given
@@ -27,11 +27,11 @@ export function AnalyzeTransactions(txs: parser$0.Transaction[] | null): $Cancel
 /**
  * GetRecurringPayments detects recurring payments and returns enriched,
  * searched and sorted view models in one call. The frontend passes the
- * current search term and sort choice; all detection, averaging, next-due
- * projection and sorting happen here.
+ * current search term and sort choice; all detection, averaging and
+ * sorting happen here.
  * 
  * search: case-insensitive match on label or category ("" = all).
- * sortBy: "amount" | "frequency" | "next_due"; anything else = MonthlyImpact desc.
+ * sortBy: "amount" | "frequency"; anything else = MonthlyImpact desc.
  */
 export function GetRecurringPayments(txs: parser$0.Transaction[] | null, search: string, sortBy: string): $CancellablePromise<analysis$0.RecurringView[] | null> {
     return $Call.ByID(3289991278, txs, search, sortBy);

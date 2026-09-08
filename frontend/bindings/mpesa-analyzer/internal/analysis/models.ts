@@ -130,8 +130,8 @@ export interface RecurringPayment {
 
 /**
  * RecurringView is the enriched recurring-payment model rendered by the
- * frontend card list. All math (average gaps, next-due projection, monthly
- * impact) is computed here so the frontend only renders.
+ * frontend card list. All math (average gaps, monthly impact) is computed
+ * here so the frontend only renders.
  */
 export interface RecurringView {
     /**
@@ -159,11 +159,6 @@ export interface RecurringView {
      * Daily / A few times a week / Weekly-ish / Monthly / Irregular
      */
     "frequencyLabel": string;
-
-    /**
-     * "2006-01-02"; empty when not projectable
-     */
-    "nextDue": string;
 
     /**
      * Amount × estimated occurrences per month
