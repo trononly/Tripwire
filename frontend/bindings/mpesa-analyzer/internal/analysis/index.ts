@@ -8,5 +8,6 @@ export type {
     CategoryTotal,
     Counterparty,
     RecurringPayment,
+    RecurringView,
     Totals
 } from "./models.js";

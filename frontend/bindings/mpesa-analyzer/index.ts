@@ -9,5 +9,7 @@ export {
 };
 
 export type {
-    SafeAreaInsets
+    DayGroup,
+    SafeAreaInsets,
+    TransactionView
 } from "./models.js";

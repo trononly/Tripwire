@@ -1,7 +1,10 @@
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/app-sidebar";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { ImportStatementDialog } from "@/components/import-statement-dialog";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -25,7 +28,7 @@ function PageFallback() {
 }
 
 function App() {
-  const [txs, setTxs] = useState<parser.Transaction[]>([])
+  const [txs, setTxs] = useState<parser.Transaction[]>([]);
 
   // Apply native system-bar insets (Android edge-to-edge) as CSS variables.
   // Physical pixels are divided by devicePixelRatio to get CSS pixels.
@@ -36,9 +39,15 @@ function App() {
         const dpr = window.devicePixelRatio || 1;
         const style = document.documentElement.style;
         style.setProperty("--safe-area-top", `${(insets.top ?? 0) / dpr}px`);
-        style.setProperty("--safe-area-bottom", `${(insets.bottom ?? 0) / dpr}px`);
+        style.setProperty(
+          "--safe-area-bottom",
+          `${(insets.bottom ?? 0) / dpr}px`,
+        );
         style.setProperty("--safe-area-left", `${(insets.left ?? 0) / dpr}px`);
-        style.setProperty("--safe-area-right", `${(insets.right ?? 0) / dpr}px`);
+        style.setProperty(
+          "--safe-area-right",
+          `${(insets.right ?? 0) / dpr}px`,
+        );
       } catch {
         // Desktop stub or runtime not ready: keep the env() CSS fallback.
       }
@@ -46,7 +55,7 @@ function App() {
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [])
+  }, []);
 
   return (
     <ThemeProvider
@@ -56,32 +65,34 @@ function App() {
       disableTransitionOnChange
     >
       <HashRouter>
-      <SidebarProvider>
-        <AppSidebar />
-        <Toaster position="bottom-right" richColors />
-        <SidebarInset className="min-w-0 overflow-x-hidden">
-          <header className="flex h-14 items-center justify-between gap-2 border-b px-4">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-5" />
-            <ImportStatementDialog onImported={setTxs} />
+        <SidebarProvider>
+          <AppSidebar />
+          <Toaster position="bottom-right" richColors />
+          <SidebarInset className="min-w-0 overflow-x-hidden">
+            <header className="flex h-14 items-center justify-between gap-2 border-b px-4">
+              <SidebarTrigger />
 
-          </header>
-          <main className="min-w-0 flex-1 space-y-4 p-6">
-            <Routes>
-              <Route
-              path="/"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <Dashboard transactions={txs} />
-                </Suspense>
-              }
-            />
-              <Route path="/transactions" element={<Transactions transactions={txs} />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
+              <ImportStatementDialog onImported={setTxs} />
+            </header>
+            <main className="min-w-0 flex-1 space-y-4 p-6">
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <Suspense fallback={<PageFallback />}>
+                      <Dashboard transactions={txs} />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/transactions"
+                  element={<Transactions transactions={txs} />}
+                />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
       </HashRouter>
     </ThemeProvider>
   );

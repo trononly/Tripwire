@@ -12,12 +12,29 @@ import * as analysis$0 from "./internal/analysis/models.js";
 // @ts-ignore: Unused imports
 import * as parser$0 from "./internal/parser/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type $models from "./models.js";
+
 /**
  * AnalyzeTransactions computes all dashboard analytics for the given
  * transactions in a single call.
  */
 export function AnalyzeTransactions(txs: parser$0.Transaction[] | null): $CancellablePromise<analysis$0.AnalysisResult | null> {
     return $Call.ByID(1612480363, txs);
+}
+
+/**
+ * GetRecurringPayments detects recurring payments and returns enriched,
+ * searched and sorted view models in one call. The frontend passes the
+ * current search term and sort choice; all detection, averaging, next-due
+ * projection and sorting happen here.
+ * 
+ * search: case-insensitive match on label or category ("" = all).
+ * sortBy: "amount" | "frequency" | "next_due"; anything else = MonthlyImpact desc.
+ */
+export function GetRecurringPayments(txs: parser$0.Transaction[] | null, search: string, sortBy: string): $CancellablePromise<analysis$0.RecurringView[] | null> {
+    return $Call.ByID(3289991278, txs, search, sortBy);
 }
 
 export function ParsePDF(filePath: string, password: string): $CancellablePromise<parser$0.Transaction[] | null> {
@@ -34,4 +51,13 @@ export function PickFile(): $CancellablePromise<string> {
  */
 export function TransactionCategories(txs: parser$0.Transaction[] | null): $CancellablePromise<{ [_ in string]?: string } | null> {
     return $Call.ByID(178657250, txs);
+}
+
+/**
+ * TransactionGroups prepares the frontend's transaction list in one call:
+ * sorts newest-first, categorizes, and groups by calendar day. Sorting and
+ * grouping run here (once per dataset) instead of in JS on every render.
+ */
+export function TransactionGroups(txs: parser$0.Transaction[] | null): $CancellablePromise<$models.DayGroup[] | null> {
+    return $Call.ByID(517049402, txs);
 }
