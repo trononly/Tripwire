@@ -129,6 +129,59 @@ export interface RecurringPayment {
 }
 
 /**
+ * RecurringView is the enriched recurring-payment model rendered by the
+ * frontend card list. All math (average gaps, next-due projection, monthly
+ * impact) is computed here so the frontend only renders.
+ */
+export interface RecurringView {
+    /**
+     * cleaned counterparty/payment name
+     */
+    "label": string;
+
+    /**
+     * normalized key: receive, buy_goods, pay_bill, airtime, withdraw, send_money, other
+     */
+    "category": string;
+
+    /**
+     * "in" | "out"
+     */
+    "direction": string;
+
+    /**
+     * KES, most recent occurrence
+     */
+    "amount": number;
+    "count": number;
+
+    /**
+     * Daily / A few times a week / Weekly-ish / Monthly / Irregular
+     */
+    "frequencyLabel": string;
+
+    /**
+     * "2006-01-02"; empty when not projectable
+     */
+    "nextDue": string;
+
+    /**
+     * Amount × estimated occurrences per month
+     */
+    "monthlyImpact": number;
+
+    /**
+     * "2006-01-02"
+     */
+    "firstSeen": string;
+
+    /**
+     * "2006-01-02"
+     */
+    "lastSeen": string;
+}
+
+/**
  * Totals bundles the summary KPIs.
  */
 export interface Totals {

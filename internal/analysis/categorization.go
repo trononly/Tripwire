@@ -202,28 +202,31 @@ func normalizePattern(description string) string {
 	return strings.Join(strings.Fields(p), " ")
 }
 
-// Recurring detects payments that repeat: same normalized description and
-// identical amount, occurring at least minCount times. Results are sorted
-// by count descending.
-func Recurring(transactions []parser.Transaction, minCount int) []RecurringPayment {
+// recurringGroup is the internal grouping used by both Recurring (legacy
+// shape) and RecurringDetailed (enriched view model).
+type recurringGroup struct {
+	pattern string
+	amount  int64
+	dates   []time.Time
+	example string // most recent full description
+}
+
+// groupRecurring groups transactions by (digit-stripped description, exact
+// amount) and returns groups with at least minCount occurrences, dates
+// sorted chronologically.
+func groupRecurring(transactions []parser.Transaction, minCount int) []*recurringGroup {
 	if minCount < 2 {
 		minCount = 2
 	}
-
-	type group struct {
-		pattern string
-		amount  int64
-		dates   []time.Time
-		example string
-	}
-	groups := make(map[string]*group)
+	groups := make(map[string]*recurringGroup)
+	latest := make(map[string]time.Time)
 
 	for _, tx := range transactions {
 		pattern := normalizePattern(tx.Description)
 		key := fmt.Sprintf("%s|%d", pattern, tx.Amount)
 		g, ok := groups[key]
 		if !ok {
-			g = &group{pattern: pattern, amount: tx.Amount, example: tx.Description}
+			g = &recurringGroup{pattern: pattern, amount: tx.Amount, example: tx.Description}
 			groups[key] = g
 		}
 		t, err := txTime(tx)
@@ -231,15 +234,30 @@ func Recurring(transactions []parser.Transaction, minCount int) []RecurringPayme
 			continue
 		}
 		g.dates = append(g.dates, t)
+		if t.After(latest[key]) {
+			latest[key] = t
+			g.example = tx.Description // keep the most recent description
+		}
 	}
 
-	out := make([]RecurringPayment, 0)
+	out := make([]*recurringGroup, 0, len(groups))
 	for _, g := range groups {
 		if len(g.dates) < minCount {
 			continue
 		}
 		sort.Slice(g.dates, func(i, j int) bool { return g.dates[i].Before(g.dates[j]) })
-		r := RecurringPayment{
+		out = append(out, g)
+	}
+	return out
+}
+
+// Recurring detects payments that repeat: same normalized description and
+// identical amount, occurring at least minCount times. Results are sorted
+// by count descending.
+func Recurring(transactions []parser.Transaction, minCount int) []RecurringPayment {
+	out := make([]RecurringPayment, 0)
+	for _, g := range groupRecurring(transactions, minCount) {
+		out = append(out, RecurringPayment{
 			Pattern:    g.pattern,
 			Example:    g.example,
 			Count:      len(g.dates),
@@ -247,8 +265,7 @@ func Recurring(transactions []parser.Transaction, minCount int) []RecurringPayme
 			FirstDate:  g.dates[0].Format("2006-01-02"),
 			LastDate:   g.dates[len(g.dates)-1].Format("2006-01-02"),
 			MedianDays: medianGapDays(g.dates),
-		}
-		out = append(out, r)
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
 	return out
