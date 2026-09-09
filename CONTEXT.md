@@ -16,24 +16,28 @@ _Avoid_: widget, insight card
 A PDF statement exported by M-Pesa and parsed into transactions. A single statement can span months. On both platforms statements are the history layer — the only way to see the past.
 _Avoid_: export, bank statement
 
-**SMS transaction**:
-A transaction parsed from an Android M-Pesa notification SMS. The live layer: knows only what it has seen since onboarding, plus whatever statements supplied. Android-exclusive; permission grade varies by build.
-_Avoid_: notification, alert
+**SMS feed**:
+The live transactions parsed from Android M-Pesa notification SMS, held in app state for the running app. Android-exclusive; permission grade varies by build. Kept apart from the Statement store — the two never merge.
+_Avoid_: notification, alert, SMS transaction
 
 **Receipt No.**:
-The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The identity key that merges SMS rows and statement rows without double counting.
+The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The dedup key for the Statement store: an overlapping export arrives twice and the second copy is refused.
 _Avoid_: receipt number, transaction ID
 
-**Source**:
-Whether a transaction row came from a Statement or an SMS transaction. Balances only exist on statement-sourced rows; the export and the balance-chain logic branch on it.
-_Avoid_: origin, feed
+**Analysis mode**:
+The Dashboard control, next to Import Statement, that switches analysis between the Statement feed and the SMS feed. Android-only — on desktop there is no SMS, so the button is hidden. Desktop and mobile dashboards legitimately differ because of it.
+_Avoid_: view, tab, switcher
 
-**Transaction store**:
-The persisted JSON file holding one row per transaction, written by imports and read by every page. Imports are idempotent: a duplicate Receipt No. is refused, never re-added. Statements and SMS feed the same store.
-_Avoid_: database, cache
+**Statement store**:
+The persisted JSON file holding statement transactions, one per row, read by every page. Imports are idempotent: a duplicate Receipt No. is refused, never re-added. The SMS feed does not live here — it is app state, not a store.
+_Avoid_: database, transaction store, cache
+
+**Export**:
+The only thing that leaves the device: a report rendered as an image, PDF, or HTML. No raw transactions, no store file, no SMS state are moved or removed — artifacts only.
+_Avoid_: transfer, sync, backup
 
 **Bills & subscriptions**:
-The tile listing recurring outflows grouped by bill counterpart: amount (single value when stable, range when variable), cadence, next-due estimate, and the monthly-obligations total. Alerts when a bill is missing this month, powered by the live SMS feed.
+The tile listing recurring outflows grouped by bill counterpart: amount (single value when stable, range when variable), cadence, next-due estimate, and the monthly-obligations total. On the Statement analysis it is a history report; on the SMS analysis it adds the live "this bill is usually paid by now" alert.
 _Avoid_: recurring payments (the deleted dashboard widget)
 
 **Fee radar**:
