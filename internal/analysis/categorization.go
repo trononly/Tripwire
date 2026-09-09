@@ -1,11 +1,9 @@
 package analysis
 
 import (
-	"fmt"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"mpesa-analyzer/internal/parser"
 )
@@ -179,106 +177,4 @@ func TopCounterparties(transactions []parser.Transaction, n int) []Counterparty 
 		out = out[:n]
 	}
 	return out
-}
-
-// RecurringPayment is a detected recurring expense/payment.
-type RecurringPayment struct {
-	Pattern     string `json:"pattern"`     // digit-stripped description
-	Example     string `json:"example"`     // most recent full description
-	Count       int    `json:"count"`
-	Amount      int64  `json:"amount"`      // cents (most recent occurrence)
-	FirstDate   string `json:"firstDate"`   // chronological first
-	LastDate    string `json:"lastDate"`    // chronological last
-	MedianDays  int    `json:"medianDays"`  // median gap between occurrences
-}
-
-var digitsRE = regexp.MustCompile(`\d+`)
-
-// normalizePattern strips digits and collapses whitespace so
-// "Pay Bill Online to 888880 - KPLC" and "Pay Bill Online to 4131317 - KPLC"
-// group together.
-func normalizePattern(description string) string {
-	p := digitsRE.ReplaceAllString(description, "#")
-	return strings.Join(strings.Fields(p), " ")
-}
-
-// recurringGroup is the internal grouping used by both Recurring (legacy
-// shape) and RecurringDetailed (enriched view model).
-type recurringGroup struct {
-	pattern string
-	amount  int64
-	dates   []time.Time
-	example string // most recent full description
-}
-
-// groupRecurring groups transactions by (digit-stripped description, exact
-// amount) and returns groups with at least minCount occurrences, dates
-// sorted chronologically.
-func groupRecurring(transactions []parser.Transaction, minCount int) []*recurringGroup {
-	if minCount < 2 {
-		minCount = 2
-	}
-	groups := make(map[string]*recurringGroup)
-	latest := make(map[string]time.Time)
-
-	for _, tx := range transactions {
-		pattern := normalizePattern(tx.Description)
-		key := fmt.Sprintf("%s|%d", pattern, tx.Amount)
-		g, ok := groups[key]
-		if !ok {
-			g = &recurringGroup{pattern: pattern, amount: tx.Amount, example: tx.Description}
-			groups[key] = g
-		}
-		t, err := txTime(tx)
-		if err != nil {
-			continue
-		}
-		g.dates = append(g.dates, t)
-		if t.After(latest[key]) {
-			latest[key] = t
-			g.example = tx.Description // keep the most recent description
-		}
-	}
-
-	out := make([]*recurringGroup, 0, len(groups))
-	for _, g := range groups {
-		if len(g.dates) < minCount {
-			continue
-		}
-		sort.Slice(g.dates, func(i, j int) bool { return g.dates[i].Before(g.dates[j]) })
-		out = append(out, g)
-	}
-	return out
-}
-
-// Recurring detects payments that repeat: same normalized description and
-// identical amount, occurring at least minCount times. Results are sorted
-// by count descending.
-func Recurring(transactions []parser.Transaction, minCount int) []RecurringPayment {
-	out := make([]RecurringPayment, 0)
-	for _, g := range groupRecurring(transactions, minCount) {
-		out = append(out, RecurringPayment{
-			Pattern:    g.pattern,
-			Example:    g.example,
-			Count:      len(g.dates),
-			Amount:     g.amount,
-			FirstDate:  g.dates[0].Format("2006-01-02"),
-			LastDate:   g.dates[len(g.dates)-1].Format("2006-01-02"),
-			MedianDays: medianGapDays(g.dates),
-		})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
-	return out
-}
-
-func medianGapDays(dates []time.Time) int {
-	if len(dates) < 2 {
-		return 0
-	}
-	gaps := make([]int, 0, len(dates)-1)
-	for i := 1; i < len(dates); i++ {
-		gaps = append(gaps, int(dates[i].Sub(dates[i-1]).Hours()/24))
-	}
-	sort.Ints(gaps)
-	return gaps[len(gaps)/2]
 }

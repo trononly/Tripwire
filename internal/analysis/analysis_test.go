@@ -139,27 +139,3 @@ func TestTopCounterparties(t *testing.T) {
 		t.Errorf("unexpected top: %+v", top)
 	}
 }
-
-func TestRecurring(t *testing.T) {
-	txs := []parser.Transaction{
-		tx("2026-04-28 10:00:00", "Pay Bill Online to 888880 - KPLC", -50000, 44679),
-		tx("2026-03-28 10:00:00", "Pay Bill Online to 888880 - KPLC", -50000, 44679),
-		tx("2026-02-28 10:00:00", "Pay Bill Online to 4131317 - KPLC", -50000, 44679),
-		tx("2026-04-27 10:00:00", "Airtime Purchase", -500, 44679),
-	}
-	rec := Recurring(txs, 3)
-	if len(rec) != 1 {
-		t.Fatalf("want 1 recurring group, got %d: %+v", len(rec), rec)
-	}
-	r := rec[0]
-	if r.Count != 3 || r.Amount != -50000 {
-		t.Errorf("unexpected recurring: %+v", r)
-	}
-	// Median gap of 28|31 days.
-	if r.MedianDays < 28 || r.MedianDays > 31 {
-		t.Errorf("unexpected median days: %d", r.MedianDays)
-	}
-	if r.Pattern != "Pay Bill Online to # - KPLC" {
-		t.Errorf("unexpected pattern: %q", r.Pattern)
-	}
-}

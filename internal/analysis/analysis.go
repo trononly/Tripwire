@@ -38,7 +38,6 @@ type AnalysisResult struct {
 	BalanceSeries     []BalancePoint     `json:"balanceSeries"`
 	Categories        []CategoryTotal    `json:"categories"`
 	TopCounterparties []Counterparty     `json:"topCounterparties"`
-	Recurring         []RecurringPayment `json:"recurring"`
 }
 
 // Analyze computes the full analysis for a set of transactions.
@@ -68,6 +67,5 @@ func Analyze(transactions []parser.Transaction) (*AnalysisResult, error) {
 		BalanceSeries:     balance,
 		Categories:        Categorize(transactions),
 		TopCounterparties: TopCounterparties(transactions, 8),
-		Recurring:         Recurring(transactions, 3),
 	}, nil
 }

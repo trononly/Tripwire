@@ -62,8 +62,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
-    // Deep links: ?category=X (from dashboard charts) and ?q=X (from the
-    // recurring-payments drill-down). A ?q= navigation starts a fresh view:
+    // Deep links: ?category=X (from dashboard charts). A ?q= navigation starts a fresh view:
     // it becomes the search term and other filters reset.
     const q = searchParams.get("q");
     if (q !== null) {

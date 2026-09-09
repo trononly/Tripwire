@@ -6,7 +6,6 @@ import (
 	"mpesa-analyzer/internal/pdf"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -77,34 +76,6 @@ func (p *ParseService) ParsePDF(filePath, password string) ([]parser.Transaction
 		return nil, fmt.Errorf("Failed to parse transactions: %w", err)
 	}
 	return txs, nil
-}
-
-// GetRecurringPayments detects recurring payments and returns enriched,
-// searched and sorted view models in one call. The frontend passes the
-// current search term and sort choice; all detection, averaging and
-// sorting happen here.
-//
-// search: case-insensitive match on label or category ("" = all).
-// sortBy: "amount" | "frequency"; anything else = MonthlyImpact desc.
-func (p *ParseService) GetRecurringPayments(txs []parser.Transaction, search, sortBy string) []analysis.RecurringView {
-	views := analysis.RecurringDetailed(txs, 3)
-
-	if q := strings.ToLower(strings.TrimSpace(search)); q != "" {
-		filtered := make([]analysis.RecurringView, 0, len(views))
-		for _, v := range views {
-			if strings.Contains(strings.ToLower(v.Label), q) ||
-				strings.Contains(strings.ToLower(v.Category), q) {
-				filtered = append(filtered, v)
-			}
-		}
-		views = filtered
-	}
-
-	analysis.SortRecurringViews(views, sortBy)
-	if views == nil {
-		views = []analysis.RecurringView{}
-	}
-	return views
 }
 
 // AnalyzeTransactions computes all dashboard analytics for the given
