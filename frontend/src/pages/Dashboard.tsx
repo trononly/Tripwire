@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { RecurringPayments } from "@/components/recurring-payments";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CashflowChart, type Granularity } from "@/components/charts/cashflow-chart";
@@ -127,15 +126,6 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
             <BalanceChart data={result.balanceSeries ?? []} />
             <CounterpartyChart counterparties={result.topCounterparties ?? []} />
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Recurring Payments</CardTitle>
-              <CardDescription>
-                Same payment detected 3 or more times. Search and sort to explore.
-              </CardDescription>
-            </CardHeader>
-            <RecurringPayments transactions={transactions} />
-          </Card>
         </>
       )}
     </div>

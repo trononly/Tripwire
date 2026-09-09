@@ -24,19 +24,6 @@ export function AnalyzeTransactions(txs: parser$0.Transaction[] | null): $Cancel
     return $Call.ByID(1612480363, txs);
 }
 
-/**
- * GetRecurringPayments detects recurring payments and returns enriched,
- * searched and sorted view models in one call. The frontend passes the
- * current search term and sort choice; all detection, averaging and
- * sorting happen here.
- * 
- * search: case-insensitive match on label or category ("" = all).
- * sortBy: "amount" | "frequency"; anything else = MonthlyImpact desc.
- */
-export function GetRecurringPayments(txs: parser$0.Transaction[] | null, search: string, sortBy: string): $CancellablePromise<analysis$0.RecurringView[] | null> {
-    return $Call.ByID(3289991278, txs, search, sortBy);
-}
-
 export function ParsePDF(filePath: string, password: string): $CancellablePromise<parser$0.Transaction[] | null> {
     return $Call.ByID(467646505, filePath, password);
 }

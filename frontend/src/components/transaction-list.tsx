@@ -47,8 +47,7 @@ const TINT_RED = "bg-red-500/10 text-red-600 dark:text-red-400";
 const TINT_AMBER = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
 const TINT_GRAY = "bg-muted text-muted-foreground";
 
-// Handles both CategoryOf display names ("Buy Goods") and the normalized
-// keys sent by RecurringView ("buy_goods").
+// Handles CategoryOf display names ("Buy Goods", "Pay Bill", etc.).
 export function categoryStyle(cat: string): CategoryStyle {
   const c = cat.toLowerCase().replace(/_/g, " ");
   if (c.includes("receive") || c.includes("salary") || c.includes("funds"))
