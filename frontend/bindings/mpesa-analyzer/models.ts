@@ -16,16 +16,6 @@ export interface DayGroup {
 }
 
 /**
- * SafeAreaInsets are system-bar insets in physical pixels.
- */
-export interface SafeAreaInsets {
-    "top": number;
-    "bottom": number;
-    "left": number;
-    "right": number;
-}
-
-/**
  * TransactionView is a single prepared row for the frontend transaction
  * list: pre-categorized so the UI never re-runs classification.
  */

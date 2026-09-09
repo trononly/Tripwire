@@ -39,7 +39,6 @@ func main() {
 		Description: "Analyze your M-Pesa Statements",
 		Services: []application.Service{
 			application.NewService(&ParseService{}),
-			application.NewService(&MobileInfoService{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
