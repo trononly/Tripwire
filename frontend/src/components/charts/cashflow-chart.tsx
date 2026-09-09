@@ -1,6 +1,12 @@
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMemo } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   type ChartConfig,
@@ -35,7 +41,23 @@ export function CashflowChart({
   granularity: Granularity;
   onGranularityChange: (g: Granularity) => void;
 }) {
-  const data = buckets.map((b) => ({ ...b, label: formatBucketLabel(b.label), in: b.in / 100, out: b.out / 100 }));
+  const data = buckets.map((b) => ({
+    ...b,
+    label: formatBucketLabel(b.label),
+    in: b.in / 100,
+    out: b.out / 100,
+  }));
+  console.log("[CashflowChart] points:", data.length);
+  const chartData = useMemo(
+    () =>
+      buckets.map((b) => ({
+        ...b,
+        label: formatBucketLabel(b.label),
+        in: b.in / 100,
+        out: b.out / 100,
+      })),
+    [buckets],
+  );
 
   return (
     <Card>
@@ -62,8 +84,12 @@ export function CashflowChart({
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[300px] w-full">
-          <BarChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
-            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+          <BarChart data={chartData} margin={{ left: 4, right: 8, top: 8 }}>
+            <CartesianGrid
+              vertical={false}
+              strokeDasharray="3 3"
+              stroke="var(--border)"
+            />
             <XAxis
               dataKey="label"
               tickLine={false}
@@ -87,19 +113,36 @@ export function CashflowChart({
                       <span className="flex items-center gap-1.5">
                         <span
                           className="size-2.5 shrink-0 rounded-[2px]"
-                          style={{ background: name === "in" ? "var(--color-in)" : "var(--color-out)" }}
+                          style={{
+                            background:
+                              name === "in"
+                                ? "var(--color-in)"
+                                : "var(--color-out)",
+                          }}
                         />
                         {name === "in" ? "In" : "Out"}
                       </span>
-                      <span className="font-mono tabular-nums">{formatMoney(Number(value) * 100)}</span>
+                      <span className="font-mono tabular-nums">
+                        {formatMoney(Number(value) * 100)}
+                      </span>
                     </span>
                   )}
                 />
               }
             />
             <ChartLegend content={<ChartLegendContent />} />
-            <Bar dataKey="in" fill="var(--color-in)" radius={[4, 4, 0, 0]} animationDuration={700} />
-            <Bar dataKey="out" fill="var(--color-out)" radius={[4, 4, 0, 0]} animationDuration={700} />
+            <Bar
+              isAnimationActive={false}
+              dataKey="in"
+              fill="var(--color-in)"
+              radius={[4, 4, 0, 0]}
+            />
+            <Bar
+              isAnimationActive={false}
+              dataKey="out"
+              fill="var(--color-out)"
+              radius={[4, 4, 0, 0]}
+            />
           </BarChart>
         </ChartContainer>
       </CardContent>

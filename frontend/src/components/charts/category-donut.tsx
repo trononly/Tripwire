@@ -1,6 +1,12 @@
 import { Cell, Pie, PieChart } from "recharts";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
@@ -35,7 +41,10 @@ export function CategoryDonut({
     count: c.count,
   }));
   const config = Object.fromEntries(
-    categories.map((c, i) => [c.name, { label: c.name, color: COLORS[i % COLORS.length] }]),
+    categories.map((c, i) => [
+      c.name,
+      { label: c.name, color: COLORS[i % COLORS.length] },
+    ]),
   ) satisfies ChartConfig;
 
   return (
@@ -43,18 +52,20 @@ export function CategoryDonut({
       <CardHeader>
         <CardTitle>Where the money went</CardTitle>
         <CardDescription>
-          Spending by category, share of volume. Click a segment to see its transactions.
+          Spending by category, share of volume. Click a segment to see its
+          transactions.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={config} className="mx-auto h-[300px] w-full">
+        <ChartContainer config={config} className="mx-auto h-75 w-full">
           <PieChart>
             <ChartTooltip
               content={
                 <ChartTooltipContent
                   hideLabel
                   formatter={(_, name, item) => {
-                    const p = item?.payload as { signed: number; count: number } | undefined;
+                    const p = item?.payload as
+                      { signed: number; count: number } | undefined;
                     return (
                       <span className="flex w-full items-center justify-between gap-4">
                         <span>{name}</span>
@@ -67,7 +78,14 @@ export function CategoryDonut({
                 />
               }
             />
-            <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+            <ChartLegend
+              content={
+                <ChartLegendContent
+                  nameKey="name"
+                  className="flex-wrap gap-x-3 gap-y-2 text-xs sm:gap-x-4"
+                />
+              }
+            />
             <Pie
               data={data}
               dataKey="value"
@@ -77,9 +95,12 @@ export function CategoryDonut({
               paddingAngle={2}
               strokeWidth={2}
               stroke="var(--background)"
-              animationDuration={800}
-              animationEasing="ease-out"
-              className={onSelectCategory ? "cursor-pointer outline-hidden" : "outline-hidden"}
+              isAnimationActive={false}
+              className={
+                onSelectCategory
+                  ? "cursor-pointer outline-hidden"
+                  : "outline-hidden"
+              }
               onClick={(_: unknown, index: number) => {
                 const entry = data[index];
                 if (entry && onSelectCategory) onSelectCategory(entry.name);
