@@ -1,54 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
+import { useMemo, useState, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CashflowChart, type Granularity } from "@/components/charts/cashflow-chart";
+import {
+  CashflowChart,
+  type Granularity,
+} from "@/components/charts/cashflow-chart";
 import { BalanceChart } from "@/components/charts/balance-chart";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { CounterpartyChart } from "@/components/charts/counterparty-chart";
 import { TotalsCards } from "@/components/totals-cards";
 
-export default function Dashboard({ transactions }: { transactions: parser.Transaction[] }) {
+export default function Dashboard({
+  transactions,
+  result,
+  loading,
+  error,
+}: {
+  transactions: parser.Transaction[];
+  result: analysis.AnalysisResult | null;
+  loading: boolean;
+  error: string | null;
+}) {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [result, setResult] = useState<analysis.AnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("day");
+  const renderCount = useRef(0);
+  renderCount.current++;
 
-  useEffect(() => {
-    if (transactions.length === 0) {
-      setResult(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    AnalyzeTransactions(transactions)
-      .then((r) => {
-        if (!cancelled) setResult(r);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [transactions]);
+  console.log("Dashboard render", renderCount.current, {
+    result,
+    loading,
+    granularity,
+  });
+
+  // Only render when on the root path
+  if (location.pathname !== "/") {
+    return null;
+  }
 
   const buckets = useMemo(() => {
     if (!result) return [];
@@ -67,13 +59,16 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your M-Pesa activity.</p>
+          <p className="text-muted-foreground">
+            Overview of your M-Pesa activity.
+          </p>
         </div>
-        <Card className="flex min-h-[320px] items-center justify-center border-dashed">
+        <Card className="flex min-h-80 items-center justify-center border-dashed">
           <CardContent className="pt-6 text-center">
             <p className="text-lg font-medium">No statement imported yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use <span className="font-medium">Import Statement</span> above to load an M-Pesa PDF.
+              Use <span className="font-medium">Import Statement</span> above to
+              load an M-Pesa PDF.
             </p>
           </CardContent>
         </Card>
@@ -85,12 +80,16 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Overview of your M-Pesa activity.</p>
+        <p className="text-muted-foreground">
+          Overview of your M-Pesa activity.
+        </p>
       </div>
 
       {error && (
         <Card className="border-destructive">
-          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+          <CardContent className="pt-6 text-sm text-destructive">
+            {error}
+          </CardContent>
         </Card>
       )}
 
@@ -102,10 +101,10 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
             ))}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Skeleton className="h-[360px]" />
-            <Skeleton className="h-[360px]" />
-            <Skeleton className="h-[360px]" />
-            <Skeleton className="h-[360px]" />
+            <Skeleton className="h-90" />
+            <Skeleton className="h-90" />
+            <Skeleton className="h-90" />
+            <Skeleton className="h-90" />
           </div>
         </div>
       ) : (
@@ -117,14 +116,21 @@ export default function Dashboard({ transactions }: { transactions: parser.Trans
               granularity={granularity}
               onGranularityChange={setGranularity}
             />
+
             <CategoryDonut
               categories={result.categories ?? []}
               onSelectCategory={(category) =>
-                navigate(`/transactions?category=${encodeURIComponent(category)}`)
+                navigate(
+                  `/transactions?category=${encodeURIComponent(category)}`,
+                )
               }
             />
+
             <BalanceChart data={result.balanceSeries ?? []} />
-            <CounterpartyChart counterparties={result.topCounterparties ?? []} />
+
+            <CounterpartyChart
+              counterparties={result.topCounterparties ?? []}
+            />
           </div>
         </>
       )}
