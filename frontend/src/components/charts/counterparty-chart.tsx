@@ -1,6 +1,12 @@
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
@@ -14,7 +20,11 @@ const chartConfig = {
   count: { label: "Transactions", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
-export function CounterpartyChart({ counterparties }: { counterparties: analysis.Counterparty[] }) {
+export function CounterpartyChart({
+  counterparties,
+}: {
+  counterparties: analysis.Counterparty[];
+}) {
   // Backend is sorted by count descending; recharts renders vertical-layout
   // bars bottom-up, so feed the data as-is to get the biggest bar on top.
   const data = counterparties.map((c) => ({
@@ -34,13 +44,29 @@ export function CounterpartyChart({ counterparties }: { counterparties: analysis
     <Card>
       <CardHeader>
         <CardTitle>Top Counterparties</CardTitle>
-        <CardDescription>People and businesses you transact with most</CardDescription>
+        <CardDescription>
+          People and businesses you transact with most
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
-          <BarChart data={data} layout="vertical" margin={{ left: 4, right: 24, top: 8 }}>
-            <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
+        <ChartContainer config={chartConfig} className="h-75 w-full">
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ left: 4, right: 24, top: 8 }}
+          >
+            <CartesianGrid
+              horizontal={false}
+              strokeDasharray="3 3"
+              stroke="var(--border)"
+            />
+            <XAxis
+              type="number"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              allowDecimals={false}
+            />
             <YAxis
               type="category"
               dataKey="name"
@@ -54,7 +80,8 @@ export function CounterpartyChart({ counterparties }: { counterparties: analysis
                 <ChartTooltipContent
                   hideLabel
                   formatter={(_, __, item) => {
-                    const p = item?.payload as { in: number; out: number } | undefined;
+                    const p = item?.payload as
+                      { in: number; out: number } | undefined;
                     if (!p) return null;
                     // Show the direction breakdown; a flat net of KSh 0.00
                     // (e.g. sent + received the same amount) is meaningless.
@@ -63,9 +90,13 @@ export function CounterpartyChart({ counterparties }: { counterparties: analysis
                     if (p.out > 0) parts.push(`Out ${formatMoney(p.out)}`);
                     return (
                       <span className="flex w-full flex-col gap-0.5">
-                        <span className="font-medium">{(item?.payload as { name: string })?.name}</span>
+                        <span className="font-medium">
+                          {(item?.payload as { name: string })?.name}
+                        </span>
                         <span className="font-mono tabular-nums text-muted-foreground">
-                          {parts.length > 0 ? parts.join(" · ") : "No money flow"}
+                          {parts.length > 0
+                            ? parts.join(" · ")
+                            : "No money flow"}
                           {" · "}
                           {item?.value} txs
                         </span>
@@ -79,7 +110,7 @@ export function CounterpartyChart({ counterparties }: { counterparties: analysis
               dataKey="count"
               fill="var(--color-count)"
               radius={[0, 4, 4, 0]}
-              animationDuration={700}
+              isAnimationActive={false}
               barSize={16}
             />
           </BarChart>

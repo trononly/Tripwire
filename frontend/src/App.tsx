@@ -6,18 +6,17 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ImportStatementDialog } from "@/components/import-statement-dialog";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
-// Code-split the Dashboard: Recharts (~ is only fetched when the
-// Dashboard route actually renders, keeping first load snappy.
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-
 import type * as parser from "../bindings/mpesa-analyzer/internal/parser/models";
-import { SafeArea } from "../bindings/mpesa-analyzer/mobileinfoservice";
+import type * as analysis from "../bindings/mpesa-analyzer/internal/analysis/models";
+import { AnalyzeTransactions } from "../bindings/mpesa-analyzer/parseservice";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
+import Insights from "./pages/Insights";
+import Dashboard from "@/pages/Dashboard";
 
 function PageFallback() {
   return (
@@ -29,33 +28,35 @@ function PageFallback() {
 
 function App() {
   const [txs, setTxs] = useState<parser.Transaction[]>([]);
+  const [analysisResult, setAnalysisResult] =
+    useState<analysis.AnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // Apply native system-bar insets (Android edge-to-edge) as CSS variables.
-  // Physical pixels are divided by devicePixelRatio to get CSS pixels.
+  // Run analysis once per statement and keep the result in App state so
+  // navigating away and back does not remount/remount the Dashboard.
   useEffect(() => {
-    const apply = async () => {
-      try {
-        const insets = await SafeArea();
-        const dpr = window.devicePixelRatio || 1;
-        const style = document.documentElement.style;
-        style.setProperty("--safe-area-top", `${(insets.top ?? 0) / dpr}px`);
-        style.setProperty(
-          "--safe-area-bottom",
-          `${(insets.bottom ?? 0) / dpr}px`,
-        );
-        style.setProperty("--safe-area-left", `${(insets.left ?? 0) / dpr}px`);
-        style.setProperty(
-          "--safe-area-right",
-          `${(insets.right ?? 0) / dpr}px`,
-        );
-      } catch {
-        // Desktop stub or runtime not ready: keep the env() CSS fallback.
-      }
+    if (txs.length === 0) {
+      setAnalysisResult(null);
+      return;
+    }
+    let cancelled = false;
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    AnalyzeTransactions(txs)
+      .then((r) => {
+        if (!cancelled) setAnalysisResult(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setAnalysisError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setAnalysisLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
-    apply();
-    window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
-  }, []);
+  }, [txs]);
 
   return (
     <ThemeProvider
@@ -80,7 +81,12 @@ function App() {
                   path="/"
                   element={
                     <Suspense fallback={<PageFallback />}>
-                      <Dashboard transactions={txs} />
+                      <Dashboard
+                        transactions={txs}
+                        result={analysisResult}
+                        loading={analysisLoading}
+                        error={analysisError}
+                      />
                     </Suspense>
                   }
                 />
@@ -89,6 +95,7 @@ function App() {
                   element={<Transactions transactions={txs} />}
                 />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/insights" element={<Insights />} />
               </Routes>
             </main>
           </SidebarInset>

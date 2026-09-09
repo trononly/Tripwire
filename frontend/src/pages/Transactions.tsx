@@ -36,13 +36,18 @@ function filterGroups(
   const out: Group[] = [];
   for (const g of groups) {
     const txs = g.txs.filter((t) => {
-      if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
+      if (categoryFilter !== "all" && t.category !== categoryFilter)
+        return false;
       if (directionFilter === "in" && t.amount < 0) return false;
       if (directionFilter === "out" && t.amount >= 0) return false;
       const day = t.date.slice(0, 10);
       if (fromDate && day < fromDate) return false;
       if (toDate && day > toDate) return false;
-      if (q && !t.description.toLowerCase().includes(q) && !t.category.toLowerCase().includes(q))
+      if (
+        q &&
+        !t.description.toLowerCase().includes(q) &&
+        !t.category.toLowerCase().includes(q)
+      )
         return false;
       return true;
     });
@@ -56,8 +61,12 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   const groups = useTransactionGroups(txs);
 
   const [globalFilter, setGlobalFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "all");
-  const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [categoryFilter, setCategoryFilter] = useState(
+    searchParams.get("category") ?? "all",
+  );
+  const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">(
+    "all",
+  );
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -85,7 +94,14 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
 
   const filteredGroups = useMemo(
     () =>
-      filterGroups(groups, globalFilter, categoryFilter, directionFilter, fromDate, toDate),
+      filterGroups(
+        groups,
+        globalFilter,
+        categoryFilter,
+        directionFilter,
+        fromDate,
+        toDate,
+      ),
     [groups, globalFilter, categoryFilter, directionFilter, fromDate, toDate],
   );
 
@@ -124,7 +140,10 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             ))}
           </SelectContent>
         </Select>
-        <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}>
+        <Select
+          value={directionFilter}
+          onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}
+        >
           <SelectTrigger className="sm:w-32">
             <SelectValue placeholder="Direction" />
           </SelectTrigger>
@@ -139,14 +158,14 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="w-[9.5rem]"
+            className="w-38"
           />
           <span>to</span>
           <Input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="w-[9.5rem]"
+            className="w-38]"
           />
         </div>
         {activeFilters > 0 && (
@@ -171,7 +190,11 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   );
 }
 
-export default function Transactions({ transactions }: { transactions: parser.Transaction[] }) {
+export default function Transactions({
+  transactions,
+}: {
+  transactions: parser.Transaction[];
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -190,7 +213,9 @@ export default function Transactions({ transactions }: { transactions: parser.Tr
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {transactions.length > 0 ? <TxDataTable txs={transactions} /> : (
+          {transactions.length > 0 ? (
+            <TxDataTable txs={transactions} />
+          ) : (
             <p className="text-sm text-muted-foreground">
               Nothing to display yet. Use “Import statement” to load one.
             </p>

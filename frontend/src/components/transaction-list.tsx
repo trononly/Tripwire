@@ -27,18 +27,20 @@ import { TransactionGroups } from "../../bindings/mpesa-analyzer/parseservice";
 import type { DayGroup } from "../../bindings/mpesa-analyzer/models";
 
 /** Non-null normalized day group (Go slices arrive nullable at the bridge). */
-export type Group = { dayKey: string; endBalance: number; txs: TransactionView[] };
+export type Group = {
+  dayKey: string;
+  endBalance: number;
+  txs: TransactionView[];
+};
 type TransactionView = NonNullable<DayGroup["txs"]>[number];
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
 const PAGE_SIZES = [10, 20, 30, 50];
 const DEFAULT_PAGE_SIZE = 20;
 
-// ---------------------------------------------------------------------------
 // Category -> icon/colour mapping (matches the Go classifier in
 // internal/analysis.CategoryOf, whose labels arrive pre-computed on each
 // row). Flat tinted badges, token-based colours so dark mode adapts.
-// ---------------------------------------------------------------------------
 
 export type CategoryStyle = { icon: LucideIcon; className: string };
 
@@ -54,20 +56,15 @@ export function categoryStyle(cat: string): CategoryStyle {
     return { icon: ArrowDownLeft, className: TINT_GREEN };
   if (c.includes("buy goods") || c.includes("merchant"))
     return { icon: ShoppingBag, className: TINT_RED };
-  if (c.includes("pay bill"))
-    return { icon: Receipt, className: TINT_AMBER };
-  if (c.includes("airtime"))
-    return { icon: Smartphone, className: TINT_GRAY };
+  if (c.includes("pay bill")) return { icon: Receipt, className: TINT_AMBER };
+  if (c.includes("airtime")) return { icon: Smartphone, className: TINT_GRAY };
   if (c.includes("withdraw"))
     return { icon: ArrowUpRight, className: TINT_RED };
-  if (c.includes("send"))
-    return { icon: Send, className: TINT_RED };
-  if (c.includes("bundles"))
-    return { icon: Wifi, className: TINT_GRAY };
+  if (c.includes("send")) return { icon: Send, className: TINT_RED };
+  if (c.includes("bundles")) return { icon: Wifi, className: TINT_GRAY };
   if (c.includes("bank") || c.includes("savings"))
     return { icon: Landmark, className: TINT_GRAY };
-  if (c.includes("fees"))
-    return { icon: Receipt, className: TINT_GRAY };
+  if (c.includes("fees")) return { icon: Receipt, className: TINT_GRAY };
   return { icon: ArrowLeftRight, className: TINT_GRAY };
 }
 
@@ -100,7 +97,8 @@ const DESCRIPTION_REWRITES: [string, string][] = [
 
 function shortenDescription(description: string): string {
   for (const [from, to] of DESCRIPTION_REWRITES) {
-    if (description.startsWith(from)) return to + description.slice(from.length);
+    if (description.startsWith(from))
+      return to + description.slice(from.length);
   }
   return description;
 }
@@ -116,7 +114,10 @@ function localDayKey(d: Date): string {
 function dateGroupLabel(dayKey: string): string {
   const [y, m, d] = dayKey.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  const day = date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const day = date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
   const today = localDayKey(new Date());
   const yesterday = localDayKey(new Date(Date.now() - 86_400_000));
   if (dayKey === today) return `Today, ${day}`;
@@ -163,18 +164,16 @@ export function useTransactionGroups(txs: parser.Transaction[]): Group[] {
   return groups;
 }
 
-// ---------------------------------------------------------------------------
 // Row
-// ---------------------------------------------------------------------------
 
 function TxRow({
   tx,
   expanded,
   onToggle,
 }: {
-  tx: TransactionView
-  expanded: boolean
-  onToggle: () => void
+  tx: TransactionView;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const { icon: Icon, className: tint } = categoryStyle(tx.category);
   const moneyIn = tx.amount >= 0;
@@ -191,7 +190,7 @@ function TxRow({
           className={`flex size-9 shrink-0 items-center justify-center rounded-full ${tint}`}
           aria-hidden
         >
-          <Icon className="size-[18px]" strokeWidth={1.75} />
+          <Icon className="size-4.5" strokeWidth={1.75} />
         </span>
 
         {/* text block */}
@@ -208,7 +207,9 @@ function TxRow({
         <span className="flex shrink-0 items-center gap-1">
           <span
             className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
-              moneyIn ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+              moneyIn
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400"
             }`}
           >
             {formatAmount(tx.amount)}
@@ -242,15 +243,17 @@ function DetailRow({
   mono,
   wrap,
 }: {
-  label: string
-  value: string
-  mono?: boolean
-  wrap?: boolean
+  label: string;
+  value: string;
+  mono?: boolean;
+  wrap?: boolean;
 }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] gap-x-3">
       <span className="text-muted-foreground">{label}</span>
-      <span className={`${mono ? "font-mono" : ""} ${wrap ? "break-words" : "truncate"}`}>
+      <span
+        className={`${mono ? "font-mono" : ""} ${wrap ? "wrap-break-words" : "truncate"}`}
+      >
         {value}
       </span>
     </div>
@@ -263,10 +266,10 @@ function DetailRow({
 
 export type TransactionListProps = {
   /** Prepared day groups (from useTransactionGroups), already filtered. */
-  groups: Group[]
+  groups: Group[];
   /** Render the page-size select + pager footer. Default true. */
-  showPagination?: boolean
-}
+  showPagination?: boolean;
+};
 
 /** Slices one page of rows out of the groups, preserving group headers. */
 function paginateGroups(
@@ -323,9 +326,14 @@ export function TransactionList({
       {page.length ? (
         <div className="space-y-3">
           {page.map((g) => (
-            <section key={g.dayKey} className="overflow-hidden rounded-xl border">
+            <section
+              key={g.dayKey}
+              className="overflow-hidden rounded-xl border"
+            >
               <header className="flex items-baseline justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
-                <span className="text-[13px] font-medium">{dateGroupLabel(g.dayKey)}</span>
+                <span className="text-[13px] font-medium">
+                  {dateGroupLabel(g.dayKey)}
+                </span>
                 <span className="text-xs tabular-nums text-muted-foreground">
                   Bal {formatMoney(g.endBalance)}
                 </span>
@@ -336,7 +344,9 @@ export function TransactionList({
                     key={t.id}
                     tx={t}
                     expanded={expandedId === t.id}
-                    onToggle={() => setExpandedId((e) => (e === t.id ? null : t.id))}
+                    onToggle={() =>
+                      setExpandedId((e) => (e === t.id ? null : t.id))
+                    }
                   />
                 ))}
               </div>
@@ -390,7 +400,9 @@ export function TransactionList({
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setPageIndex((p) => Math.min(p + 1, pageCount - 1))}
+              onClick={() =>
+                setPageIndex((p) => Math.min(p + 1, pageCount - 1))
+              }
               disabled={pageIndex >= pageCount - 1}
             >
               <ChevronRight />
