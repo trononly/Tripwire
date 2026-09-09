@@ -16,3 +16,10 @@ build/android/.gradle/
 build/android/app/build/
 build/android/app/src/main/jniLibs/
 *.syso
+
+# Local build output (was accidentally tracked; built by wails3)
+mpesa-analyzer.exe
+*.exe~
+
+# Windows findstr redirect artifact
+nul
