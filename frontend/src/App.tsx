@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ImportStatementDialog } from "@/components/import-statement-dialog";
 import { HistorySheet } from "@/components/history-sheet";
+import { ScrollToTop } from "@/components/scroll-to-top";
 import { FileUp } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -124,6 +125,7 @@ function App() {
       disableTransitionOnChange
     >
       <HashRouter>
+        <ScrollToTop />
         <SidebarProvider>
           <AppSidebar />
           <Toaster position="bottom-right" richColors />
