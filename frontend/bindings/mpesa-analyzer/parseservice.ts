@@ -11,10 +11,21 @@ import * as analysis$0 from "./internal/analysis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as parser$0 from "./internal/parser/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as store$0 from "./internal/store/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * ActivateStatement loads one stored statement's transactions and makes
+ * it the active one for this session.
+ */
+export function ActivateStatement(id: string): $CancellablePromise<parser$0.Transaction[] | null> {
+    return $Call.ByID(278960580, id);
+}
 
 /**
  * AnalyzeTransactions computes all dashboard analytics for the given
@@ -24,12 +35,44 @@ export function AnalyzeTransactions(txs: parser$0.Transaction[] | null): $Cancel
     return $Call.ByID(1612480363, txs);
 }
 
+/**
+ * DeleteStatement removes a stored statement and its transactions. If it
+ * was the active one, nothing is active afterwards.
+ */
+export function DeleteStatement(id: string): $CancellablePromise<void> {
+    return $Call.ByID(4239506730, id);
+}
+
+/**
+ * ImportStatement parses a PDF, stores the transactions under the given
+ * name (derived from the date range when the name is blank), activates
+ * the new record, and returns it with its transactions.
+ */
+export function ImportStatement(filePath: string, password: string, name: string): $CancellablePromise<store$0.StatementRecord | null> {
+    return $Call.ByID(889416760, filePath, password, name);
+}
+
+/**
+ * ListStatements returns the stored statements' metadata, newest import
+ * first.
+ */
+export function ListStatements(): $CancellablePromise<store$0.StatementMeta[] | null> {
+    return $Call.ByID(1736995264);
+}
+
 export function ParsePDF(filePath: string, password: string): $CancellablePromise<parser$0.Transaction[] | null> {
     return $Call.ByID(467646505, filePath, password);
 }
 
 export function PickFile(): $CancellablePromise<string> {
     return $Call.ByID(25992641);
+}
+
+/**
+ * RenameStatement sets a new name for a stored statement.
+ */
+export function RenameStatement(id: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2724985589, id, name);
 }
 
 /**

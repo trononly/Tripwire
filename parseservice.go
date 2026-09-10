@@ -1,16 +1,48 @@
 package main
 
 import (
+	"log"
 	"mpesa-analyzer/internal/analysis"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
+	"mpesa-analyzer/internal/store"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"sort"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-type ParseService struct{}
+type ParseService struct {
+	mu       sync.Mutex
+	store    *store.Store
+	activeID string
+}
+
+// statements lazily creates the store the first time a history method
+// runs. The file lives in an app-private directory: getFilesDir() on
+// Android (via the Wails bridge — xdg has no Android support and $HOME is
+// unset there, which resolves to a read-only /.local), the xdg data home
+// on desktop.
+func (p *ParseService) statements() (*store.Store, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.store == nil {
+		base := application.Mobile.StoragePath()
+		if base == "" {
+			if runtime.GOOS == "android" {
+				log.Println("statement store: Android storage path unavailable (bridge not ready?), falling back to xdg data home")
+			}
+			base = application.Path(application.PathDataHome)
+		}
+		p.store = store.New(filepath.Join(base, "mpesa-analyzer", "statements.json"))
+	}
+	return p.store, nil
+}
 
 // TransactionView is a single prepared row for the frontend transaction
 // list: pre-categorized so the UI never re-runs classification.
@@ -109,4 +141,98 @@ func (p *ParseService) PickFile() (string, error) {
 			},
 		},
 	}).PromptForSingleSelection()
+}
+
+// ImportStatement parses a PDF, stores the transactions under the given
+// name (derived from the date range when the name is blank), activates
+// the new record, and returns it with its transactions.
+func (p *ParseService) ImportStatement(filePath, password, name string) (*store.StatementRecord, error) {
+	txs, err := pdf.ReadPDFTX(filePath, password)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse transactions: %w", err)
+	}
+	rangeOf := store.DateRangeOf(txs)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = store.NameOf(rangeOf)
+	}
+	rec := store.StatementRecord{
+		ID:         store.NewID(),
+		Name:       name,
+		DateRange:  rangeOf,
+		TxCount:    len(txs),
+		ImportedAt: time.Now().UTC(),
+		Txs:        txs,
+	}
+
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Add(rec); err != nil {
+		return nil, err
+	}
+
+	p.mu.Lock()
+	p.activeID = rec.ID
+	p.mu.Unlock()
+	return &rec, nil
+}
+
+// ListStatements returns the stored statements' metadata, newest import
+// first.
+func (p *ParseService) ListStatements() ([]store.StatementMeta, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	return s.List()
+}
+
+// ActivateStatement loads one stored statement's transactions and makes
+// it the active one for this session.
+func (p *ParseService) ActivateStatement(id string) ([]parser.Transaction, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	rec, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	p.activeID = rec.ID
+	p.mu.Unlock()
+	return rec.Txs, nil
+}
+
+// DeleteStatement removes a stored statement and its transactions. If it
+// was the active one, nothing is active afterwards.
+func (p *ParseService) DeleteStatement(id string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	if err := s.Delete(id); err != nil {
+		return err
+	}
+	p.mu.Lock()
+	if p.activeID == id {
+		p.activeID = ""
+	}
+	p.mu.Unlock()
+	return nil
+}
+
+// RenameStatement sets a new name for a stored statement.
+func (p *ParseService) RenameStatement(id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("statement name cannot be empty")
+	}
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return s.Rename(id, name)
 }
