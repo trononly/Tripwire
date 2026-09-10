@@ -21,15 +21,23 @@ The live transactions parsed from Android M-Pesa notification SMS, held in app s
 _Avoid_: notification, alert, SMS transaction
 
 **Receipt No.**:
-The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The dedup key for the Statement store: an overlapping export arrives twice and the second copy is refused.
+The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The dedup key for cross-statement dedup, deferred to v2 — in v1 a re-imported statement is stored as its own record.
 _Avoid_: receipt number, transaction ID
 
 **Analysis mode**:
 The Dashboard control, next to Import Statement, that switches analysis between the Statement feed and the SMS feed. Android-only — on desktop there is no SMS, so the button is hidden. Desktop and mobile dashboards legitimately differ because of it.
 _Avoid_: view, tab, switcher
 
+**Active statement**:
+The statement being analyzed right now. Session-only: nothing auto-loads on launch, so every session starts with nothing active until the user picks from History or imports. Importing activates the new statement immediately; deleting the active one leaves nothing active.
+_Avoid_: current statement, selected statement, last opened
+
+**History**:
+The list of stored statements plus the sheet that shows it, opened from the header status chip. A row tap activates; the trash icon deletes the record and its transactions. Renames and re-uploads on rows are deliberately absent until the sheet stops fitting.
+_Avoid_: statement list, drawer, dropdown
+
 **Statement store**:
-The persisted JSON file holding statement transactions, one per row, read by every page. Imports are idempotent: a duplicate Receipt No. is refused, never re-added. The SMS feed does not live here — it is app state, not a store.
+The persisted JSON file in the app's data directory, holding one record per imported statement: name, date range, transaction count, import time, and the parsed transactions. No PDFs, no file paths, no passwords. Imports and deletes write the file immediately; v1 does not dedup across statements.
 _Avoid_: database, transaction store, cache
 
 **Export**:
