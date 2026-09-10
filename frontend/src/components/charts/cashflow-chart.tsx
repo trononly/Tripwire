@@ -83,7 +83,7 @@ export function CashflowChart({
         </div>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+        <ChartContainer config={chartConfig} className="h-75 w-full">
           <BarChart data={chartData} margin={{ left: 4, right: 8, top: 8 }}>
             <CartesianGrid
               vertical={false}

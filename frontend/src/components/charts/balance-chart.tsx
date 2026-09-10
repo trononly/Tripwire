@@ -42,7 +42,7 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+        <ChartContainer config={chartConfig} className="h-75 w-full">
           <AreaChart data={points} margin={{ left: 8, right: 8, top: 8 }}>
             <defs>
               <linearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
