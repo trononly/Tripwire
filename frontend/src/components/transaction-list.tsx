@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -310,10 +310,21 @@ export function TransactionList({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
+  const listTopRef = useRef<HTMLDivElement | null>(null);
+  const lastPageIndex = useRef(pageIndex);
 
   useEffect(() => {
     setPageIndex(0);
   }, [groups, pageSize]);
+
+  // A page change replaces everything above the pagination controls, so
+  // bring the top of the list back into view. No-ops when the whole page
+  // already fits on screen.
+  useEffect(() => {
+    if (lastPageIndex.current === pageIndex) return;
+    lastPageIndex.current = pageIndex;
+    listTopRef.current?.scrollIntoView({ block: "start" });
+  }, [pageIndex]);
 
   const { page, totalRows } = useMemo(
     () => paginateGroups(groups, pageIndex, pageSize),
@@ -322,7 +333,7 @@ export function TransactionList({
   const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
 
   return (
-    <div className="space-y-4">
+    <div ref={listTopRef} className="space-y-4">
       {page.length ? (
         <div className="space-y-3">
           {page.map((g) => (
