@@ -4,7 +4,11 @@ The Insights page and every analysis feature need a persisted, deduplicated hist
 
 ## Status
 
-accepted
+accepted. Revised when statement history landed: the flat dedup store described below became per-statement records.
+
+## Revision — per-statement records
+
+The original design was one flat transaction list, deduplicated on Receipt No. at import time. That is deferred to v2. The store now holds one record per imported statement, each with its own transactions, and importing replaces the active statement instead of merging into it. A re-import of the same PDF creates a second record; the user deletes unwanted ones. Two rules carried over unchanged: the parser's password is used once in the import dialog and never persisted, and the store file never contains PDFs or file paths, only parsed transactions. Deleting a history record deletes its transactions; if it was the active statement, nothing is active afterwards.
 
 ## Considered Options
 
