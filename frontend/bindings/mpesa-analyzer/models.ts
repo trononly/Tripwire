@@ -17,7 +17,9 @@ export interface DayGroup {
 
 /**
  * TransactionView is a single prepared row for the frontend transaction
- * list: pre-categorized so the UI never re-runs classification.
+ * list: type, category and counterparty are pre-classified here so the UI
+ * never re-runs classification and never infers semantics from an amount's
+ * sign or a name.
  */
 export interface TransactionView {
     "id": string;
@@ -27,4 +29,6 @@ export interface TransactionView {
     "amount": number;
     "balance": number;
     "category": string;
+    "type": string;
+    "counterparty": string;
 }

@@ -1,30 +1,21 @@
 package analysis
 
 import (
-	"regexp"
 	"sort"
-	"strings"
 
+	"mpesa-analyzer/internal/counterparty"
 	"mpesa-analyzer/internal/parser"
+	"mpesa-analyzer/internal/txtype"
 )
 
-// Categories are matched against the transaction Description as ordered
-// prefix rules (case-insensitive). First match wins, so ordering matters:
-// "Pay Bill Charge" must land in Fees before the Pay Bill rule sees it.
-var categoryRules = []struct {
-	Category string
-	Prefixes []string
-}{
-	{"Fees", []string{"Pay Bill Charge", "Charge", "Overdraft", "Fuliza"}},
-	{"Pay Bill", []string{"Pay Bill Online", "Pay Bill to", "Paybill"}},
-	{"Buy Goods", []string{"Merchant Payment", "Lipa na M-PESA", "Buy Goods"}},
-	{"Send Money", []string{"Customer Transfer", "Send Money"}},
-	{"Receive", []string{"Funds received", "Salary Payment", "Business Payment"}},
-	{"Airtime", []string{"Airtime Purchase"}},
-	{"Bundles", []string{"Customer Bundle Purchase", "BUNDLES by"}},
-	{"Withdraw", []string{"Agent Withdrawal", "ATM Withdrawal"}},
-	{"Deposit", []string{"Agent Deposit", "ATM Deposit"}},
-	{"Bank & Savings", []string{"M-Shwari", "ZIIDI", "Unit Trust", "Bank Transfer", "via API"}},
+// CategoryOf maps a description to a category display name (the labels
+// the donut chart and category filter aggregate under). Same deterministic
+// classification as TypeOf; only the presentation differs. The
+// implementation lives in internal/txtype (shared with the recurring-
+// payment detector); this wrapper keeps the analysis package's public
+// surface stable.
+func CategoryOf(description string) string {
+	return txtype.CategoryOf(description)
 }
 
 // Categorize returns totals per category, sorted by volume descending.
@@ -67,19 +58,6 @@ func Categorize(transactions []parser.Transaction) []CategoryTotal {
 	return out
 }
 
-// CategoryOf maps a description to a category name.
-func CategoryOf(description string) string {
-	d := strings.ToLower(description)
-	for _, rule := range categoryRules {
-		for _, p := range rule.Prefixes {
-			if strings.HasPrefix(d, strings.ToLower(p)) || strings.Contains(d, strings.ToLower(p)) {
-				return rule.Category
-			}
-		}
-	}
-	return "Other"
-}
-
 func absOf(n int64) int64 {
 	if n < 0 {
 		return -n
@@ -104,43 +82,12 @@ type Counterparty struct {
 	Out    int64  `json:"out"`    // cents, positive sum of money sent
 }
 
-var counterpartyRE = regexp.MustCompile(`(?i)\b(?:to|from)\s*(?:[\d*]+\s*)?-\s+(.+)$`)
-
-// CounterpartyOf extracts the counterpart name from a description, e.g.
-//
-//	"Merchant Payment to 7408526 - FAITH NJOKI BACHIA" -> "FAITH NJOKI BACHIA"
-//	"Pay Bill Online to 888880 - KPLC"                -> "KPLC"
-//	"Funds received from - 07******752 Calvin Kamara" -> "Calvin Kamara"
-//
-// Masked phone-number prefixes ("07******752 ") are stripped. Returns ""
-// when the description has no counterparty.
+// CounterpartyOf extracts the counterparty name from a description.
+// The implementation lives in internal/counterparty (shared with the
+// recurring-payment detector); this wrapper keeps the analysis package's
+// public surface stable.
 func CounterpartyOf(description string) string {
-	m := counterpartyRE.FindStringSubmatch(description)
-	if m == nil {
-		return ""
-	}
-	name := strings.TrimSpace(m[1])
-	// Strip leading masked numbers like "07******752" or "2547******103".
-	for {
-		fields := strings.Fields(name)
-		if len(fields) < 2 || !isMaskedNumber(fields[0]) {
-			break
-		}
-		name = strings.TrimSpace(strings.TrimPrefix(name, fields[0]))
-	}
-	return strings.TrimSpace(name)
-}
-
-func isMaskedNumber(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= '0' && c <= '9', c == '*':
-		default:
-			return false
-		}
-	}
-	return strings.Contains(s, "*") && len(s) >= 8
+	return counterparty.CounterpartyOf(description)
 }
 
 // TopCounterparties returns the n counterparties by transaction count.
@@ -177,4 +124,12 @@ func TopCounterparties(transactions []parser.Transaction, n int) []Counterparty 
 		out = out[:n]
 	}
 	return out
+}
+
+// TypeOf classifies a description into its semantic transaction type. The
+// implementation lives in internal/txtype (shared with the recurring-
+// payment detector); this wrapper keeps the analysis package's public
+// surface stable.
+func TypeOf(description string) txtype.TransactionType {
+	return txtype.TypeOf(description)
 }
