@@ -174,7 +174,7 @@ function App() {
                   element={<Transactions transactions={txs} />}
                 />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/insights" element={<Insights />} />
+                <Route path="/insights" element={<Insights result={analysisResult} />} />
               </Routes>
             </main>
           </SidebarInset>

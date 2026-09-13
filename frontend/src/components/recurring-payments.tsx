@@ -1,0 +1,185 @@
+import { useMemo } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { typeStyle } from "@/lib/transaction-types";
+import { formatMoney, formatMoneyShort, formatFullDate } from "@/lib/format";
+import type * as recurring from "../../bindings/mpesa-analyzer/internal/recurring/models";
+
+const cadenceStyles: Record<string, { label: string; className: string }> = {
+  weekly: {
+    label: "Weekly",
+    className: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  },
+  "bi-weekly": {
+    label: "Bi-weekly",
+    className: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  },
+  monthly: {
+    label: "Monthly",
+    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  },
+  quarterly: {
+    label: "Quarterly",
+    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
+};
+
+function cadenceStyle(cadence: string) {
+  return (
+    cadenceStyles[cadence] ?? {
+      label: cadence,
+      className: "bg-muted text-muted-foreground",
+    }
+  );
+}
+
+function byRelevance(
+  a: recurring.RecurringPayment,
+  b: recurring.RecurringPayment,
+): number {
+  if (a.count !== b.count) return b.count - a.count;
+  if (a.amount !== b.amount) return b.amount - a.amount;
+  return a.counterparty.localeCompare(b.counterparty);
+}
+
+function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
+  const { icon: Icon } = typeStyle(payment.type);
+  const cadence = cadenceStyle(payment.cadence);
+  const variable = payment.amountMin !== payment.amountMax;
+
+  return (
+    <div
+      className="
+        grid gap-3 bg-muted/40 p-4
+        transition-colors hover:bg-muted/60
+
+        md:grid-cols-[minmax(0,1.8fr)_minmax(120px,1fr)_110px_110px_140px]
+        md:items-center
+        md:px-5
+      "
+    >
+      {/* Counterparty */}
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon
+            className="size-[18px] shrink-0 text-muted-foreground"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+
+          <span
+            className="truncate text-sm font-medium"
+            title={payment.counterparty}
+          >
+            {payment.counterparty}
+          </span>
+        </div>
+
+        {/* Mobile-only secondary information */}
+        <div className="mt-2 flex items-center gap-2 md:hidden">
+          <span
+            className={`rounded-full px-2 py-[3px] text-[11px] font-medium ${cadence.className}`}
+          >
+            {cadence.label}
+          </span>
+
+          <span className="text-xs text-muted-foreground">
+            {payment.count} {payment.count === 1 ? "payment" : "payments"}
+          </span>
+        </div>
+      </div>
+
+      {/* Amount */}
+      <div className="min-w-0">
+        <p className="text-base font-semibold tabular-nums">
+          {formatMoney(payment.amount)}
+        </p>
+
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {variable
+            ? `${formatMoneyShort(payment.amountMin)}–${formatMoneyShort(payment.amountMax)}`
+            : "Fixed amount"}
+        </p>
+      </div>
+
+      {/* Cadence */}
+      <div className="hidden md:block">
+        <span
+          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${cadence.className}`}
+        >
+          {cadence.label}
+        </span>
+      </div>
+
+      {/* Frequency */}
+      <div className="hidden md:block">
+        <p className="text-sm tabular-nums">
+          {payment.count} {payment.count === 1 ? "payment" : "payments"}
+        </p>
+      </div>
+
+      {/* Last paid */}
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">Last paid</p>
+        <p className="truncate text-sm">{formatFullDate(payment.lastDate)}</p>
+      </div>
+    </div>
+  );
+}
+
+export function RecurringPayments({
+  payments,
+}: {
+  payments: recurring.RecurringPayment[];
+}) {
+  const sorted = useMemo(() => [...payments].sort(byRelevance), [payments]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recurring payments</CardTitle>
+        <CardDescription>
+          Periodic outflows the detector found in this statement
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        {sorted.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No recurring payments detected.
+            <br />
+            We&rsquo;ll show recurring payments here once your statement
+            contains enough consistent payment history.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {/* Desktop column labels */}
+            <div
+              className="
+                hidden px-5 pb-1 text-xs font-medium
+                text-muted-foreground
+                md:grid md:grid-cols-[minmax(0,1.8fr)_minmax(120px,1fr)_110px_110px_140px]
+                md:gap-3
+              "
+            >
+              <span>Payment</span>
+              <span>Amount</span>
+              <span>Cadence</span>
+              <span>Frequency</span>
+              <span>Last paid</span>
+            </div>
+
+            {sorted.map((payment) => (
+              <PaymentItem key={payment.counterparty} payment={payment} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

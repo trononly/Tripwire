@@ -7,6 +7,16 @@ export function formatMoney(cents: number): string {
   }).format(value);
 }
 
+/** Compact form for ranges and tight spaces: "KSh 2,450" (no decimals). */
+export function formatMoneyShort(cents: number): string {
+  const value = cents / 100;
+  return new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 // "2026-04-28 19:55:42" -> "28 Apr"
 export function formatDay(iso: string): string {
   const d = new Date(iso.replace(" ", "T"));

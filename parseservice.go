@@ -1,12 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"mpesa-analyzer/internal/analysis"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
 	"mpesa-analyzer/internal/store"
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -45,15 +45,19 @@ func (p *ParseService) statements() (*store.Store, error) {
 }
 
 // TransactionView is a single prepared row for the frontend transaction
-// list: pre-categorized so the UI never re-runs classification.
+// list: type, category and counterparty are pre-classified here so the UI
+// never re-runs classification and never infers semantics from an amount's
+// sign or a name.
 type TransactionView struct {
-	ID          string `json:"id"`
-	Date        string `json:"date"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Amount      int64  `json:"amount"`
-	Balance     int64  `json:"balance"`
-	Category    string `json:"category"`
+	ID           string `json:"id"`
+	Date         string `json:"date"`
+	Description  string `json:"description"`
+	Status       string `json:"status"`
+	Amount       int64  `json:"amount"`
+	Balance      int64  `json:"balance"`
+	Category     string `json:"category"`
+	Type         string `json:"type"`
+	Counterparty string `json:"counterparty"`
 }
 
 // DayGroup is one calendar day of transactions, newest first. EndBalance is
@@ -88,13 +92,15 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 		}
 		g := &out[len(out)-1]
 		g.Txs = append(g.Txs, TransactionView{
-			ID:          tx.ID,
-			Date:        tx.Date,
-			Description: tx.Description,
-			Status:      tx.Status,
-			Amount:      tx.Amount,
-			Balance:     tx.Balance,
-			Category:    analysis.CategoryOf(tx.Description),
+			ID:           tx.ID,
+			Date:         tx.Date,
+			Description:  tx.Description,
+			Status:       tx.Status,
+			Amount:       tx.Amount,
+			Balance:      tx.Balance,
+			Category:     analysis.CategoryOf(tx.Description),
+			Type:         string(analysis.TypeOf(tx.Description)),
+			Counterparty: analysis.CounterpartyOf(tx.Description),
 		})
 	}
 	return out

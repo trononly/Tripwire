@@ -1,19 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowDownLeft,
-  ArrowLeftRight,
-  ArrowUpRight,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Landmark,
-  Receipt,
-  Send,
-  ShoppingBag,
-  Smartphone,
-  Wifi,
-  type LucideIcon,
-} from "lucide-react";
+import { typeStyle } from "@/lib/transaction-types";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -38,35 +25,8 @@ import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/mode
 const PAGE_SIZES = [10, 20, 30, 50];
 const DEFAULT_PAGE_SIZE = 20;
 
-// Category -> icon/colour mapping (matches the Go classifier in
-// internal/analysis.CategoryOf, whose labels arrive pre-computed on each
-// row). Flat tinted badges, token-based colours so dark mode adapts.
-
-export type CategoryStyle = { icon: LucideIcon; className: string };
-
-const TINT_GREEN = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-const TINT_RED = "bg-red-500/10 text-red-600 dark:text-red-400";
-const TINT_AMBER = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
-const TINT_GRAY = "bg-muted text-muted-foreground";
-
-// Handles CategoryOf display names ("Buy Goods", "Pay Bill", etc.).
-export function categoryStyle(cat: string): CategoryStyle {
-  const c = cat.toLowerCase().replace(/_/g, " ");
-  if (c.includes("receive") || c.includes("salary") || c.includes("funds"))
-    return { icon: ArrowDownLeft, className: TINT_GREEN };
-  if (c.includes("buy goods") || c.includes("merchant"))
-    return { icon: ShoppingBag, className: TINT_RED };
-  if (c.includes("pay bill")) return { icon: Receipt, className: TINT_AMBER };
-  if (c.includes("airtime")) return { icon: Smartphone, className: TINT_GRAY };
-  if (c.includes("withdraw"))
-    return { icon: ArrowUpRight, className: TINT_RED };
-  if (c.includes("send")) return { icon: Send, className: TINT_RED };
-  if (c.includes("bundles")) return { icon: Wifi, className: TINT_GRAY };
-  if (c.includes("bank") || c.includes("savings"))
-    return { icon: Landmark, className: TINT_GRAY };
-  if (c.includes("fees")) return { icon: Receipt, className: TINT_GRAY };
-  return { icon: ArrowLeftRight, className: TINT_GRAY };
-}
+// Semantic transaction type -> icon, tint and label: shared with the
+// recurring-payment cards, see lib/transaction-types.
 
 // ---------------------------------------------------------------------------
 // Display helpers (presentation-only: locale strings, icons, prefixes)
@@ -79,28 +39,6 @@ export function formatAmount(cents: number): string {
     maximumFractionDigits: 2,
   });
   return `${cents < 0 ? "-" : "+"}${value}`;
-}
-
-/** Compresses verbose M-Pesa description prefixes into compact labels. */
-const DESCRIPTION_REWRITES: [string, string][] = [
-  ["Merchant Payment to ", "Merchant "],
-  ["Pay Bill Online to ", "Paybill "],
-  ["Pay Bill to ", "Paybill "],
-  ["Customer Transfer to ", "Send to "],
-  ["Funds received from ", "From "],
-  ["Salary Payment from ", "Salary from "],
-  ["Customer Bundle Purchase to ", "Bundles "],
-  ["BUNDLES by ", "Bundles "],
-  ["Airtime Purchase", "Airtime"],
-  ["Fuliza M-Pesa", "Fuliza"],
-];
-
-function shortenDescription(description: string): string {
-  for (const [from, to] of DESCRIPTION_REWRITES) {
-    if (description.startsWith(from))
-      return to + description.slice(from.length);
-  }
-  return description;
 }
 
 /** Local calendar-day key ("YYYY-MM-DD") for a Date. */
@@ -175,7 +113,12 @@ function TxRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const { icon: Icon, className: tint } = categoryStyle(tx.category);
+  // Who: the counterparty extracted in Go, falling back to the type label
+  // when the statement names none ("Airtime Purchase", "Fuliza M-Pesa").
+  // What: the type label + time. The full raw description stays in the
+  // expanded detail.
+  const { icon: Icon, className: tint, label: typeLabel } = typeStyle(tx.type);
+  const title = tx.counterparty || typeLabel;
   const moneyIn = tx.amount >= 0;
   return (
     <div>
@@ -185,7 +128,7 @@ function TxRow({
         aria-expanded={expanded}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
       >
-        {/* category badge */}
+        {/* type badge */}
         <span
           className={`flex size-9 shrink-0 items-center justify-center rounded-full ${tint}`}
           aria-hidden
@@ -196,10 +139,11 @@ function TxRow({
         {/* text block */}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium leading-5">
-            {shortenDescription(tx.description)}
+            {title}
           </span>
           <span className="block truncate text-[13px] leading-4 text-muted-foreground">
-            {tx.date.slice(11, 16)} · {tx.category}
+            {tx.counterparty ? `${typeLabel} · ` : ""}
+            {tx.date.slice(11, 16)}
           </span>
         </span>
 

@@ -1,6 +1,9 @@
 package analysis
 
-import "mpesa-analyzer/internal/parser"
+import (
+	"mpesa-analyzer/internal/parser"
+	"mpesa-analyzer/internal/recurring"
+)
 
 // Totals bundles the summary KPIs.
 type Totals struct {
@@ -31,13 +34,14 @@ func TotalsOf(transactions []parser.Transaction) Totals {
 
 // AnalysisResult is everything the dashboard needs, computed in one call.
 type AnalysisResult struct {
-	Totals            Totals             `json:"totals"`
-	CashflowDaily     []CashflowBucket   `json:"cashflowDaily"`
-	CashflowWeekly    []CashflowBucket   `json:"cashflowWeekly"`
-	CashflowMonthly   []CashflowBucket   `json:"cashflowMonthly"`
-	BalanceSeries     []BalancePoint     `json:"balanceSeries"`
-	Categories        []CategoryTotal    `json:"categories"`
-	TopCounterparties []Counterparty     `json:"topCounterparties"`
+	Totals            Totals                       `json:"totals"`
+	CashflowDaily     []CashflowBucket             `json:"cashflowDaily"`
+	CashflowWeekly    []CashflowBucket             `json:"cashflowWeekly"`
+	CashflowMonthly   []CashflowBucket             `json:"cashflowMonthly"`
+	BalanceSeries     []BalancePoint               `json:"balanceSeries"`
+	Categories        []CategoryTotal              `json:"categories"`
+	TopCounterparties []Counterparty               `json:"topCounterparties"`
+	RecurringPayments []recurring.RecurringPayment `json:"recurringPayments"`
 }
 
 // Analyze computes the full analysis for a set of transactions.
@@ -67,5 +71,6 @@ func Analyze(transactions []parser.Transaction) (*AnalysisResult, error) {
 		BalanceSeries:     balance,
 		Categories:        Categorize(transactions),
 		TopCounterparties: TopCounterparties(transactions, 8),
+		RecurringPayments: recurring.DetectRecurringPayments(transactions),
 	}, nil
 }
