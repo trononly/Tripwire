@@ -11,17 +11,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ImportSms } from "../../bindings/mpesa-analyzer/parseservice";
 import type { SmsImportResult } from "../../bindings/mpesa-analyzer/models";
-import { formatMoney, formatFullDate } from "@/lib/format";
+import { SmsImportInspector } from "@/components/sms-import-inspector";
 import {
   requestSmsImport,
   type SmsBridgeResult,
@@ -35,9 +27,6 @@ type Phase =
   | "blocked" // permanently denied; only system settings can fix it
   | "results" // preview of what the parser produced
   | "error"; // bridge or import failure
-
-const PREVIEW_ROWS = 8;
-const ERROR_ROWS = 5;
 
 /**
  * SMS import, Android only. The bridge (Phase 3) delivers raw messages as
@@ -135,15 +124,10 @@ export function ImportSmsDialog({
   }
 
   const busy = phase === "waiting";
-  // The generated types allow null for Go slices even though the service
-  // always returns non-nil; normalize for TS.
-  const txs = result?.txs ?? [];
-  const skipped = result ? result.unsupported + result.malformed + result.invalid : 0;
-  const failures = (result?.results ?? []).filter((r) => r.kind !== "imported");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] max-sm:pl-[calc(1rem+env(safe-area-inset-left))] max-sm:pr-[calc(1rem+env(safe-area-inset-right))]">
         <DialogHeader>
           <DialogTitle>Import SMS</DialogTitle>
           <DialogDescription>
@@ -207,79 +191,14 @@ export function ImportSmsDialog({
 
         {phase === "results" && result && (
           <div className="space-y-4">
-            {bridgeCount === 0 || txs.length === 0 ? (
+            {bridgeCount === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">
                 {bridgeCount === 0
                   ? "No M-Pesa messages found in the inbox."
                   : "Messages were read, but none could be parsed into transactions."}
               </p>
             ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-md border p-2">
-                    <div className="font-medium">{result.imported} parsed</div>
-                    <div className="text-xs text-muted-foreground">transactions</div>
-                  </div>
-                  <div className="rounded-md border p-2">
-                    <div className="font-medium">{skipped} skipped</div>
-                    <div className="text-xs text-muted-foreground">
-                      {result.unsupported} unsupported · {result.malformed} malformed ·{" "}
-                      {result.invalid} invalid
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {txs.slice(0, PREVIEW_ROWS).map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell className="whitespace-nowrap text-xs">
-                            {formatFullDate(tx.date)}
-                          </TableCell>
-                          <TableCell className="max-w-48 truncate text-xs">
-                            {tx.description}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
-                            {formatMoney(tx.amount)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {txs.length > PREVIEW_ROWS && (
-                    <p className="border-t p-2 text-xs text-muted-foreground">
-                      and {txs.length - PREVIEW_ROWS} more…
-                    </p>
-                  )}
-                </div>
-
-                {failures.length > 0 && (
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">Skipped messages</p>
-                    {failures.slice(0, ERROR_ROWS).map((r, i) => (
-                      <p key={i}>
-                        #{r.sourceId || "?"} ({r.kind}): {r.error}
-                      </p>
-                    ))}
-                    {failures.length > ERROR_ROWS && (
-                      <p>and {failures.length - ERROR_ROWS} more…</p>
-                    )}
-                  </div>
-                )}
-
-                <p className="text-xs text-muted-foreground">
-                  Preview only — these transactions are not saved to history
-                  yet.
-                </p>
-              </>
+              <SmsImportInspector result={result} bridgeCount={bridgeCount} />
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>

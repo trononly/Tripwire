@@ -30,6 +30,7 @@ export interface SmsImportResult {
     "invalid": number;
     "malformed": number;
     "unsupported": number;
+    "nonTransactional": number;
     "results": SmsParseResult[] | null;
 }
 
@@ -54,12 +55,17 @@ export interface SmsMessage {
 }
 
 /**
- * SmsParseResult is one message's outcome. SourceID echoes the Android
- * provider row ID for UI correlation only — it is never the transaction
- * identity; that stays the parser's M-Pesa receipt number.
+ * SmsParseResult is one message's outcome, keeping the original record so
+ * every generated transaction stays auditable against the SMS that produced
+ * it. SourceID echoes the Android provider row ID for UI correlation only —
+ * it is never the transaction identity; that stays the parser's M-Pesa
+ * receipt number.
  */
 export interface SmsParseResult {
     "sourceId": string;
+    "address"?: string;
+    "dateMs"?: number;
+    "body"?: string;
     "kind": string;
     "error"?: string;
     "txs"?: parser$0.Transaction[] | null;

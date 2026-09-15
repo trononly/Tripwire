@@ -1,0 +1,1 @@
+The till number entered is incorrect. Please confirm the till number and try again.

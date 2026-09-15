@@ -30,26 +30,41 @@ var (
 	// ErrMalformed means the text looks like a confirmation SMS but is
 	// missing required fields or contains invalid values.
 	ErrMalformed = errors.New("sms: malformed confirmation SMS")
+	// ErrNonTransactional means the SMS is an operational M-Pesa notice
+	// (wrong PIN, opted out of Fuliza, cancelled transaction, ...) with no
+	// financial transaction to represent. Not an error in the data — the
+	// message is simply not a transaction.
+	ErrNonTransactional = errors.New("sms: non-transactional M-Pesa message")
 )
 
 var (
 	// Every confirmation SMS opens with the receipt number immediately
-	// followed by "Confirmed." — with or without the space after it.
-	reHeader = regexp.MustCompile(`^([A-Z0-9]{6,})\s*Confirmed\.?\s*`)
+	// followed by "Confirmed." — with or without the space after it, and
+	// either case ("TIQAP5NXT1 confirmed."). The receipt class stays
+	// case-sensitive so a stray word before "confirmed" can never become
+	// a receipt ID.
+	reHeader = regexp.MustCompile(`^([A-Z0-9]{6,})\s*[Cc]onfirmed\.?\s*`)
 
-	// Amounts always read "Ksh" (or "Ksh.") then a comma-grouped value
-	// with two decimals. The first match in the body is the transaction
-	// amount; balances and costs are matched by their own anchors below.
-	reAmount = regexp.MustCompile(`Ksh\.?\s*([\d,]+\.\d{2})`)
+	// Amounts always read "Ksh" (or "Ksh.", any casing: fixtures include
+	// "KSH100.00") then a comma-grouped value with two decimals. The first
+	// match in the body is the transaction amount; balances and costs are
+	// matched by their own anchors below.
+	reAmount = regexp.MustCompile(`(?i)Ksh\.?\s*([\d,]+\.\d{2})`)
 
-	// "d/m/yy" plus 12-hour time, with " at " optional ("11/9/26 12:57 PM")
-	// and trailing punctuation optional ("PM.New M-PESA balance ...").
-	reStamp = regexp.MustCompile(`(?i)(\d{1,2})/(\d{1,2})/(\d{2})(?:\s+at)?\s+(\d{1,2}):(\d{2})\s*([AP])M`)
+	// "d/m/yy" or "d/m/yyyy" plus 12-hour time, with " at " optional
+	// ("11/9/26 12:57 PM") and trailing punctuation optional
+	// ("PM.New M-PESA balance ...").
+	reStamp = regexp.MustCompile(`(?i)(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})(?:\s+at)?\s+(\d{1,2}):(\d{2})\s*([AP])M`)
 
-	// The M-PESA balance line. Must anchor on M-PESA specifically so the
-	// M-Shwari savings balance ("New M-Shwari saving account balance is
-	// ...") is never taken as the wallet balance.
-	reBalance = regexp.MustCompile(`(?i)M-PESA balance is Ksh\.?\s*([\d,]+\.\d{2})`)
+	// The M-PESA wallet balance line. Must anchor on M-PESA/MPESA (with an
+	// optional "account" word) or a bare "New balance" so the M-Shwari
+	// savings balance ("M-Shwari balance is ...", "New M-Shwari saving
+	// account balance is ...") is never taken as the wallet balance.
+	// Variants seen in real samples:
+	//   "New M-PESA balance is", "M-PESA balance is",
+	//   "New MPESA balance is", "M-PESA account balance is",
+	//   "New balance is"
+	reBalance = regexp.MustCompile(`(?i)(?:M-?PESA(?:\s+account)?\s+balance|New\s+balance)\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
 
 	// "Transaction cost, Ksh5.00" and "Transaction cost Ksh.0.00" both occur.
 	reCost = regexp.MustCompile(`(?i)Transaction cost,?\s*Ksh\.?\s*([\d,]+\.\d{2})`)
@@ -58,19 +73,38 @@ var (
 // Statement-style descriptions, matching the Details column of real
 // M-Pesa statements (verified against test_data PDFs).
 const (
-	descTransfer = "Customer Transfer to - %s"
-	descReceive  = "Funds received from - %s"
-	descMerchant = "Merchant Payment to - %s"
-	descPaybill  = "Pay Bill Online to %s Acc. %s"
-	descBundles  = "Customer Bundle Purchase to %s"
-	descMShwari  = "M-Shwari Deposit" // moving wallet money into M-Shwari
+	descTransfer        = "Customer Transfer to - %s"
+	descReceive         = "Funds received from - %s"
+	descMerchant        = "Merchant Payment to - %s"
+	descPaybill         = "Pay Bill Online to %s Acc. %s"
+	descBundles         = "Customer Bundle Purchase to %s"
+	descMShwari         = "M-Shwari Deposit"  // moving wallet money into M-Shwari
+	descMShwariOut      = "M-Shwari Withdraw" // M-Shwari money coming back (statement convention)
+	descAgentWithdrawal = "Agent Withdrawal from - %s"
+	descAirtime         = "Airtime Purchase for %s"
+	descReversal        = "Reversal of transaction %s"
 
 	// Charge rows. The statement prints fees as their own rows with these
-	// exact descriptions; real samples only evidence them for customer
-	// transfers and pay bill payments.
-	chargeTransfer = "Customer Transfer of Funds Charge"
-	chargePaybill  = "Pay Bill Charge"
+	// exact descriptions; real samples evidence them for customer
+	// transfers, pay bill payments and agent withdrawals.
+	chargeTransfer   = "Customer Transfer of Funds Charge"
+	chargePaybill    = "Pay Bill Charge"
+	chargeWithdrawal = "Withdrawal Charge"
 )
+
+// nonTransactional are operational M-Pesa messages with no financial
+// transaction (real samples: failed PIN, Fuliza opt-out, processing
+// failure, insufficient funds, incorrect till, cancelled transaction).
+// They are classified before the receipt header gate because most carry no
+// "Confirmed" header at all.
+var nonTransactional = []struct{ phrase, reason string }{
+	{"entered the wrong pin", "wrong-PIN failure notice"},
+	{"opted out of fuliza", "Fuliza opt-out notice"},
+	{"unable to process your request", "processing failure notice"},
+	{"insufficient funds", "insufficient funds notice"},
+	{"till number entered is incorrect", "incorrect till notice"},
+	{"you have cancelled the transaction", "cancelled transaction notice"},
+}
 
 // ParseMessage converts one confirmation SMS into one or two transactions:
 // the main transaction, plus a charge transaction when the SMS reports a
@@ -80,6 +114,12 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 	t := strings.TrimSpace(text)
 	if t == "" {
 		return nil, fmt.Errorf("%w: empty message", ErrMalformed)
+	}
+	lower := strings.ToLower(t)
+	for _, nt := range nonTransactional {
+		if strings.Contains(lower, nt.phrase) {
+			return nil, fmt.Errorf("%w: %s", ErrNonTransactional, nt.reason)
+		}
 	}
 
 	hdr := reHeader.FindStringSubmatchIndex(t)
@@ -114,9 +154,10 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Everything up to the timestamp is the useful body; the rest is
-	// balance lines, costs, and marketing, matched by their own anchors.
-	lead := strings.ToLower(body[:stampStart])
+	// Some real formats (agent withdrawal) put the timestamp before the
+	// amount, so structure markers are searched over the whole body; party
+	// extraction stays anchored on the timestamp position.
+	fullLower := strings.ToLower(body)
 
 	// Optional: wallet balance. Zero when absent — the model has no
 	// unknown marker, and inventing a value would corrupt balance charts.
@@ -142,7 +183,7 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 	var chargeDesc string
 	isIn := false
 	switch {
-	case strings.Contains(lead, "you have received"):
+	case strings.Contains(fullLower, "you have received"):
 		sender, ok := partyAfter(body, stampStart, " from ")
 		if !ok {
 			return nil, fmt.Errorf("%w: received message missing sender", ErrMalformed)
@@ -150,8 +191,44 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 		desc = fmt.Sprintf(descReceive, sender)
 		isIn = true
 
-	case strings.Contains(lead, "transferred to m-shwari account"):
+	case strings.Contains(fullLower, "transferred from m-shwari account"):
+		desc = descMShwariOut
+		isIn = true
+
+	case strings.Contains(fullLower, "transferred to m-shwari account"):
 		desc = descMShwari
+
+	case strings.Contains(fullLower, "reversal of transaction"):
+		ref, ok := reversalReference(body)
+		if !ok {
+			return nil, fmt.Errorf("%w: reversal missing original receipt", ErrMalformed)
+		}
+		desc = fmt.Sprintf(descReversal, ref)
+		isIn = true
+
+	case strings.Contains(fullLower, "of airtime for"):
+		phone, ok := airtimeRecipient(body, stampStart)
+		if !ok {
+			return nil, fmt.Errorf("%w: airtime message missing recipient", ErrMalformed)
+		}
+		desc = fmt.Sprintf(descAirtime, phone)
+
+	case indexFold(body, "withdraw") >= 0 && indexFold(body, " from ") >= 0:
+		agent, ok := agentFrom(body, stampStart)
+		if !ok {
+			return nil, fmt.Errorf("%w: withdrawal missing agent", ErrMalformed)
+		}
+		desc = fmt.Sprintf(descAgentWithdrawal, agent)
+		chargeDesc = chargeWithdrawal
+
+	case strings.Contains(fullLower, "you have sent"):
+		// "You have sent Ksh31.38 to Hustler Fund on ..." — the inverted
+		// send wording (no "sent to").
+		recipient, ok := partyAfter(body, stampStart, " to ")
+		if !ok {
+			return nil, fmt.Errorf("%w: sent message missing recipient", ErrMalformed)
+		}
+		desc = fmt.Sprintf(descTransfer, recipient)
 
 	default:
 		recipient, account, verb, ok := payee(body, stampStart)
@@ -221,11 +298,15 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 }
 
 // parseStamp converts a reStamp match into the application date format
-// "2006-01-02 15:04:05". The two-digit year is read as 20yy.
+// "2006-01-02 15:04:05". Two-digit years read as 20yy; four-digit years
+// ("05/06/2026 at 07:20 PM") are taken as given.
 func parseStamp(m []string) (string, error) {
 	day, _ := strconv.Atoi(m[1])
 	month, _ := strconv.Atoi(m[2])
-	year := 2000 + atoi(m[3])
+	year := atoi(m[3])
+	if len(m[3]) == 2 {
+		year += 2000
+	}
 	hour, _ := strconv.Atoi(m[4])
 	minute, _ := strconv.Atoi(m[5])
 
@@ -284,6 +365,77 @@ func payee(body string, stampStart int) (recipient, account, verb string, ok boo
 		return cleanParty(segment[:i]), cleanParty(segment[i+len(" for account "):]), verb, true
 	}
 	return segment, "", verb, true
+}
+
+// reversalReference extracts the original receipt number from "Reversal of
+// transaction <REF> has been ...". The reversal SMS carries its own receipt
+// number in the header; this is the transaction being undone — the two must
+// never be confused.
+func reversalReference(body string) (string, bool) {
+	i := indexFold(body, "reversal of transaction ")
+	if i < 0 {
+		return "", false
+	}
+	start := i + len("reversal of transaction ")
+	rel := indexFold(body[start:], " has been")
+	if rel <= 0 {
+		return "", false
+	}
+	ref := strings.TrimSpace(body[start : start+rel])
+	if ref == "" {
+		return "", false
+	}
+	return ref, true
+}
+
+// airtimeRecipient extracts the airtime recipient phone number: the text
+// between "of airtime for" and the timestamp.
+func airtimeRecipient(body string, stampStart int) (string, bool) {
+	i := indexFold(body, "of airtime for")
+	if i < 0 {
+		return "", false
+	}
+	phone := cleanParty(body[i+len("of airtime for") : stampStart])
+	if phone == "" {
+		return "", false
+	}
+	return phone, true
+}
+
+// agentFrom extracts the agent/till/reference text of a withdrawal: the
+// text after " from " up to the timestamp (when it follows) or the wallet
+// balance line, whichever comes first. The real withdrawal sample puts the
+// timestamp before the amount ("...at 8:38 PMWithdraw Ksh700.00 from
+// AGENT ... New M-PESA balance is ..."), so there the balance line is the
+// boundary and its lead ("New M-PESA") is trimmed off the agent text.
+func agentFrom(body string, stampStart int) (string, bool) {
+	fromIdx := indexFold(body, " from ")
+	if fromIdx < 0 {
+		return "", false
+	}
+	start := fromIdx + len(" from ")
+	end := len(body)
+	if stampStart > fromIdx {
+		end = stampStart
+	}
+	if b := indexFold(body, " balance is"); b > start && b < end {
+		end = b
+	}
+	seg := cleanParty(body[start:end])
+	if seg == "" {
+		return "", false
+	}
+	lowerSeg := strings.ToLower(seg)
+	for _, suffix := range []string{"new m-pesa", "new mpesa", "m-pesa", "mpesa", "new"} {
+		if strings.HasSuffix(lowerSeg, suffix) {
+			seg = strings.TrimSpace(seg[:len(seg)-len(suffix)])
+			lowerSeg = strings.ToLower(seg)
+		}
+	}
+	if seg == "" {
+		return "", false
+	}
+	return seg, true
 }
 
 // indexFold finds needle in s case-insensitively, returning a byte index
