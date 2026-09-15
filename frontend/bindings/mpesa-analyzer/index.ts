@@ -8,5 +8,8 @@ export {
 
 export type {
     DayGroup,
+    SmsImportResult,
+    SmsMessage,
+    SmsParseResult,
     TransactionView
 } from "./models.js";
