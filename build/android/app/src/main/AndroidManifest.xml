@@ -8,6 +8,9 @@
     <!-- Observe network connectivity / type for android:NetworkChanged events -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Historical M-Pesa SMS import: runtime permission, requested on first
+         use. No SEND_SMS/WRITE_SMS — this app never sends or alters messages. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

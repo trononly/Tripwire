@@ -14,6 +14,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
+import android.database.Cursor;
 import android.graphics.Rect;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -37,6 +38,7 @@ import android.os.StatFs;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
+import android.provider.Telephony;
 import android.speech.tts.TextToSpeech;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -75,6 +77,8 @@ public class WailsBridge {
     private static final String TAG = "WailsBridge";
     private static final boolean DEBUG = BuildConfig.DEBUG;
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
+    // 1001 (POST_NOTIFICATIONS) and 1003 are taken inside postNotification.
+    private static final int SMS_PERMISSION_REQUEST = 1004;
 
     static {
         // Load the native Go library
@@ -101,6 +105,8 @@ public class WailsBridge {
     private boolean proximityWanted = false;
     private boolean torchOn = false;
     private boolean pendingLocationRequest = false;
+    // SMS: a one-shot inbox read is waiting on the permission dialog.
+    private boolean pendingSmsRequest = false;
 
     // Native methods - implemented in Go
     private static native void nativeInit(WailsBridge bridge);
@@ -911,6 +917,128 @@ public class WailsBridge {
             } else {
                 emitLocationError("location permission denied");
             }
+        }
+        if (requestCode == SMS_PERMISSION_REQUEST) {
+            boolean shouldResume = pendingSmsRequest;
+            pendingSmsRequest = false;
+            if (!shouldResume) {
+                return;
+            }
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                querySmsInBackground();
+            } else if (!activity.shouldShowRequestPermissionRationale(
+                    "android.permission.READ_SMS")) {
+                // Denied with "don't ask again" (or denied twice on Android
+                // 11+): the only way forward is the system settings page.
+                emitSmsError("sms permission permanently denied; enable READ_SMS in system settings");
+            } else {
+                emitSmsError("sms permission denied");
+            }
+        }
+    }
+
+    // MARK: - SMS inbox (Phase 3)
+
+    private void emitSmsError(String msg) {
+        try {
+            emitEvent("common:sms", new JSONObject().put("ok", false).put("error", msg).toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    public boolean hasSmsPermission() {
+        // Runtime permissions only exist on API 23+; below that READ_SMS is
+        // granted at install time, so the query can run directly.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return activity.checkSelfPermission("android.permission.READ_SMS")
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Read the M-Pesa SMS inbox and emit the raw messages as a "common:sms"
+     * event. Requests READ_SMS at runtime when missing. The result is raw
+     * message data only — parsing happens in Go, never here.
+     */
+    public void getSms() {
+        mainHandler.post(() -> {
+            try {
+                if (hasSmsPermission()) {
+                    querySmsInBackground();
+                    return;
+                }
+                pendingSmsRequest = true;
+                activity.requestPermissions(
+                        new String[]{"android.permission.READ_SMS"}, SMS_PERMISSION_REQUEST);
+            } catch (Exception e) {
+                Log.e(TAG, "getSms failed", e);
+                emitSmsError("sms request failed");
+            }
+        });
+    }
+
+    private void querySmsInBackground() {
+        // ContentResolver.query is I/O; keep it off the main thread.
+        Thread worker = new Thread(this::querySmsAndEmit, "wails-sms-query");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void querySmsAndEmit() {
+        try {
+            String[] projection = {
+                    Telephony.Sms._ID, Telephony.Sms.ADDRESS,
+                    Telephony.Sms.DATE, Telephony.Sms.BODY,
+            };
+            // The address filter keeps unrelated SMS out of the result set:
+            // the query itself never returns messages from other senders.
+            // SQLite LIKE is ASCII-case-insensitive, so mpesa/MPESA match.
+            try (Cursor c = activity.getContentResolver().query(
+                    Telephony.Sms.CONTENT_URI, projection,
+                    Telephony.Sms.ADDRESS + " LIKE ?",
+                    new String[]{"%MPESA%"},
+                    Telephony.Sms.DATE + " ASC")) {
+
+                JSONArray messages = new JSONArray();
+                // The provider can surface the same physical message twice;
+                // identical (address, date, body) triples are collapsed so a
+                // re-read never double-counts one message.
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                int skipped = 0;
+                while (c != null && c.moveToNext()) {
+                    String body = c.getString(3);
+                    if (body == null || body.isEmpty()) {
+                        skipped++; // a message with no body can never be a transaction
+                        continue;
+                    }
+                    String address = c.getString(1);
+                    long date = c.getLong(2);
+                    String key = address + "|" + date + "|" + body;
+                    if (!seen.add(key)) {
+                        skipped++;
+                        continue;
+                    }
+                    JSONObject m = new JSONObject();
+                    m.put("id", String.valueOf(c.getLong(0)));
+                    m.put("address", address != null ? address : "");
+                    m.put("dateMs", date);
+                    m.put("body", body);
+                    messages.put(m);
+                }
+                JSONObject result = new JSONObject()
+                        .put("ok", true)
+                        .put("count", messages.length())
+                        .put("skipped", skipped)
+                        .put("messages", messages);
+                emitEvent("common:sms", result.toString());
+            }
+        } catch (SecurityException e) {
+            // READ_SMS was revoked between the check and the query.
+            emitSmsError("sms permission denied");
+        } catch (Exception e) {
+            Log.e(TAG, "querySms failed", e);
+            emitSmsError("sms query failed");
         }
     }
 

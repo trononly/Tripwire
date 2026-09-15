@@ -116,6 +116,29 @@ public class WailsJSBridge {
     }
 
     /**
+     * Check READ_SMS without prompting.
+     * Called from JavaScript: wails.hasSmsPermission()
+     *
+     * @return true when the SMS inbox can be read right now
+     */
+    @JavascriptInterface
+    public boolean hasSmsPermission() {
+        return bridge.hasSmsPermission();
+    }
+
+    /**
+     * Read the M-Pesa SMS inbox, requesting READ_SMS at runtime when
+     * missing. The raw result (no parsing) is delivered asynchronously as a
+     * "common:sms" event: {ok, count, skipped, messages|error}, where each
+     * message is {id, address, dateMs, body}.
+     * Called from JavaScript: wails.getSms()
+     */
+    @JavascriptInterface
+    public void getSms() {
+        executor.execute(bridge::getSms);
+    }
+
+    /**
      * Send a callback response to JavaScript
      */
     private void sendCallback(String callbackId, String result, String error) {
