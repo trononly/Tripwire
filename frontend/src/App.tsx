@@ -7,9 +7,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ImportStatementDialog } from "@/components/import-statement-dialog";
+import { ImportSmsDialog } from "@/components/import-sms-dialog";
 import { HistorySheet } from "@/components/history-sheet";
 import { ScrollToTop } from "@/components/scroll-to-top";
-import { FileUp } from "lucide-react";
+import { FileUp, MessageSquareText } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -23,6 +24,7 @@ import {
   DeleteStatement,
   ListStatements,
 } from "../bindings/mpesa-analyzer/parseservice";
+import { isAndroidBridge } from "@/lib/sms-bridge";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
 import Insights from "./pages/Insights";
@@ -49,6 +51,14 @@ function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // SMS import is Android-only; the injected bridge is checked once after
+  // mount so desktop rendering never touches window.wails.
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  useEffect(() => {
+    setIsAndroid(isAndroidBridge());
+  }, []);
 
   useEffect(() => {
     ListStatements()
@@ -145,6 +155,16 @@ function App() {
                     onImport={() => setImportOpen(true)}
                   />
                 )}
+                {isAndroid && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSmsOpen(true)}
+                  >
+                    <MessageSquareText />
+                    Import SMS
+                  </Button>
+                )}
                 <Button size="sm" onClick={() => setImportOpen(true)}>
                   <FileUp />
                   Import statement
@@ -185,6 +205,7 @@ function App() {
           onOpenChange={setImportOpen}
           onImported={handleImported}
         />
+        <ImportSmsDialog open={smsOpen} onOpenChange={setSmsOpen} />
       </HashRouter>
     </ThemeProvider>
   );
