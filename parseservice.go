@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"mpesa-analyzer/internal/analysis"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
+	"mpesa-analyzer/internal/sms"
 	"mpesa-analyzer/internal/store"
 	"path/filepath"
 	"runtime"
@@ -43,6 +45,57 @@ func (p *ParseService) statements() (*store.Store, error) {
 	}
 	return p.store, nil
 }
+
+// SmsMessage is one raw SMS record from the Android bridge: metadata only.
+// The body is parsed in Go (internal/sms), never in Java or TypeScript.
+type SmsMessage struct {
+	ID      string `json:"id"`
+	Address string `json:"address"`
+	DateMs  int64  `json:"dateMs"`
+	Body    string `json:"body"`
+	// TzOffsetMinutes renders the received time in the device timezone,
+	// following the JS Date.getTimezoneOffset convention (minutes behind
+	// UTC: Nairobi is -180). The Go runtime on Android has no reliable
+	// local timezone database, so the frontend always sends the offset;
+	// nil falls back to time.Local for desktop/test convenience only.
+	TzOffsetMinutes *int `json:"tzOffsetMinutes,omitempty"`
+}
+
+// Per-message outcome kinds. Unsupported (no sample-backed format) is
+// deliberately distinct from malformed (confirmation-shaped but broken):
+// unsupported messages may become parseable later, malformed ones never.
+const (
+	smsKindImported    = "imported"
+	smsKindInvalid     = "invalid"     // metadata unusable: no body, or bad timestamp
+	smsKindMalformed   = "malformed"   // looked like a confirmation but missing/invalid fields
+	smsKindUnsupported = "unsupported" // a real shape we have no parsing rule for
+)
+
+// SmsParseResult is one message's outcome. SourceID echoes the Android
+// provider row ID for UI correlation only — it is never the transaction
+// identity; that stays the parser's M-Pesa receipt number.
+type SmsParseResult struct {
+	SourceID string               `json:"sourceId"`
+	Kind     string               `json:"kind"`
+	Error    string               `json:"error,omitempty"`
+	Txs      []parser.Transaction `json:"txs,omitempty"`
+}
+
+// SmsImportResult is a batch outcome: per-message results plus the
+// successful transactions flattened in SMS received-time order. Nothing is
+// persisted and no record is activated by this call.
+type SmsImportResult struct {
+	Txs         []parser.Transaction `json:"txs"`
+	Imported    int                  `json:"imported"`
+	Invalid     int                  `json:"invalid"`
+	Malformed   int                  `json:"malformed"`
+	Unsupported int                  `json:"unsupported"`
+	Results     []SmsParseResult     `json:"results"`
+}
+
+// smsMaxDateMs is 2100-01-01 UTC: anything beyond is a corrupt timestamp,
+// not a message someone received.
+const smsMaxDateMs = int64(4102444800000)
 
 // TransactionView is a single prepared row for the frontend transaction
 // list: type, category and counterparty are pre-classified here so the UI
@@ -183,6 +236,93 @@ func (p *ParseService) ImportStatement(filePath, password, name string) (*store.
 	p.activeID = rec.ID
 	p.mu.Unlock()
 	return &rec, nil
+}
+
+// ImportSms converts raw SMS records from the Android bridge into
+// transactions via internal/sms.ParseMessage. Per-message results are
+// returned with success/failure classification; one bad message never
+// discards the good ones. The batch and its transactions are ordered by
+// SMS received time (ascending, stable on ties). Nothing is persisted and
+// no statement record is activated.
+func (p *ParseService) ImportSms(messages []SmsMessage) SmsImportResult {
+	type stamped struct {
+		ms  int64
+		res SmsParseResult
+	}
+	parsed := make([]stamped, 0, len(messages))
+	out := SmsImportResult{
+		Txs:     []parser.Transaction{},
+		Results: make([]SmsParseResult, 0, len(messages)),
+	}
+
+	for _, msg := range messages {
+		res := p.parseSmsMessage(msg)
+		switch res.Kind {
+		case smsKindImported:
+			out.Imported++
+		case smsKindInvalid:
+			out.Invalid++
+		case smsKindMalformed:
+			out.Malformed++
+		case smsKindUnsupported:
+			out.Unsupported++
+		}
+		parsed = append(parsed, stamped{ms: msg.DateMs, res: res})
+	}
+
+	sort.SliceStable(parsed, func(i, j int) bool { return parsed[i].ms < parsed[j].ms })
+	for _, s := range parsed {
+		out.Results = append(out.Results, s.res)
+		out.Txs = append(out.Txs, s.res.Txs...)
+	}
+	return out
+}
+
+// parseSmsMessage converts one raw SMS record. Metadata problems are
+// "invalid"; parser problems come back classified as "malformed" or
+// "unsupported" exactly as internal/sms distinguishes them.
+func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
+	res := SmsParseResult{SourceID: msg.ID}
+	if strings.TrimSpace(msg.Body) == "" {
+		res.Kind, res.Error = smsKindInvalid, "missing message body"
+		return res
+	}
+	if msg.DateMs <= 0 || msg.DateMs >= smsMaxDateMs {
+		res.Kind, res.Error = smsKindInvalid, "missing or invalid received timestamp"
+		return res
+	}
+
+	// The Android receive time (millisecond precision) is the canonical
+	// transaction date; the SMS text's own minute-precision stamp stays a
+	// validation-only field inside the parser.
+	t := time.UnixMilli(msg.DateMs)
+	if msg.TzOffsetMinutes != nil {
+		t = t.In(time.FixedZone("sms", -*msg.TzOffsetMinutes*60))
+	} else {
+		t = t.In(time.Local)
+	}
+	date := t.Format("2006-01-02 15:04:05")
+
+	txs, err := sms.ParseMessage(msg.Body)
+	if err != nil {
+		switch {
+		case errors.Is(err, sms.ErrUnsupported):
+			res.Kind = smsKindUnsupported
+		default:
+			// ParseMessage only ever returns ErrUnsupported or
+			// ErrMalformed; treat anything else as malformed so an
+			// unexpected error can never be silently dropped.
+			res.Kind = smsKindMalformed
+		}
+		res.Error = err.Error()
+		return res
+	}
+	for i := range txs {
+		txs[i].Date = date
+	}
+	res.Kind = smsKindImported
+	res.Txs = txs
+	return res
 }
 
 // ListStatements returns the stored statements' metadata, newest import

@@ -44,6 +44,18 @@ export function DeleteStatement(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * ImportSms converts raw SMS records from the Android bridge into
+ * transactions via internal/sms.ParseMessage. Per-message results are
+ * returned with success/failure classification; one bad message never
+ * discards the good ones. The batch and its transactions are ordered by
+ * SMS received time (ascending, stable on ties). Nothing is persisted and
+ * no statement record is activated.
+ */
+export function ImportSms(messages: $models.SmsMessage[] | null): $CancellablePromise<$models.SmsImportResult> {
+    return $Call.ByID(3989129980, messages);
+}
+
+/**
  * ImportStatement parses a PDF, stores the transactions under the given
  * name (derived from the date range when the name is blank), activates
  * the new record, and returns it with its transactions.
