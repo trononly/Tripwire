@@ -56,8 +56,8 @@ func TestImportSmsBatchMixed(t *testing.T) {
 	messages := []SmsMessage{
 		// Newest first in the input; output must come back time-ascending.
 		{ID: "1", DateMs: nairobiMilli(t, 2026, time.September, 13, 9, 0), Body: fixtureBody(t, "12-buy-goods-two.txt"), TzOffsetMinutes: &tz},
-		{ID: "2", DateMs: 12345, Body: "ABCAP6ZZZ1 Confirmed. Ksh1,000.00 withdrawn from AGENT ONE on 8/9/26 at 1:00 PM."}, // unsupported
-		{ID: "3", DateMs: 12346, Body: "ABC1234567 Confirmed."},                                                            // malformed: no timestamp
+		{ID: "2", DateMs: 12345, Body: "ABCAP6ZZZ1 Confirmed. Ksh2,000.00 deposited by AGENT TWO on 8/9/26 at 1:00 PM."}, // unsupported
+		{ID: "3", DateMs: 12346, Body: "ABC1234567 Confirmed."},                                                          // malformed: no timestamp
 		{ID: "4", DateMs: 12347, Body: "   "},                         // invalid: no body
 		{ID: "5", DateMs: 0, Body: fixtureBody(t, "01-send-p2p.txt")}, // invalid: no timestamp
 		{ID: "6", DateMs: nairobiMilli(t, 2026, time.September, 12, 9, 0), Body: fixtureBody(t, "02-receive.txt"), TzOffsetMinutes: &tz},
@@ -159,5 +159,96 @@ func TestImportSmsEmptyBatch(t *testing.T) {
 	res := (&ParseService{}).ImportSms(nil)
 	if res.Imported != 0 || res.Results == nil || res.Txs == nil {
 		t.Errorf("empty batch should return empty non-nil collections: %+v", res)
+	}
+}
+
+// TestImportSmsResultRetention proves every result keeps its own original
+// SMS record: metadata, raw body, and generated transactions stay paired —
+// including duplicate provider IDs, missing provider IDs, and every outcome
+// kind. The audit inspector depends on this pairing being exact.
+func TestImportSmsResultRetention(t *testing.T) {
+	tz := -180
+	ms := nairobiMilli(t, 2026, time.September, 12, 9, 0)
+	messages := []SmsMessage{
+		// One tx.
+		{ID: "101", Address: "MPESA", DateMs: ms, Body: fixtureBody(t, "01-send-p2p.txt"), TzOffsetMinutes: &tz},
+		// Main + charge pair.
+		{ID: "101", Address: "MPESA", DateMs: ms + 1, Body: fixtureBody(t, "11-paybill-with-fee.txt"), TzOffsetMinutes: &tz},
+		// Unsupported.
+		{ID: "", Address: "MPESA", DateMs: ms + 2, Body: "ABCAP6ZZZ1 Confirmed. Ksh2,000.00 deposited by AGENT TWO on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh2,500.00."},
+		// Malformed (missing timestamp).
+		{ID: "104", Address: "MPESA", DateMs: ms + 3, Body: "ABC1234567 Confirmed. Ksh40.00 sent to X."},
+		// Invalid metadata (blank body).
+		{ID: "105", Address: "MPESA", DateMs: ms + 4, Body: "   "},
+		// Missing provider ID, imported.
+		{Address: "MPESA", DateMs: ms + 5, Body: fixtureBody(t, "02-receive.txt"), TzOffsetMinutes: &tz},
+	}
+	res := (&ParseService{}).ImportSms(messages)
+	if len(res.Results) != len(messages) {
+		t.Fatalf("got %d results for %d messages", len(res.Results), len(messages))
+	}
+
+	wantBody := map[string]string{ // sourceId -> body fragment
+		"101|0": "ABCAP6H14J",
+		"101|1": "ABCAP5Z446",
+		"|2":    "withdrawn from AGENT ONE",
+		"104|3": "ABC1234567",
+		"105|4": "   ",
+		"|5":    "ABCAP6LGYW",
+	}
+	// Match results to inputs by their echoed metadata, not position.
+	found := map[string]bool{}
+	for _, r := range res.Results {
+		key := r.SourceID + "|" + r.Body[len(r.Body):] // placeholder, replaced below
+		_ = key
+		switch {
+		case strings.Contains(r.Body, "ABCAP6H14J"):
+			found["101|0"] = true
+			if r.SourceID != "101" || r.Address != "MPESA" || r.DateMs != ms || r.Kind != "imported" {
+				t.Errorf("01-send metadata mismatch: %+v", r)
+			}
+			if len(r.Txs) != 1 || r.Txs[0].ID != "ABCAP6H14J" {
+				t.Errorf("01-send transactions wrong: %+v", r.Txs)
+			}
+		case strings.Contains(r.Body, "ABCAP5Z446"):
+			found["101|1"] = true
+			if r.SourceID != "101" || r.DateMs != ms+1 || r.Kind != "imported" {
+				t.Errorf("paybill metadata mismatch: %+v", r)
+			}
+			if len(r.Txs) != 2 || r.Txs[0].ID != "ABCAP5Z446" || r.Txs[1].ID != "ABCAP5Z446-C" {
+				t.Errorf("paybill pair wrong: %+v", r.Txs)
+			}
+		case strings.Contains(r.Body, "deposited by AGENT TWO"):
+			found["|2"] = true
+			if r.SourceID != "" || r.DateMs != ms+2 || r.Kind != "unsupported" {
+				t.Errorf("unsupported metadata mismatch: %+v", r)
+			}
+			if len(r.Txs) != 0 {
+				t.Errorf("unsupported must have no transactions: %+v", r.Txs)
+			}
+		case strings.Contains(r.Body, "ABC1234567"):
+			found["104|3"] = true
+			if r.SourceID != "104" || r.DateMs != ms+3 || r.Kind != "malformed" {
+				t.Errorf("malformed metadata mismatch: %+v", r)
+			}
+		case strings.TrimSpace(r.Body) == "" && r.SourceID == "105":
+			found["105|4"] = true
+			if r.Kind != "invalid" || r.DateMs != ms+4 {
+				t.Errorf("invalid metadata mismatch: %+v", r)
+			}
+		case strings.Contains(r.Body, "ABCAP6LGYW"):
+			found["|5"] = true
+			if r.SourceID != "" || r.DateMs != ms+5 || r.Kind != "imported" {
+				t.Errorf("missing-ID metadata mismatch: %+v", r)
+			}
+			if len(r.Txs) != 1 || r.Txs[0].ID != "ABCAP6LGYW" {
+				t.Errorf("missing-ID transactions wrong: %+v", r.Txs)
+			}
+		}
+	}
+	for k := range wantBody {
+		if !found[k] {
+			t.Errorf("result for input %q missing or mispaired", k)
+		}
 	}
 }

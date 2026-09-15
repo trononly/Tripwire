@@ -65,17 +65,23 @@ type SmsMessage struct {
 // deliberately distinct from malformed (confirmation-shaped but broken):
 // unsupported messages may become parseable later, malformed ones never.
 const (
-	smsKindImported    = "imported"
-	smsKindInvalid     = "invalid"     // metadata unusable: no body, or bad timestamp
-	smsKindMalformed   = "malformed"   // looked like a confirmation but missing/invalid fields
-	smsKindUnsupported = "unsupported" // a real shape we have no parsing rule for
+	smsKindImported         = "imported"
+	smsKindInvalid          = "invalid"           // metadata unusable: no body, or bad timestamp
+	smsKindMalformed        = "malformed"         // looked like a confirmation but missing/invalid fields
+	smsKindUnsupported      = "unsupported"       // a real shape we have no parsing rule for
+	smsKindNonTransactional = "non_transactional" // operational notice, no financial transaction
 )
 
-// SmsParseResult is one message's outcome. SourceID echoes the Android
-// provider row ID for UI correlation only — it is never the transaction
-// identity; that stays the parser's M-Pesa receipt number.
+// SmsParseResult is one message's outcome, keeping the original record so
+// every generated transaction stays auditable against the SMS that produced
+// it. SourceID echoes the Android provider row ID for UI correlation only —
+// it is never the transaction identity; that stays the parser's M-Pesa
+// receipt number.
 type SmsParseResult struct {
 	SourceID string               `json:"sourceId"`
+	Address  string               `json:"address,omitempty"`
+	DateMs   int64                `json:"dateMs,omitempty"`
+	Body     string               `json:"body,omitempty"`
 	Kind     string               `json:"kind"`
 	Error    string               `json:"error,omitempty"`
 	Txs      []parser.Transaction `json:"txs,omitempty"`
@@ -85,12 +91,13 @@ type SmsParseResult struct {
 // successful transactions flattened in SMS received-time order. Nothing is
 // persisted and no record is activated by this call.
 type SmsImportResult struct {
-	Txs         []parser.Transaction `json:"txs"`
-	Imported    int                  `json:"imported"`
-	Invalid     int                  `json:"invalid"`
-	Malformed   int                  `json:"malformed"`
-	Unsupported int                  `json:"unsupported"`
-	Results     []SmsParseResult     `json:"results"`
+	Txs              []parser.Transaction `json:"txs"`
+	Imported         int                  `json:"imported"`
+	Invalid          int                  `json:"invalid"`
+	Malformed        int                  `json:"malformed"`
+	Unsupported      int                  `json:"unsupported"`
+	NonTransactional int                  `json:"nonTransactional"`
+	Results          []SmsParseResult     `json:"results"`
 }
 
 // smsMaxDateMs is 2100-01-01 UTC: anything beyond is a corrupt timestamp,
@@ -266,6 +273,8 @@ func (p *ParseService) ImportSms(messages []SmsMessage) SmsImportResult {
 			out.Malformed++
 		case smsKindUnsupported:
 			out.Unsupported++
+		case smsKindNonTransactional:
+			out.NonTransactional++
 		}
 		parsed = append(parsed, stamped{ms: msg.DateMs, res: res})
 	}
@@ -282,7 +291,12 @@ func (p *ParseService) ImportSms(messages []SmsMessage) SmsImportResult {
 // "invalid"; parser problems come back classified as "malformed" or
 // "unsupported" exactly as internal/sms distinguishes them.
 func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
-	res := SmsParseResult{SourceID: msg.ID}
+	res := SmsParseResult{
+		SourceID: msg.ID,
+		Address:  msg.Address,
+		DateMs:   msg.DateMs,
+		Body:     msg.Body,
+	}
 	if strings.TrimSpace(msg.Body) == "" {
 		res.Kind, res.Error = smsKindInvalid, "missing message body"
 		return res
@@ -308,6 +322,8 @@ func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
 		switch {
 		case errors.Is(err, sms.ErrUnsupported):
 			res.Kind = smsKindUnsupported
+		case errors.Is(err, sms.ErrNonTransactional):
+			res.Kind = smsKindNonTransactional
 		default:
 			// ParseMessage only ever returns ErrUnsupported or
 			// ErrMalformed; treat anything else as malformed so an
