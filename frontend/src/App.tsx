@@ -10,7 +10,7 @@ import { ImportStatementDialog } from "@/components/import-statement-dialog";
 import { ImportSmsDialog } from "@/components/import-sms-dialog";
 import { HistorySheet } from "@/components/history-sheet";
 import { ScrollToTop } from "@/components/scroll-to-top";
-import { FileUp, MessageSquareText } from "lucide-react";
+import { ChevronDown, FileUp, MessageSquareText } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -25,10 +25,85 @@ import {
   ListStatements,
 } from "../bindings/mpesa-analyzer/parseservice";
 import { isAndroidBridge } from "@/lib/sms-bridge";
+import { cn } from "@/lib/utils";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
 import Insights from "./pages/Insights";
 import Dashboard from "@/pages/Dashboard";
+
+/**
+ * Import mode menu. Deliberately not a Radix DropdownMenu: its pointer-
+ * capture/dismissal logic does not fire reliably inside the Android
+ * WebView (dialogs do). This is plain state + a backdrop — a tap always
+ * works, on desktop and phone alike.
+ */
+function ImportMenu({
+  isAndroid,
+  onStatement,
+  onSms,
+}: {
+  isAndroid: boolean;
+  onStatement: () => void;
+  onSms: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function choose(action: () => void) {
+    setOpen(false);
+    action();
+  }
+
+  return (
+    <div className="relative">
+      <Button
+        size="sm"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <FileUp />
+        Import
+        <ChevronDown
+          className={cn("opacity-70 transition-transform", open && "rotate-180")}
+        />
+      </Button>
+      {open && (
+        <>
+          {/* Tapping anywhere else closes the menu. */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-[calc(100%+4px)] z-50 min-w-44 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-sm hover:bg-muted active:bg-muted"
+              onClick={() => choose(onStatement)}
+            >
+              <FileUp />
+              Import statement (PDF)
+            </button>
+            {isAndroid && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-sm hover:bg-muted active:bg-muted"
+                onClick={() => choose(onSms)}
+              >
+                <MessageSquareText />
+                Import SMS
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function PageFallback() {
   return (
@@ -155,20 +230,11 @@ function App() {
                     onImport={() => setImportOpen(true)}
                   />
                 )}
-                {isAndroid && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSmsOpen(true)}
-                  >
-                    <MessageSquareText />
-                    Import SMS
-                  </Button>
-                )}
-                <Button size="sm" onClick={() => setImportOpen(true)}>
-                  <FileUp />
-                  Import statement
-                </Button>
+                <ImportMenu
+                  isAndroid={isAndroid}
+                  onStatement={() => setImportOpen(true)}
+                  onSms={() => setSmsOpen(true)}
+                />
               </div>
             </header>
             <main className="min-w-0 flex-1 space-y-4 p-6">

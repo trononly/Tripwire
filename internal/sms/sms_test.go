@@ -289,20 +289,16 @@ func TestUnsupported(t *testing.T) {
 		sms  string
 	}{
 		{
-			name: "agent withdrawal",
-			sms:  "ABCAP6ZZZ1 Confirmed. Ksh1,000.00 withdrawn from AGENT ONE on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh500.00. Transaction cost, Ksh11.00.",
-		},
-		{
 			name: "agent deposit",
 			sms:  "ABCAP6ZZZ2 Confirmed. Ksh2,000.00 deposited by AGENT TWO on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh2,500.00.",
 		},
 		{
-			name: "fuliza",
+			name: "fuliza repayment",
 			sms:  "ABCAP6ZZZ3 Confirmed. Fuliza amount repaid Ksh500.00 on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh300.00.",
 		},
 		{
-			// No real reversal sample yet; a reversal wording without a
-			// supported payment structure must not be half-parsed.
+			// A reversal wording without the "of transaction <ref>" structure
+			// is not one of the sampled reversal shapes; refuse it.
 			name: "reversal without payment structure",
 			sms:  "ABCAP6ZZZ4 Confirmed. Reversal of Ksh40.00 on 12/9/26 at 2:53 PM. New M-PESA balance is Ksh440.49.",
 		},
@@ -320,6 +316,159 @@ func TestUnsupported(t *testing.T) {
 			}
 			if !errors.Is(err, ErrUnsupported) {
 				t.Errorf("error = %v, want %v", err, ErrUnsupported)
+			}
+		})
+	}
+}
+
+// TestRealWithdrawal covers the compressed agent-withdrawal sample
+// (timestamp before the amount, "PMWithdraw" glued) plus the earlier
+// amount-first variant that used to be listed as unsupported.
+func TestRealWithdrawal(t *testing.T) {
+	tests := []struct {
+		name string
+		file string
+		sms  string
+		want []parser.Transaction
+		cats []string
+	}{
+		{
+			name: "compressed withdrawal with fee",
+			file: "20-withdrawal.txt",
+			want: []parser.Transaction{
+				{ID: "TIL1YF66FP", Date: "2025-09-21 20:38:00", Description: "Agent Withdrawal from - 2090490 - MIDOTECH LTD MAMA SHIKO SHOPGATHIGA ROAD NAIROBI", Status: "Completed", Amount: -70000, Balance: 45547},
+				{ID: "TIL1YF66FP-C", Date: "2025-09-21 20:38:00", Description: "Withdrawal Charge", Status: "Completed", Amount: -2900, Balance: 45547},
+			},
+			cats: []string{"Withdraw", "Fees"},
+		},
+		{
+			name: "amount-first withdrawal with fee",
+			file: "",
+			sms:  "ABCAP6ZZZ1 Confirmed. Ksh1,000.00 withdrawn from AGENT ONE on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh500.00. Transaction cost, Ksh11.00.",
+			want: []parser.Transaction{
+				{ID: "ABCAP6ZZZ1", Date: "2026-09-08 13:00:00", Description: "Agent Withdrawal from - AGENT ONE", Status: "Completed", Amount: -100000, Balance: 50000},
+				{ID: "ABCAP6ZZZ1-C", Date: "2026-09-08 13:00:00", Description: "Withdrawal Charge", Status: "Completed", Amount: -1100, Balance: 50000},
+			},
+			cats: []string{"Withdraw", "Fees"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			text := tt.sms
+			if tt.file != "" {
+				text = fixture(t, tt.file)
+			}
+			got, err := ParseMessage(text)
+			if err != nil {
+				t.Fatalf("ParseMessage: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d transactions, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("transaction %d:\n got  %+v\n want %+v", i, got[i], want)
+				}
+				if cat := txtype.CategoryOf(got[i].Description); cat != tt.cats[i] {
+					t.Errorf("category(%q) = %q, want %q", got[i].Description, cat, tt.cats[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRealFormatExpansion pins every real sample from the second batch:
+// M-Shwari transfer out, airtime variant, KSH-cased paybill, Hustler Fund
+// (four-digit year, "New MPESA balance"), and reversal. Each must classify
+// through the unmodified internal/txtype.
+func TestRealFormatExpansion(t *testing.T) {
+	tests := []struct {
+		name string
+		file string
+		want []parser.Transaction
+		cats []string
+	}{
+		{
+			name: "m-shwari transfer into wallet",
+			file: "19-mshwari-from.txt",
+			want: []parser.Transaction{
+				{ID: "UB5AP5UIP0", Date: "2026-02-05 12:41:00", Description: "M-Shwari Withdraw", Status: "Completed", Amount: 800000, Balance: 1496449},
+			},
+			cats: []string{"Bank & Savings"},
+		},
+		{
+			name: "airtime variant with lowercase confirmed",
+			file: "21-airtime-variant.txt",
+			want: []parser.Transaction{
+				{ID: "TIQAP5NXT1", Date: "2025-09-26 13:18:00", Description: "Airtime Purchase for 254712544752", Status: "Completed", Amount: -2000, Balance: 258247},
+			},
+			cats: []string{"Airtime"},
+		},
+		{
+			name: "paybill with uppercase KSH amount",
+			file: "22-kcb-paybill.txt",
+			want: []parser.Transaction{
+				{ID: "TL5AP05CM4", Date: "2025-12-05 17:09:00", Description: "Pay Bill Online to KCB Paybill AC Acc. 8024301", Status: "Completed", Amount: -10000, Balance: 155497},
+			},
+			cats: []string{"Pay Bill"},
+		},
+		{
+			name: "hustler fund with four-digit year",
+			file: "23-hustler-fund.txt",
+			want: []parser.Transaction{
+				{ID: "UF5AP6XQVB", Date: "2026-06-05 19:20:00", Description: "Customer Transfer to - Hustler Fund", Status: "Completed", Amount: -3138, Balance: 227023},
+			},
+			cats: []string{"Send Money"},
+		},
+		{
+			name: "reversal crediting the wallet",
+			file: "24-reversal.txt",
+			want: []parser.Transaction{
+				{ID: "UEDAPLF0WB", Date: "2026-05-13 16:31:00", Description: "Reversal of transaction UEDAP49Q57", Status: "Completed", Amount: 5000, Balance: 76543},
+			},
+			cats: []string{"Other"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMessage(fixture(t, tt.file))
+			if err != nil {
+				t.Fatalf("ParseMessage: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d transactions, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("transaction %d:\n got  %+v\n want %+v", i, got[i], want)
+				}
+				if cat := txtype.CategoryOf(got[i].Description); cat != tt.cats[i] {
+					t.Errorf("category(%q) = %q, want %q", got[i].Description, cat, tt.cats[i])
+				}
+			}
+		})
+	}
+}
+
+// TestNonTransactional pins the six operational messages: no transactions,
+// ErrNonTransactional, never malformed.
+func TestNonTransactional(t *testing.T) {
+	files := []string{
+		"13-failed-pin.txt",
+		"14-fuliza-optout.txt",
+		"15-unable-to-process.txt",
+		"16-insufficient-funds.txt",
+		"17-incorrect-till.txt",
+		"18-cancelled.txt",
+	}
+	for _, file := range files {
+		t.Run(file, func(t *testing.T) {
+			got, err := ParseMessage(fixture(t, file))
+			if got != nil {
+				t.Errorf("expected no transactions, got %+v", got)
+			}
+			if !errors.Is(err, ErrNonTransactional) {
+				t.Errorf("error = %v, want %v", err, ErrNonTransactional)
 			}
 		})
 	}
