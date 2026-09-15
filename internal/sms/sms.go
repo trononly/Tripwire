@@ -72,13 +72,6 @@ const (
 	chargePaybill  = "Pay Bill Charge"
 )
 
-func money(m []string) (int64, error) {
-	if m == nil {
-		return 0, nil
-	}
-	return parser.ParseMoney(m[1])
-}
-
 // ParseMessage converts one confirmation SMS into one or two transactions:
 // the main transaction, plus a charge transaction when the SMS reports a
 // non-zero transaction cost on a supported charge kind. It returns an error
@@ -259,7 +252,7 @@ func parseStamp(m []string) (string, error) {
 // <date>" → "COMPANY ONE 4072221").
 func partyAfter(body string, stampStart int, marker string) (string, bool) {
 	lead := body[:stampStart]
-	idx := strings.Index(strings.ToLower(lead), marker)
+	idx := indexFold(lead, marker)
 	if idx < 0 {
 		return "", false
 	}
@@ -271,11 +264,10 @@ func partyAfter(body string, stampStart int, marker string) (string, bool) {
 // absent), the verb found, and whether any supported structure was found.
 func payee(body string, stampStart int) (recipient, account, verb string, ok bool) {
 	lead := body[:stampStart]
-	lower := strings.ToLower(lead)
 
 	best := -1
 	for _, v := range []string{" paid to ", " sent to "} {
-		if i := strings.Index(lower, v); i >= 0 && (best < 0 || i < best) {
+		if i := indexFold(lead, v); i >= 0 && (best < 0 || i < best) {
 			best, verb = i, strings.TrimSpace(v)
 		}
 	}
@@ -288,10 +280,25 @@ func payee(body string, stampStart int) (recipient, account, verb string, ok boo
 		return "", "", "", false
 	}
 
-	if i := strings.Index(strings.ToLower(segment), " for account "); i >= 0 {
+	if i := indexFold(segment, " for account "); i >= 0 {
 		return cleanParty(segment[:i]), cleanParty(segment[i+len(" for account "):]), verb, true
 	}
 	return segment, "", verb, true
+}
+
+// indexFold finds needle in s case-insensitively, returning a byte index
+// valid for s itself. Searching a strings.ToLower copy and reusing its
+// indexes on the original is wrong for non-ASCII text: ToLower can change
+// byte length (İ lowers to two runes), shifting every later index and
+// corrupting the slice bounds.
+func indexFold(s, needle string) int {
+	n := len(needle)
+	for i := 0; i+n <= len(s); i++ {
+		if strings.EqualFold(s[i:i+n], needle) {
+			return i
+		}
+	}
+	return -1
 }
 
 // cleanParty normalizes a counterparty. Every parsed party sits directly

@@ -201,6 +201,34 @@ func TestVariations(t *testing.T) {
 				{ID: "ABCAP5BBBB", Date: "2026-01-01 00:00:00", Description: "Customer Transfer to - A", Status: "Completed", Amount: -500, Balance: 0},
 			},
 		},
+		{
+			// The timestamp regex claims case-insensitivity; lock it in.
+			name: "lowercase am/pm",
+			sms:  "ABCAP5CCCC Confirmed. Ksh5.00 sent to A on 1/1/26 at 11:00 pm. New M-PESA balance is Ksh5.00.",
+			want: []parser.Transaction{
+				{ID: "ABCAP5CCCC", Date: "2026-01-01 23:00:00", Description: "Customer Transfer to - A", Status: "Completed", Amount: -500, Balance: 500},
+			},
+		},
+		{
+			// Pasted SMS (the planned manual-import fallback) often arrives
+			// with stray leading/trailing whitespace and doubled spaces.
+			name: "pasted whitespace",
+			sms:  "  \n ABCAP5DDDD  Confirmed.  Ksh5.00  sent to  A  on 1/1/26 at 12:30 PM. New M-PESA balance is Ksh5.00. ",
+			want: []parser.Transaction{
+				{ID: "ABCAP5DDDD", Date: "2026-01-01 12:30:00", Description: "Customer Transfer to - A", Status: "Completed", Amount: -500, Balance: 500},
+			},
+		},
+		{
+			// Regression: indexes must never be taken from a lowercased copy.
+			// İ lowers to two runes (byte length grows), so slicing the
+			// original with a lowercased index once cut the party short and
+			// shifted the account clause ("İPEK LTD f" / "account 123").
+			name: "unicode party name with account clause",
+			sms:  "ABCAP5EEEE Confirmed. Ksh73.00 sent to İPEK LTD for account 123 on 10/9/26 at 8:01 AM. New M-PESA balance is Ksh100.00.",
+			want: []parser.Transaction{
+				{ID: "ABCAP5EEEE", Date: "2026-09-10 08:01:00", Description: "Pay Bill Online to İPEK LTD Acc. 123", Status: "Completed", Amount: -7300, Balance: 10000},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -323,4 +351,25 @@ func TestNoPanic(t *testing.T) {
 
 func quote(i int) string {
 	return "input " + string(rune('a'+i))
+}
+
+// TestDuplicateReceiptIDs documents that the parser is stateless: the same
+// receipt number in two messages yields two independent, identical results.
+// Cross-import duplicate handling is a later phase's concern, and it will
+// rely on this stability.
+func TestDuplicateReceiptIDs(t *testing.T) {
+	sms := fixture(t, "01-send-p2p.txt")
+	first, err := ParseMessage(sms)
+	if err != nil {
+		t.Fatalf("first parse: %v", err)
+	}
+	second, err := ParseMessage(sms)
+	if err != nil {
+		t.Fatalf("second parse: %v", err)
+	}
+	for i := range first {
+		if first[i] != second[i] {
+			t.Errorf("parse %d differs:\n first  %+v\n second %+v", i, first[i], second[i])
+		}
+	}
 }
