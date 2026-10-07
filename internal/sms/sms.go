@@ -82,6 +82,7 @@ const (
 	descMShwariOut      = "M-Shwari Withdraw" // M-Shwari money coming back (statement convention)
 	descAgentWithdrawal = "Agent Withdrawal from - %s"
 	descAirtime         = "Airtime Purchase for %s"
+	descAirtimePlain    = "Airtime Purchase" // audit sample: no recipient in the message
 	descReversal        = "Reversal of transaction %s"
 
 	// Charge rows. The statement prints fees as their own rows with these
@@ -206,12 +207,15 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 		desc = fmt.Sprintf(descReversal, ref)
 		isIn = true
 
-	case strings.Contains(fullLower, "of airtime for"):
-		phone, ok := airtimeRecipient(body, stampStart)
-		if !ok {
-			return nil, fmt.Errorf("%w: airtime message missing recipient", ErrMalformed)
+	case strings.Contains(fullLower, "of airtime"):
+		// Real samples come both with a recipient ("...of airtime for
+		// 2547...") and without one ("You bought Ksh20.00 of airtime on
+		// ..."). When no recipient is present, none is invented.
+		if phone, ok := airtimeRecipient(body, stampStart); ok {
+			desc = fmt.Sprintf(descAirtime, phone)
+		} else {
+			desc = descAirtimePlain
 		}
-		desc = fmt.Sprintf(descAirtime, phone)
 
 	case indexFold(body, "withdraw") >= 0 && indexFold(body, " from ") >= 0:
 		agent, ok := agentFrom(body, stampStart)
