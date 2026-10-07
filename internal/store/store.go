@@ -25,10 +25,21 @@ type DateRange struct {
 	End   string `json:"end"`
 }
 
-// StatementRecord is one imported statement and its transactions.
+// Record source kinds. Empty Source (older store files) is a statement:
+// SMS imports are the only other kind.
+const (
+	SourceStatement = "statement"
+	SourceSms       = "sms"
+)
+
+// StatementRecord is one imported dataset — a parsed PDF statement or a
+// confirmed SMS import — and its transactions. Both kinds share the same
+// normalized transaction model and the same analysis pipeline; Source only
+// records where the rows came from.
 type StatementRecord struct {
 	ID         string               `json:"id"`
 	Name       string               `json:"name"`
+	Source     string               `json:"source,omitempty"`
 	DateRange  DateRange            `json:"dateRange"`
 	TxCount    int                  `json:"txCount"`
 	ImportedAt time.Time            `json:"importedAt"`
@@ -39,6 +50,7 @@ type StatementRecord struct {
 type StatementMeta struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
+	Source     string    `json:"source,omitempty"`
 	DateRange  DateRange `json:"dateRange"`
 	TxCount    int       `json:"txCount"`
 	ImportedAt time.Time `json:"importedAt"`
@@ -120,9 +132,14 @@ func (s *Store) List() ([]StatementMeta, error) {
 	out := make([]StatementMeta, 0, len(s.data.Statements))
 	for i := len(s.data.Statements) - 1; i >= 0; i-- {
 		r := s.data.Statements[i]
+		source := r.Source
+		if source == "" {
+			source = SourceStatement
+		}
 		out = append(out, StatementMeta{
 			ID:         r.ID,
 			Name:       r.Name,
+			Source:     source,
 			DateRange:  r.DateRange,
 			TxCount:    r.TxCount,
 			ImportedAt: r.ImportedAt,

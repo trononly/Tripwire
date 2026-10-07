@@ -104,3 +104,48 @@ func TestDateRangeAndName(t *testing.T) {
 		t.Fatalf("NameOf(same month) = %q, want Jan 2025", name)
 	}
 }
+
+// TestStoreSourceDefaultsAndSms proves the two source kinds share one store:
+// legacy records with no Source list as statements, SMS records keep their
+// marker, and both persist through the same file.
+func TestStoreSourceDefaultsAndSms(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "statements.json")
+	s := New(path)
+
+	// Legacy shape: Source unset (records written by older builds).
+	legacy := sampleRecord("legacy")
+	if err := s.Add(legacy); err != nil {
+		t.Fatalf("Add legacy: %v", err)
+	}
+	sms := sampleRecord("sms1")
+	sms.Source = SourceSms
+	sms.Name = "Sep 2026"
+	if err := s.Add(sms); err != nil {
+		t.Fatalf("Add sms: %v", err)
+	}
+
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(metas) != 2 {
+		t.Fatalf("List = %+v, want 2 records", metas)
+	}
+	// Newest import first: the SMS record was added last.
+	if metas[0].ID != "sms1" || metas[0].Source != SourceSms {
+		t.Fatalf("sms meta = %+v, want source=sms", metas[0])
+	}
+	if metas[1].ID != "legacy" || metas[1].Source != SourceStatement {
+		t.Fatalf("legacy meta = %+v, want source defaulted to statement", metas[1])
+	}
+
+	// Round trip: a fresh Store must keep the explicit source.
+	other := New(path)
+	rec, err := other.Get("sms1")
+	if err != nil {
+		t.Fatalf("Get sms: %v", err)
+	}
+	if rec.Source != SourceSms || rec.Name != "Sep 2026" {
+		t.Fatalf("round trip = %+v", rec)
+	}
+}
