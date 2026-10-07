@@ -65,7 +65,6 @@ export function CashflowChart({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <CardTitle>Cashflow</CardTitle>
-            <CardDescription>Money in vs out over time</CardDescription>
           </div>
           <div className="flex gap-1">
             {GRANULARITIES.map((g) => (
