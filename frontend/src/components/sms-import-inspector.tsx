@@ -316,9 +316,6 @@ function SmsResultDetail({
                 ? `Skipped: ${result.kind}`
                 : ""}
           </DialogTitle>
-          <DialogDescription>
-            Compare the original SMS with what the parser produced.
-          </DialogDescription>
         </DialogHeader>
 
         {result && (
