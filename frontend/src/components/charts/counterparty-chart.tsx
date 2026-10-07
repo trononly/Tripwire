@@ -113,6 +113,7 @@ export function CounterpartyChart({
                 />
               }
             />
+            )}
             <Bar
               dataKey="count"
               fill="var(--color-count)"

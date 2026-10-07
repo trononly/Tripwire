@@ -13,20 +13,20 @@ A self-contained card on the Insights page; the page is a canvas of tiles the us
 _Avoid_: widget, insight card
 
 **Statement**:
-A PDF statement exported by M-Pesa and parsed into transactions. A single statement can span months. On both platforms statements are the history layer — the only way to see the past.
+A PDF statement exported by M-Pesa and parsed into transactions. A single statement can span months. On both platforms statements are the history layer — the only way to see the past on desktop.
 _Avoid_: export, bank statement
 
 **SMS feed**:
-The live transactions parsed from Android M-Pesa notification SMS, held in app state for the running app. Android-exclusive; permission grade varies by build. Kept apart from the Statement store — the two never merge.
-_Avoid_: notification, alert, SMS transaction
+The transactions parsed from Android M-Pesa notification SMS, imported as a preview and — once confirmed — saved into the same store as statements. Android-exclusive; permission grade varies by build. SMS and statements share one transaction model and one analysis pipeline; only the Source field records where rows came from.
+_Avoid_: notification, alert, SMS transaction, separate SMS store
 
 **Receipt No.**:
 The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The dedup key for cross-statement dedup, deferred to v2 — in v1 a re-imported statement is stored as its own record.
 _Avoid_: receipt number, transaction ID
 
-**Analysis mode**:
-The Dashboard control, next to Import Statement, that switches analysis between the Statement feed and the SMS feed. Android-only — on desktop there is no SMS, so the button is hidden. Desktop and mobile dashboards legitimately differ because of it.
-_Avoid_: view, tab, switcher
+**Data mode**:
+The Settings control (Android only) that picks what the analysis runs over: the statement history or the SMS imports. Importing a statement or SMS switches the mode automatically; the History chip belongs to statements mode. There is no separate SMS analysis — one pipeline, two datasets.
+_Avoid_: analysis mode (the old dashboard switcher), view, tab, switcher, active dataset
 
 **Active statement**:
 The statement being analyzed right now. Session-only: nothing auto-loads on launch, so every session starts with nothing active until the user picks from History or imports. Importing activates the new statement immediately; deleting the active one leaves nothing active.

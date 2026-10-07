@@ -1,24 +1,21 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, CircleSlash, FileWarning, Ban, Info } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleSlash,
+  FileWarning,
+  Ban,
+  Info,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type {
   SmsImportResult,
   SmsParseResult,
@@ -66,7 +63,10 @@ function kindIcon(kind: string) {
  * raw body and generated transactions — sized for pasting into another
  * agent/tool for investigation. Parsed messages are capped to keep the
  * report pasteable; skipped messages are always complete. */
-function buildReport(result: SmsImportResult, bridgeCount: number | null): string {
+function buildReport(
+  result: SmsImportResult,
+  bridgeCount: number | null,
+): string {
   const results = result.results ?? [];
   const txs = result.txs ?? [];
   const lines: string[] = [
@@ -80,7 +80,9 @@ function buildReport(result: SmsImportResult, bridgeCount: number | null): strin
   ];
   for (const r of results) {
     if (r.kind === "imported") continue;
-    lines.push(`#${r.sourceId || "?"} [${r.kind}] sender=${r.address || "-"} received=${r.dateMs ?? "-"}`);
+    lines.push(
+      `#${r.sourceId || "?"} [${r.kind}] sender=${r.address || "-"} received=${r.dateMs ?? "-"}`,
+    );
     lines.push(`reason: ${r.error || "-"}`);
     lines.push(`body: ${r.body || "(empty)"}`);
     lines.push("");
@@ -89,13 +91,17 @@ function buildReport(result: SmsImportResult, bridgeCount: number | null): strin
   const imported = results.filter((r) => r.kind === "imported");
   for (const r of imported.slice(0, 20)) {
     for (const t of r.txs ?? []) {
-      lines.push(`${t.id} ${t.date} ${t.description} ${formatMoney(t.amount)} balance=${formatMoney(t.balance)}`);
+      lines.push(
+        `${t.id} ${t.date} ${t.description} ${formatMoney(t.amount)} balance=${formatMoney(t.balance)}`,
+      );
     }
     lines.push(`body: ${r.body || ""}`);
     lines.push("");
   }
   if (imported.length > 20) {
-    lines.push(`(… ${imported.length - 20} more parsed messages truncated — filter or import again to inspect)`);
+    lines.push(
+      `(… ${imported.length - 20} more parsed messages truncated — filter or import again to inspect)`,
+    );
   }
   return lines.join("\n");
 }
@@ -165,20 +171,24 @@ export function SmsImportInspector({
   return (
     <div className="space-y-3">
       {/* Message counts vs generated transaction counts, separately. */}
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <div className="rounded-md border p-2">
+      <div className="grid gap-2 text-sm min-[420px]:grid-cols-2">
+        <div className="min-w-0 rounded-md border p-2">
           <div className="font-medium">
-            {result.imported} parsed · {results.length - result.imported} skipped
+            {result.imported} parsed · {results.length - result.imported}{" "}
+            skipped
           </div>
           <div className="text-xs text-muted-foreground">
             {result.unsupported} unsupported · {result.malformed} malformed ·{" "}
-            {result.invalid} invalid · {result.nonTransactional} non-transactional
+            {result.invalid} invalid · {result.nonTransactional}{" "}
+            non-transactional
             {bridgeCount !== null ? ` · ${bridgeCount} read` : ""}
           </div>
         </div>
-        <div className="rounded-md border p-2">
+        <div className="min-w-0 rounded-md border p-2">
           <div className="font-medium">{txCount} transactions</div>
-          <div className="text-xs text-muted-foreground">generated from SMS</div>
+          <div className="text-xs text-muted-foreground">
+            generated from SMS
+          </div>
         </div>
       </div>
 
@@ -189,7 +199,9 @@ export function SmsImportInspector({
           className="h-9"
           onClick={async () => {
             try {
-              await navigator.clipboard.writeText(buildReport(result, bridgeCount));
+              await navigator.clipboard.writeText(
+                buildReport(result, bridgeCount),
+              );
               toast.success("Audit report copied to clipboard");
             } catch {
               toast.error("Could not copy the report");
@@ -286,10 +298,7 @@ export function SmsImportInspector({
         Preview only — these transactions are not saved to history yet.
       </p>
 
-      <SmsResultDetail
-        result={selected}
-        onClose={() => setSelected(null)}
-      />
+      <SmsResultDetail result={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
@@ -329,24 +338,34 @@ function SmsResultDetail({
               </pre>
             </section>
 
-            <section className="space-y-0.5 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">Metadata</p>
-              <p>
+            <section className="min-w-0 space-y-0.5 text-sm">
+              <p className="text-xs font-medium text-muted-foreground">
+                Metadata
+              </p>
+              <p className="wrap-break-words">
                 Provider ID: {result.sourceId === "" ? "—" : result.sourceId}
               </p>
-              <p>Sender: {result.address || "—"}</p>
+              <p className="wrap-break-words">
+                Sender: {result.address || "—"}
+              </p>
               <p>
                 Received:{" "}
-                {result.dateMs
-                  ? new Date(result.dateMs).toLocaleString()
-                  : "—"}
+                {result.dateMs ? new Date(result.dateMs).toLocaleString() : "—"}
               </p>
             </section>
 
             <section className="space-y-1 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">Outcome</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Outcome
+              </p>
               <p className="capitalize">{result.kind}</p>
-              <p className={result.error ? "text-destructive" : "text-muted-foreground"}>
+              <p
+                className={
+                  result.error
+                    ? "wrap-break-words text-destructive"
+                    : "text-muted-foreground"
+                }
+              >
                 {result.error || "No errors."}
               </p>
             </section>
@@ -355,37 +374,32 @@ function SmsResultDetail({
               <p className="mb-1 text-xs font-medium text-muted-foreground">
                 Generated transactions ({txs.length})
               </p>
+              {/* Stacked rows, not a table: long M-Pesa descriptions and
+                 unbroken receipt IDs must never stretch the layout. */}
               {txs.length === 0 ? (
                 <p className="rounded-md border p-3 text-sm text-muted-foreground">
                   None — the message produced no transaction.
                 </p>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Receipt</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {txs.map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell className="font-mono text-xs">{tx.id}</TableCell>
-                          <TableCell className="whitespace-nowrap text-xs">
-                            {tx.date}
-                          </TableCell>
-                          <TableCell className="text-xs">{tx.description}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">
-                            {formatMoney(tx.amount)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                <ul className="divide-y rounded-md border">
+                  {txs.map((tx) => (
+                    <li
+                      key={tx.id}
+                      className="min-w-0 space-y-0.5 px-3 py-2 text-xs"
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="min-w-0 truncate font-mono">
+                          {tx.id}
+                        </span>
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {formatMoney(tx.amount)}
+                        </span>
+                      </div>
+                      <p className="wrap-break-words">{tx.description}</p>
+                      <p className="text-muted-foreground">{tx.date}</p>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
           </div>

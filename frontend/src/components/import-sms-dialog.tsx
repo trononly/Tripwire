@@ -111,7 +111,6 @@ export function ImportSmsDialog({
       }
       return;
     }
-    setBridgeCount(data.count ?? 0);
     // The current device offset renders received times in the phone's own
     // timezone (JS Date.getTimezoneOffset convention: Nairobi is -180).
     const messages = (data.messages ?? []).map((m) => ({
@@ -183,8 +182,8 @@ export function ImportSmsDialog({
           <div className="space-y-3">
             <p className="text-sm text-destructive">
               SMS access is permanently denied for this app. Re-enable it in
-              Android Settings → Apps → mpesa-analyzer → Permissions → SMS,
-              then try again here.
+              Android Settings → Apps → mpesa-analyzer → Permissions → SMS, then
+              try again here.
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPhase("ready")}>
@@ -196,7 +195,9 @@ export function ImportSmsDialog({
 
         {phase === "error" && (
           <div className="space-y-3">
-            <p className="text-sm text-destructive">Import failed: {errorMessage}</p>
+            <p className="text-sm text-destructive">
+              Import failed: {errorMessage}
+            </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPhase("ready")}>
                 Back

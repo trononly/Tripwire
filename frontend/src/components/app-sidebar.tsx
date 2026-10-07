@@ -4,7 +4,7 @@ import {
   LayoutDashboard,
   ArrowLeftRight,
   Settings,
-  BarChart,
+  Lightbulb,
 } from "lucide-react";
 
 import {
@@ -19,14 +19,18 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
+// Desktop navigation. SMS is a mobile destination (bottom bar): the
+// desktop app has no SMS source.
 const navMain = [
   {
     items: [
       { title: "Dashboard", url: "/", icon: LayoutDashboard },
       { title: "Transactions", url: "/transactions", icon: ArrowLeftRight },
-      { title: "Insights", url: "/insights", icon: BarChart },
-      { title: "Settings", url: "/settings", icon: Settings },
+      { title: "Insights", url: "/insights", icon: Lightbulb },
     ],
+  },
+  {
+    items: [{ title: "Settings", url: "/settings", icon: Settings }],
   },
 ];
 
@@ -43,8 +47,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {navMain.map((group, index) => (
-          <SidebarGroup key={group.items[index].title}>
+        {navMain.map((group) => (
+          <SidebarGroup key={group.items[0].title}>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
