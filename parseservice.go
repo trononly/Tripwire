@@ -9,6 +9,7 @@ import (
 	"mpesa-analyzer/internal/pdf"
 	"mpesa-analyzer/internal/sms"
 	"mpesa-analyzer/internal/store"
+	"mpesa-analyzer/internal/txtype"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -225,6 +226,7 @@ func (p *ParseService) ImportStatement(filePath, password, name string) (*store.
 	rec := store.StatementRecord{
 		ID:         store.NewID(),
 		Name:       name,
+		Source:     store.SourceStatement,
 		DateRange:  rangeOf,
 		TxCount:    len(txs),
 		ImportedAt: time.Now().UTC(),
@@ -339,6 +341,153 @@ func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
 	res.Kind = smsKindImported
 	res.Txs = txs
 	return res
+}
+
+// SaveSmsImport persists a confirmed SMS import as a record in the same
+// store as PDF statements, using the same normalized parser.Transaction
+// model, and activates it. The preview batch stays exactly what
+// ImportSms returned; nothing here re-parses or re-classifies.
+func (p *ParseService) SaveSmsImport(txs []parser.Transaction) (*store.StatementRecord, error) {
+	if len(txs) == 0 {
+		return nil, fmt.Errorf("no SMS transactions to save")
+	}
+	rec := newSmsRecord(txs)
+
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Add(rec); err != nil {
+		return nil, err
+	}
+
+	p.mu.Lock()
+	p.activeID = rec.ID
+	p.mu.Unlock()
+	return &rec, nil
+}
+
+// newSmsRecord wraps parsed SMS transactions as a store record. Shared by
+// the manual save path and the refresh path.
+func newSmsRecord(txs []parser.Transaction) store.StatementRecord {
+	rangeOf := store.DateRangeOf(txs)
+	return store.StatementRecord{
+		ID:         store.NewID(),
+		Name:       store.NameOf(rangeOf),
+		Source:     store.SourceSms,
+		DateRange:  rangeOf,
+		TxCount:    len(txs),
+		ImportedAt: time.Now().UTC(),
+		Txs:        txs,
+	}
+}
+
+// SmsRefreshResult is one inbox snapshot merged into the store: the full
+// per-message audit (same shape as ImportSms, so the manual dialog keeps
+// its breakdown UI on this single import path), the SMS record holding the
+// merged dataset, how many transactions were actually new, the new
+// transactions themselves (for arrival previews), and whether any of them
+// is a user-initiated spend (till, paybill, send-money) worth popping a
+// receipt for. Record is nil and NewTxs empty when the snapshot parsed to
+// nothing.
+type SmsRefreshResult struct {
+	Result   SmsImportResult        `json:"result"`
+	Record   *store.StatementRecord `json:"record,omitempty"`
+	NewCount int                    `json:"newCount"`
+	NewTxs   []parser.Transaction   `json:"newTxns"`
+	Receipt  bool                   `json:"receipt"`
+}
+
+// RefreshSmsImport parses an inbox snapshot and merges it into the latest
+// SMS record — creating one when there is none — keyed by the parser's
+// M-Pesa receipt number. Re-running it over an unchanged inbox adds
+// nothing and writes nothing, so the launch-time auto-import is safe to
+// run on every start. Older SMS records are left alone as snapshots.
+func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResult, error) {
+	res := p.ImportSms(messages)
+	out := &SmsRefreshResult{Result: res}
+	if len(res.Txs) == 0 {
+		return out, nil
+	}
+
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	metas, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	var latest *store.StatementRecord
+	for _, m := range metas {
+		if m.Source == store.SourceSms {
+			rec, err := s.Get(m.ID)
+			if err != nil {
+				return nil, err
+			}
+			latest = &rec
+			break
+		}
+	}
+
+	if latest == nil {
+		rec := newSmsRecord(res.Txs)
+		if err := s.Add(rec); err != nil {
+			return nil, err
+		}
+		out.Record = &rec
+		out.NewCount = len(res.Txs)
+		out.NewTxs = res.Txs
+	} else {
+		seen := make(map[string]bool, len(latest.Txs))
+		for _, tx := range latest.Txs {
+			seen[tx.ID] = true
+		}
+		fresh := make([]parser.Transaction, 0, len(res.Txs))
+		for _, tx := range res.Txs {
+			if !seen[tx.ID] {
+				seen[tx.ID] = true
+				fresh = append(fresh, tx)
+			}
+		}
+		if len(fresh) == 0 {
+			out.Record = latest
+			return out, nil
+		}
+		merged := append(append([]parser.Transaction{}, latest.Txs...), fresh...)
+		sort.SliceStable(merged, func(i, j int) bool { return merged[i].Date < merged[j].Date })
+		latest.Txs = merged
+		latest.DateRange = store.DateRangeOf(merged)
+		latest.Name = store.NameOf(latest.DateRange)
+		latest.TxCount = len(merged)
+		latest.ImportedAt = time.Now().UTC()
+		if err := s.Put(*latest); err != nil {
+			return nil, err
+		}
+		out.Record = latest
+		out.NewCount = len(fresh)
+		out.NewTxs = fresh
+	}
+
+	p.mu.Lock()
+	p.activeID = out.Record.ID
+	p.mu.Unlock()
+	out.Receipt = receiptWorthy(out.NewTxs)
+	return out, nil
+}
+
+// receiptWorthy reports whether any new transaction is a user-initiated
+// spend — till/buy-goods, paybill or send-money. Only those pop the
+// arrival receipt; inbound money, airtime, fees and the rest merge
+// silently into history.
+func receiptWorthy(txs []parser.Transaction) bool {
+	for _, tx := range txs {
+		switch txtype.TypeOf(tx.Description) {
+		case txtype.TypeTill, txtype.TypePaybill, txtype.TypeSendMoney:
+			return true
+		}
+	}
+	return false
 }
 
 // ListStatements returns the stored statements' metadata, newest import

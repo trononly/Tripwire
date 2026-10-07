@@ -4,6 +4,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as parser$0 from "./internal/parser/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as store$0 from "./internal/store/models.js";
 
 /**
  * DayGroup is one calendar day of transactions, newest first. EndBalance is
@@ -69,6 +72,24 @@ export interface SmsParseResult {
     "kind": string;
     "error"?: string;
     "txs"?: parser$0.Transaction[] | null;
+}
+
+/**
+ * SmsRefreshResult is one inbox snapshot merged into the store: the full
+ * per-message audit (same shape as ImportSms, so the manual dialog keeps
+ * its breakdown UI on this single import path), the SMS record holding the
+ * merged dataset, how many transactions were actually new, the new
+ * transactions themselves (for arrival previews), and whether any of them
+ * is a user-initiated spend (till, paybill, send-money) worth popping a
+ * receipt for. Record is nil and NewTxs empty when the snapshot parsed to
+ * nothing.
+ */
+export interface SmsRefreshResult {
+    "result": SmsImportResult;
+    "record"?: store$0.StatementRecord | null;
+    "newCount": number;
+    "newTxns": parser$0.Transaction[] | null;
+    "receipt": boolean;
 }
 
 /**

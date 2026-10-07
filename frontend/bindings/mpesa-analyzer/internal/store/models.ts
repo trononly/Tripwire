@@ -21,17 +21,22 @@ export interface DateRange {
 export interface StatementMeta {
     "id": string;
     "name": string;
+    "source"?: string;
     "dateRange": DateRange;
     "txCount": number;
     "importedAt": string;
 }
 
 /**
- * StatementRecord is one imported statement and its transactions.
+ * StatementRecord is one imported dataset — a parsed PDF statement or a
+ * confirmed SMS import — and its transactions. Both kinds share the same
+ * normalized transaction model and the same analysis pipeline; Source only
+ * records where the rows came from.
  */
 export interface StatementRecord {
     "id": string;
     "name": string;
+    "source"?: string;
     "dateRange": DateRange;
     "txCount": number;
     "importedAt": string;

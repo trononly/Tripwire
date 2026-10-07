@@ -135,8 +135,10 @@
 
 html,
 .sidebar-manual {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    /* Top inset is handled by the sticky header (paddingTop:
+       env(safe-area-inset-top)) so it can stick to the viewport edge
+       without jumping. Bottom is handled by the main padding + bottom
+       nav. Only side insets belong on the root. */
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     overflow-x: hidden;
