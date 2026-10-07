@@ -87,15 +87,28 @@ type BalancePoint struct {
 }
 
 // BalanceTrajectory returns the balance over time in chronological
-// ascending order. Statements are newest-first, so the input is reversed.
+// ascending order. The input order is not trusted (statements arrive
+// newest-first, SMS imports oldest-first), so points are sorted by
+// timestamp instead of assuming any direction.
 func BalanceTrajectory(transactions []parser.Transaction) ([]BalancePoint, error) {
-	points := make([]BalancePoint, 0, len(transactions))
-	for i := len(transactions) - 1; i >= 0; i-- {
-		tx := transactions[i]
-		if _, err := txTime(tx); err != nil {
+	type stamped struct {
+		when time.Time
+		tx   parser.Transaction
+	}
+	stampedTxs := make([]stamped, 0, len(transactions))
+	for _, tx := range transactions {
+		when, err := txTime(tx)
+		if err != nil {
 			return nil, err
 		}
-		points = append(points, BalancePoint{Time: tx.Date, Balance: tx.Balance})
+		stampedTxs = append(stampedTxs, stamped{when: when, tx: tx})
+	}
+	sort.SliceStable(stampedTxs, func(i, j int) bool {
+		return stampedTxs[i].when.Before(stampedTxs[j].when)
+	})
+	points := make([]BalancePoint, 0, len(stampedTxs))
+	for _, s := range stampedTxs {
+		points = append(points, BalancePoint{Time: s.tx.Date, Balance: s.tx.Balance})
 	}
 	return points, nil
 }

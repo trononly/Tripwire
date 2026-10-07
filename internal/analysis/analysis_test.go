@@ -71,18 +71,47 @@ func TestCashflowInvalidGranularity(t *testing.T) {
 	}
 }
 
-func TestBalanceTrajectoryReversed(t *testing.T) {
+func TestBalanceTrajectoryScrambledInput(t *testing.T) {
+	// SMS imports arrive oldest-first, statements newest-first, and the
+	// trajectory must not trust either: output is chronological regardless.
+	chronological := []parser.Transaction{
+		tx("2026-03-28 12:00:00", "Funds received", 10000, 632247),
+		tx("2026-04-21 18:29:02", "Funds received", 3000, 76079),
+		tx("2026-04-28 19:55:42", "Airtime Purchase", -500, 44679),
+	}
+	orders := [][]parser.Transaction{
+		chronological,
+		{chronological[2], chronological[1], chronological[0]},
+		{chronological[1], chronological[2], chronological[0]},
+	}
+	for i, in := range orders {
+		points, err := BalanceTrajectory(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(points) != 3 ||
+			points[0].Balance != 632247 ||
+			points[1].Balance != 76079 ||
+			points[2].Balance != 44679 {
+			t.Errorf("order %d: want chronological, got %+v", i, points)
+		}
+	}
+}
+
+func TestTotalsOutIsPositive(t *testing.T) {
 	txs := []parser.Transaction{
 		tx("2026-04-28 19:55:42", "Airtime Purchase", -500, 44679),
-		tx("2026-04-21 18:29:02", "Funds received", 3000, 76079),
-		tx("2026-03-28 12:00:00", "Funds received", 10000, 632247),
+		tx("2026-04-28 17:27:36", "Pay Bill Online to 888880 - KPLC", -5000, 45179),
+		tx("2026-04-21 18:29:02", "Funds received from - Calvin", 3000, 76079),
+		tx("2026-04-21 17:06:40", "Pay Bill Charge", -300, 87479),
 	}
-	points, err := BalanceTrajectory(txs)
-	if err != nil {
-		t.Fatal(err)
+	got := TotalsOf(txs)
+	if got.TotalOut != 5500 {
+		t.Errorf("TotalOut = %d, want positive 5500", got.TotalOut)
 	}
-	if points[0].Balance != 632247 || points[len(points)-1].Balance != 44679 {
-		t.Errorf("expected chronological order, got %+v", points)
+	// 3000 in, 5500 out, 300 fees.
+	if got.Net != -2800 {
+		t.Errorf("Net = %d, want -2800", got.Net)
 	}
 }
 
@@ -137,5 +166,24 @@ func TestTopCounterparties(t *testing.T) {
 	top := TopCounterparties(txs, 1)
 	if len(top) != 1 || top[0].Name != "Calvin Kamara" || top[0].Count != 3 {
 		t.Errorf("unexpected top: %+v", top)
+	}
+}
+
+func TestTopCounterpartiesMergesCaseAndMasking(t *testing.T) {
+	// Same person, three spellings: casing plus masked/unmasked numbers
+	// must aggregate under the most common original form.
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:29:02", "Customer Transfer to - Calvin Kamara 0712544752", -6500, 1),
+		tx("2026-04-21 18:28:22", "Customer Transfer to - Calvin Kamara 0712***752", -6500, 1),
+		tx("2026-04-21 18:08:45", "Customer Transfer to - CALVIN KAMARA 0141663900", -6500, 1),
+		tx("2026-04-21 18:02:45", "Customer Transfer to - Calvin Kamara 0712544752", -6500, 1),
+		tx("2026-04-21 18:08:45", "Merchant Payment to 7408526 - Faith Njoki Bachia", -14400, 1),
+	}
+	top := TopCounterparties(txs, 8)
+	if len(top) != 2 {
+		t.Fatalf("want 2 counterparties, got %+v", top)
+	}
+	if top[0].Name != "Calvin Kamara 0712544752" || top[0].Count != 4 {
+		t.Errorf("merged entry wrong: %+v", top[0])
 	}
 }
