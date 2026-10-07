@@ -31,8 +31,6 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
       })),
     [data],
   );
-  console.log("[BalanceChart] points:", points.length);
-
   return (
     <Card>
       <CardHeader>

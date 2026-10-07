@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -41,13 +40,7 @@ export function CashflowChart({
   granularity: Granularity;
   onGranularityChange: (g: Granularity) => void;
 }) {
-  const data = buckets.map((b) => ({
-    ...b,
-    label: formatBucketLabel(b.label),
-    in: b.in / 100,
-    out: b.out / 100,
-  }));
-  console.log("[CashflowChart] points:", data.length);
+
   const chartData = useMemo(
     () =>
       buckets.map((b) => ({

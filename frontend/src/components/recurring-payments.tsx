@@ -208,9 +208,7 @@ export function RecurringPayments({
               <span>Last paid</span>
             </div>
 
-            {sorted.map((payment) => (
-              <PaymentItem key={payment.counterparty} payment={payment} />
-            ))}
+            <PaymentItem key={current.counterparty} payment={current} />
           </div>
         )}
       </CardContent>

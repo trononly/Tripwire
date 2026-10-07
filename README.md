@@ -57,3 +57,64 @@ Take a moment to familiarize yourself with your project structure:
 4. When ready, build your application with `wails3 build`.
 
 Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+
+# Android debug workflow (SMS import)
+
+The SMS import feature only exists on Android (it reads the phone's M-Pesa
+inbox through an injected bridge), so its whole dev loop lives on a device.
+
+## Build the debug APK
+
+Requires the Android SDK (ANDROID_HOME / ANDROID_SDK_ROOT) and a connected
+or downloadable platform + build-tools; the first run can take a while.
+
+    wails3 task android:package
+
+- Production (signed release, arm64) APK is the default target.
+- For a faster debug build: `wails3 task android:build` (no APK assembly).
+- Fat APK for emulator + device: `wails3 task android:package:fat`.
+- Output lands under `build/android/app/build/outputs/apk/…` (signed release
+  APK in ...`release`, e.g. `app-release-signed.apk`).
+- If only `pnpm` exists but the task wants another package manager, the
+  root `Taskfile.yml` already defaults `PACKAGE_MANAGER` to pnpm — always
+  build via the root task (`android:package`), not the inner Taskfile.
+
+## Install on a device
+
+Enable Developer options + USB debugging, then either:
+
+    adb install -r build/android/app/build/outputs/apk/release/app-release-signed.apk
+
+or copy the APK onto the phone and open it.
+
+## Using the SMS audit
+
+1. Open the app → in **SMS mode** the header shows **Import SMS**, or go
+   to **Settings → SMS import details** (only visible on Android, where
+   the bridge is present).
+2. Grant READ_SMS when prompted ("Allow SMS access and import").
+3. The dialog parses every M-Pesa message in the inbox and shows the audit:
+   parsed/skipped counts, per-kind filters (unsupported / malformed /
+   invalid / non-transactional), free-text filter, and a detail view per
+   message (raw SMS next to everything the parser produced).
+4. **Copy audit report** puts a plain-text report of all skipped messages
+   (with raw bodies and reasons) plus capped parsed messages on the
+   clipboard — paste it back to the agent to extend parser coverage.
+5. After closing the dialog, the last audit stays available on the **SMS**
+   page (session-only). Importing saves automatically: the batch is
+   written into the same store as PDF statements and the app switches
+   into SMS mode, so the Dashboard shows the SMS dataset right away.
+   Switch between Statements and SMS mode in Settings.
+
+## Useful commands
+
+    go test ./internal/sms/          # parser fixtures + classification tests
+    wails3 task android:package      # rebuild after any Go or frontend change
+    adb logcat --pid=$(adb shell pidof com.wails.app)   # runtime logs
+
+# Notes from creator
+
+- Onboarding should have the user setup their own icons for categories. For every section have an icon showing how we categorize them
+- TODO: Streamline customization, inspiration: https://www.youtube.com/watch?v=MccJdr61xnc - Geoffrey Litt
+- The app should have a "what's new" modal on first launch after an update. Can be disabled in the settings
+- Make animations disable them in the settings with a "reduce motion" option

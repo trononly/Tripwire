@@ -6,13 +6,7 @@ import {
   useTransactionGroups,
 } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -152,7 +146,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             if (v === "all") setSearchParams({}, { replace: true });
           }}
         >
-          <SelectTrigger className="sm:w-44">
+          <SelectTrigger className="w-full sm:w-44">
             <SelectValue placeholder="Filter by category" />
           </SelectTrigger>
           <SelectContent>
@@ -168,7 +162,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
           value={directionFilter}
           onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}
         >
-          <SelectTrigger className="sm:w-32">
+          <SelectTrigger className="w-full sm:w-32">
             <SelectValue placeholder="Direction" />
           </SelectTrigger>
           <SelectContent>
