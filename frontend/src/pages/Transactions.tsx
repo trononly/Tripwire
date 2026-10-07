@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ArrowDown, Loader2, X } from "lucide-react";
 import {
   TransactionList,
   useTransactionGroups,
@@ -110,17 +111,40 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
     (directionFilter !== "all" ? 1 : 0) +
     (fromDate ? 1 : 0) +
     (toDate ? 1 : 0);
+  const shownCount = useMemo(
+    () => filteredGroups.reduce((n, g) => n + g.txs.length, 0),
+    [filteredGroups],
+  );
+  const totalCount = useMemo(
+    () => groups.reduce((n, g) => n + g.txs.length, 0),
+    [groups],
+  );
+  const isFiltered = globalFilter.trim() !== "" || activeFilters > 0;
 
   return (
     <div className="space-y-4">
-      {/* toolbar: search + filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search transactions…"
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="sm:max-w-xs"
-        />
+      {/* toolbar: search + filters. Two equal columns on phones so every
+          control lines up; natural row on wider screens. */}
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div className="relative col-span-2 sm:col-span-1 sm:w-64">
+          <Input
+            placeholder="Search transactions…"
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="pr-9"
+          />
+          {globalFilter && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Clear search"
+              onClick={() => setGlobalFilter("")}
+              className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
+            >
+              <X className="size-4" />
+            </Button>
+          )}
+        </div>
         <Select
           value={categoryFilter}
           onValueChange={(v) => {
@@ -153,20 +177,27 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             <SelectItem value="out">Money out</SelectItem>
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-38"
-          />
-          <span>to</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-38]"
-          />
+        <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-1 sm:flex sm:items-center sm:gap-x-3">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            From
+            <Input
+              type="date"
+              aria-label="From date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="min-w-0 flex-1"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            To
+            <Input
+              type="date"
+              aria-label="To date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="min-w-0 flex-1"
+            />
+          </label>
         </div>
         {activeFilters > 0 && (
           <Button
@@ -184,6 +215,11 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
           </Button>
         )}
       </div>
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {isFiltered
+          ? `Showing ${shownCount.toLocaleString()} of ${totalCount.toLocaleString()} transactions`
+          : `${totalCount.toLocaleString()} transactions`}
+      </p>
 
       <TransactionList groups={filteredGroups} />
     </div>
@@ -192,36 +228,84 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
 
 export default function Transactions({
   transactions,
+  onRefresh,
 }: {
   transactions: parser.Transaction[];
+  /** Pull-to-refresh action: drains new arrivals and resolves when done. */
+  onRefresh: () => Promise<unknown>;
 }) {
+  // Pull-to-refresh: dragging down from the very top reveals an arrow that
+  // rotates with pull distance; releasing past threshold merges arrivals.
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef<number | null>(null);
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
-        <p className="text-muted-foreground">
-          Browse and search your M-Pesa transactions.
-        </p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>All Transactions</CardTitle>
-          <CardDescription>
-            {transactions.length > 0
-              ? `${transactions.length} transactions from your latest statement.`
-              : "Your transactions will show up here once you load a statement."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {transactions.length > 0 ? (
-            <TxDataTable txs={transactions} />
+    <div
+      className="space-y-6"
+      onTouchStart={(e) => {
+        if (window.scrollY <= 0 && !refreshing) {
+          startY.current = e.touches[0].clientY;
+        }
+      }}
+      onTouchMove={(e) => {
+        if (startY.current === null || refreshing) return;
+        const d = e.touches[0].clientY - startY.current;
+        setPull(d > 0 ? Math.min(d * 0.5, 96) : 0);
+      }}
+      onTouchEnd={() => {
+        startY.current = null;
+        if (pull >= 64 && !refreshing) {
+          setRefreshing(true);
+          const started = Date.now();
+          onRefresh().finally(() => {
+            const wait = Math.max(0, 700 - (Date.now() - started));
+            window.setTimeout(() => {
+              setRefreshing(false);
+              setPull(0);
+            }, wait);
+          });
+        } else {
+          setPull(0);
+        }
+      }}
+    >
+      {(pull > 0 || refreshing) && (
+        <div
+          className="flex items-start justify-center overflow-hidden"
+          style={{ height: refreshing ? 44 : pull }}
+          aria-hidden="true"
+        >
+          {refreshing ? (
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Nothing to display yet. Use “Import statement” to load one.
-            </p>
+            <ArrowDown
+              className="size-5 text-muted-foreground transition-transform"
+              style={{ transform: `rotate(${Math.min(pull / 64, 1) * 180}deg)` }}
+            />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
+        {transactions.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Normalized financial transactions from PDF and SMS imports.
+          </p>
+        )}
+      </div>
+      {transactions.length > 0 ? (
+        <TxDataTable txs={transactions} />
+      ) : (
+        <Card className="flex min-h-64 items-center justify-center border-dashed">
+          <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
+            <p className="text-lg font-medium">No transactions yet</p>
+            <p className="text-sm text-muted-foreground">
+              Import a PDF statement or, on Android, M-Pesa SMS messages to see
+              normalized transactions here.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -201,9 +201,9 @@ function TxRow({
       </button>
 
       {expanded && (
-        <div className="space-y-1 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px]">
+        <div className="space-y-1 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px] select-text">
           <DetailRow label="Description" value={tx.description} wrap />
-          <DetailRow label="Reference" value={tx.id} mono />
+          <DetailRow label="Reference" value={tx.id} mono wrap />
           <DetailRow label="Balance after" value={formatMoney(tx.balance)} />
           <DetailRow label="Timestamp" value={tx.date} />
           {tx.status && tx.status.toLowerCase() !== "completed" && (
