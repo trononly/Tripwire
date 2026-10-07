@@ -74,7 +74,7 @@ export function TotalsCards({ totals }: { totals: analysis.Totals | null }) {
       />
       <KpiCard
         label="Total Out"
-        value={formatMoney(-totals.totalOut)}
+        value={formatMoney(totals.totalOut)}
         tone="out"
         hint="Spending & transfers"
       />

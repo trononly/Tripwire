@@ -47,3 +47,38 @@ func isMaskedNumber(s string) bool {
 	}
 	return strings.Contains(s, "*") && len(s) >= 8
 }
+
+// GroupKey normalizes a display name for aggregation so one real-world
+// counterparty is not fragmented across bars by casing or phone-number
+// formatting: "Calvin Kamara 0712544752", "Calvin Kamara 0712***752"
+// and "CALVIN KAMARA 0141663900" all key identically. Trailing number
+// tokens are dropped only when other name words remain, so a bare number
+// never collapses to an empty key. Different names never merge.
+func GroupKey(name string) string {
+	fields := strings.Fields(name)
+	for len(fields) > 1 && isPhoneToken(fields[len(fields)-1]) {
+		fields = fields[:len(fields)-1]
+	}
+	return strings.ToUpper(strings.Join(fields, " "))
+}
+
+// isPhoneToken reports whether s looks like a trailing phone number,
+// masked ("0712***752") or not ("0712544752"). Short numeric tokens
+// ("114") are account references, not phone numbers, and are kept.
+func isPhoneToken(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	digits := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+			digits++
+		case c == '*':
+		default:
+			return false
+		}
+	}
+	return digits > 0
+}
