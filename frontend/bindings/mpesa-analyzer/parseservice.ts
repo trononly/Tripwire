@@ -81,10 +81,31 @@ export function PickFile(): $CancellablePromise<string> {
 }
 
 /**
+ * RefreshSmsImport parses an inbox snapshot and merges it into the latest
+ * SMS record — creating one when there is none — keyed by the parser's
+ * M-Pesa receipt number. Re-running it over an unchanged inbox adds
+ * nothing and writes nothing, so the launch-time auto-import is safe to
+ * run on every start. Older SMS records are left alone as snapshots.
+ */
+export function RefreshSmsImport(messages: $models.SmsMessage[] | null): $CancellablePromise<$models.SmsRefreshResult | null> {
+    return $Call.ByID(888135, messages);
+}
+
+/**
  * RenameStatement sets a new name for a stored statement.
  */
 export function RenameStatement(id: string, name: string): $CancellablePromise<void> {
     return $Call.ByID(2724985589, id, name);
+}
+
+/**
+ * SaveSmsImport persists a confirmed SMS import as a record in the same
+ * store as PDF statements, using the same normalized parser.Transaction
+ * model, and activates it. The preview batch stays exactly what
+ * ImportSms returned; nothing here re-parses or re-classifies.
+ */
+export function SaveSmsImport(txs: parser$0.Transaction[] | null): $CancellablePromise<store$0.StatementRecord | null> {
+    return $Call.ByID(102538089, txs);
 }
 
 /**

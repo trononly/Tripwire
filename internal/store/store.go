@@ -157,6 +157,26 @@ func (s *Store) Add(rec StatementRecord) error {
 	return s.save()
 }
 
+// Put replaces the record with the same ID (or appends it when absent)
+// and writes the file immediately. Used by the SMS refresh, which merges
+// each inbox snapshot into the latest SMS record instead of piling up one
+// record per import.
+func (s *Store) Put(rec StatementRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.load(); err != nil {
+		return err
+	}
+	for i := range s.data.Statements {
+		if s.data.Statements[i].ID == rec.ID {
+			s.data.Statements[i] = rec
+			return s.save()
+		}
+	}
+	s.data.Statements = append(s.data.Statements, rec)
+	return s.save()
+}
+
 // Delete removes a record and its transactions, writing the file
 // immediately.
 func (s *Store) Delete(id string) error {

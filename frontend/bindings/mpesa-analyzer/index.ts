@@ -11,5 +11,6 @@ export type {
     SmsImportResult,
     SmsMessage,
     SmsParseResult,
+    SmsRefreshResult,
     TransactionView
 } from "./models.js";

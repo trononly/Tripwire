@@ -11,10 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ImportSms } from "../../bindings/mpesa-analyzer/parseservice";
-import type { SmsImportResult } from "../../bindings/mpesa-analyzer/models";
-import { SmsImportInspector } from "@/components/sms-import-inspector";
+import { RefreshSmsImport } from "../../bindings/mpesa-analyzer/parseservice";
+import type { SmsRefreshResult } from "../../bindings/mpesa-analyzer/models";
 import {
+  hasSmsPermission,
   requestSmsImport,
   type SmsBridgeResult,
 } from "@/lib/sms-bridge";
@@ -25,25 +25,27 @@ type Phase =
   | "waiting" // permission prompt or inbox read or Go import in flight
   | "denied" // READ_SMS refused, can be asked again
   | "blocked" // permanently denied; only system settings can fix it
-  | "results" // preview of what the parser produced
   | "error"; // bridge or import failure
 
 /**
  * SMS import, Android only. The bridge (Phase 3) delivers raw messages as
- * a "common:sms" event; the Go service (Phase 4) parses them. Nothing is
- * persisted — the result is explicitly a preview.
+ * a "common:sms" event; the Go service parses them and merges them into the
+ * SMS record, so re-importing an unchanged inbox adds nothing. Deliberately
+ * minimal: permission prompt, then done — the parsed/skipped breakdown and
+ * the audit live on the SMS page, not here.
  */
 export function ImportSmsDialog({
   open,
   onOpenChange,
+  onResult,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Fires once per successful import; App applies the refreshed record. */
+  onResult?: (refresh: SmsRefreshResult, bridgeCount: number) => void;
 }) {
   const [phase, setPhase] = useState<Phase>("ready");
   const [deniedNote, setDeniedNote] = useState<string | null>(null);
-  const [bridgeCount, setBridgeCount] = useState<number | null>(null);
-  const [result, setResult] = useState<SmsImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // The "common:sms" subscription is cancelled on unmount and on close, so
@@ -51,6 +53,8 @@ export function ImportSmsDialog({
   // stack duplicate listeners (each start replaces the previous one).
   const cancelEventRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -68,13 +72,11 @@ export function ImportSmsDialog({
     cancelEventRef.current = null;
     setPhase("ready");
     setDeniedNote(null);
-    setBridgeCount(null);
-    setResult(null);
     setErrorMessage(null);
   }, [open]);
 
   function startImport() {
-    if (phase === "waiting") return; // no concurrent imports
+    if (phaseRef.current === "waiting") return; // no concurrent imports
     setDeniedNote(null);
     setErrorMessage(null);
     setPhase("waiting");
@@ -85,6 +87,15 @@ export function ImportSmsDialog({
     });
     requestSmsImport();
   }
+
+  // Permission already granted (the common case after the first import,
+  // and always after a launch-time auto-import): skip the explainer and
+  // refetch straight away.
+  useEffect(() => {
+    if (!open || phaseRef.current !== "ready" || !hasSmsPermission()) return;
+    startImport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open ]);
 
   function handleBridgeResult(data: SmsBridgeResult) {
     cancelEventRef.current = null;
@@ -110,11 +121,16 @@ export function ImportSmsDialog({
       body: m.body,
       tzOffsetMinutes: new Date().getTimezoneOffset(),
     }));
-    ImportSms(messages)
+    RefreshSmsImport(messages)
       .then((res) => {
         if (!mountedRef.current) return;
-        setResult(res);
-        setPhase("results");
+        if (!res) {
+          setErrorMessage("Empty response from the importer.");
+          setPhase("error");
+          return;
+        }
+        onResult?.(res, data.count ?? 0);
+        onOpenChange(false);
       })
       .catch((e) => {
         if (!mountedRef.current) return;
@@ -127,11 +143,11 @@ export function ImportSmsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] max-sm:pl-[calc(1rem+env(safe-area-inset-left))] max-sm:pr-[calc(1rem+env(safe-area-inset-right))]">
+      <DialogContent className="max-w-lg max-sm:w-[calc(100vw-2rem)]">
         <DialogHeader>
           <DialogTitle>Import SMS</DialogTitle>
           <DialogDescription>
-            Read M-Pesa messages from this phone's inbox and parse them into
+            Read M-Pesa messages from this phone's inbox and import them as
             transactions. Everything stays on this device.
           </DialogDescription>
         </DialogHeader>
@@ -184,28 +200,6 @@ export function ImportSmsDialog({
             <DialogFooter>
               <Button variant="outline" onClick={() => setPhase("ready")}>
                 Back
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
-
-        {phase === "results" && result && (
-          <div className="space-y-4">
-            {bridgeCount === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">
-                {bridgeCount === 0
-                  ? "No M-Pesa messages found in the inbox."
-                  : "Messages were read, but none could be parsed into transactions."}
-              </p>
-            ) : (
-              <SmsImportInspector result={result} bridgeCount={bridgeCount} />
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Done
-              </Button>
-              <Button variant="secondary" onClick={startImport} disabled={busy}>
-                Read again
               </Button>
             </DialogFooter>
           </div>
