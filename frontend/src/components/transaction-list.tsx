@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatMoney } from "@/lib/format";
+import { TransactionReceiptDialog } from "@/components/transaction-receipt-dialog";
 import { TransactionGroups } from "../../bindings/mpesa-analyzer/parseservice";
 import type { DayGroup } from "../../bindings/mpesa-analyzer/models";
 
@@ -108,10 +109,12 @@ function TxRow({
   tx,
   expanded,
   onToggle,
+  onVeil,
 }: {
   tx: TransactionView;
   expanded: boolean;
   onToggle: () => void;
+  onVeil: () => void;
 }) {
   // Who: the counterparty extracted in Go, falling back to the type label
   // when the statement names none ("Airtime Purchase", "Fuliza M-Pesa").
@@ -120,13 +123,44 @@ function TxRow({
   const { icon: Icon, className: tint, label: typeLabel } = typeStyle(tx.type);
   const title = tx.counterparty || typeLabel;
   const moneyIn = tx.amount >= 0;
+  // Long-press (touch) or right-click (mouse) veils the ledger into the
+  // receipt dialog. The click after a touch long-press is swallowed.
+  const pressTimer = useRef<number | null>(null);
+  const veiledPress = useRef(false);
+  const clearPress = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
   return (
     <div>
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          if (veiledPress.current) {
+            veiledPress.current = false;
+            return;
+          }
+          onToggle();
+        }}
+        onTouchStart={() => {
+          veiledPress.current = false;
+          clearPress();
+          pressTimer.current = window.setTimeout(() => {
+            veiledPress.current = true;
+            onVeil();
+          }, 550);
+        }}
+        onTouchMove={clearPress}
+        onTouchEnd={clearPress}
+        onTouchCancel={clearPress}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onVeil();
+        }}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+        className="flex w-full touch-manipulation items-center gap-3 px-3 py-2.5 text-left select-none transition-colors [-webkit-touch-callout:none] hover:bg-muted/50"
       >
         {/* type badge */}
         <span
@@ -252,6 +286,8 @@ export function TransactionList({
   showPagination = true,
 }: TransactionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Long-press inspection veil (receipt dialog over a censored ledger).
+  const [veiled, setVeiled] = useState<TransactionView | null>(null);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
   const listTopRef = useRef<HTMLDivElement | null>(null);
@@ -302,6 +338,7 @@ export function TransactionList({
                     onToggle={() =>
                       setExpandedId((e) => (e === t.id ? null : t.id))
                     }
+                    onVeil={() => setVeiled(t)}
                   />
                 ))}
               </div>
@@ -365,6 +402,14 @@ export function TransactionList({
           </div>
         </div>
       )}
+
+      <TransactionReceiptDialog
+        tx={veiled}
+        onClose={() => setVeiled(null)}
+        onViewAll={() => setVeiled(null)}
+        title="Transaction details"
+        showViewAll={false}
+      />
     </div>
   );
 }
