@@ -22,8 +22,10 @@ const chartConfig = {
 
 export function CounterpartyChart({
   counterparties,
+  onSelectCounterparty,
 }: {
   counterparties: analysis.Counterparty[];
+  onSelectCounterparty?: (name: string) => void;
 }) {
   // Backend is sorted by count descending; recharts renders vertical-layout
   // bars bottom-up, so feed the data as-is to get the biggest bar on top.
@@ -112,6 +114,16 @@ export function CounterpartyChart({
               radius={[0, 4, 4, 0]}
               isAnimationActive={false}
               barSize={16}
+              className={
+                onSelectCounterparty
+                  ? "cursor-pointer outline-hidden"
+                  : "outline-hidden"
+              }
+              onClick={(_: unknown, index: number) => {
+                const entry = data[index];
+                if (entry && onSelectCounterparty)
+                  onSelectCounterparty(entry.name);
+              }}
             />
           </BarChart>
         </ChartContainer>
