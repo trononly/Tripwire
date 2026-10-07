@@ -18,6 +18,7 @@ import android.os.PowerManager;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
