@@ -85,6 +85,11 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Transparent WebView over the dark window background: no white
+        // flash between launch and first paint (the HTML carries the same
+        // background inline as a second net).
+        findViewById(R.id.webview).setBackgroundColor(Color.TRANSPARENT);
+
         // Initialize the native Go library
         bridge = new WailsBridge(this);
         bridge.initialize();
