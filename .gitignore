@@ -14,6 +14,7 @@ build/android/gen/
 # Android build artifacts (regenerated every build)
 build/android/.gradle/
 build/android/app/build/
+build/android/build/
 build/android/app/src/main/jniLibs/
 *.syso
 
