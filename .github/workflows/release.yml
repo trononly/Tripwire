@@ -2,8 +2,7 @@
 #
 # Runs on:
 #   * a push of a tag matching `v*` (e.g. v0.1.0)
-#   * manual `workflow_dispatch` (optionally with an explicit tag and/or the
-#     Android build)
+#   * manual `workflow_dispatch` (optionally with an explicit tag)
 #
 # Artifacts produced (attached to a single GitHub Release):
 #   * Windows: `bin/hesabu.exe` plus the NSIS installer (`bin/*-installer.exe`)
@@ -11,8 +10,10 @@
 #              yields) plus the raw `hesabu` binary
 #   * macOS:   universal `.app` bundle zipped as `hesabu-macos-universal.zip`
 #              and, when DMG creation succeeds, a `.dmg`
-#   * Android: release `.apk` and `.aab` (optional - only when a keystore
-#              secret is configured or the `build_android` input is set)
+#   * Android (required - this is the main userbase): release `.apk` and
+#              `.aab`. Signed with your upload key when the ANDROID_* secrets
+#              are configured, otherwise debug-signed (installable for
+#              testing, not for Play Store).
 #
 # macOS builds are ad-hoc signed (no secrets required). Windows/Linux/macOS use
 # the release runner's native toolchains; nothing is cross-compiled.
@@ -29,11 +30,6 @@ on:
         description: 'Tag to create/update the release for (e.g. v0.1.0). Leave blank to build without publishing.'
         required: false
         default: ''
-      build_android:
-        description: 'Also build Android APK/AAB (requires the ANDROID_* secrets for signing).'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -45,23 +41,6 @@ env:
   WAILS3_VERSION: latest
 
 jobs:
-  detect:
-    name: Detect optional Android build
-    runs-on: ubuntu-latest
-    outputs:
-      android: ${{ steps.detect.outputs.android }}
-    steps:
-      - name: Detect keystore secret
-        id: detect
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "${ANDROID_KEYSTORE_BASE64}" ]; then
-            echo "android=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "android=false" >> "$GITHUB_OUTPUT"
-          fi
-
   build-desktop:
     name: Package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -226,9 +205,12 @@ jobs:
   build-android:
     name: Package (android)
     runs-on: ubuntu-latest
-    needs: detect
-    if: ${{ needs.detect.outputs.android == 'true' || inputs.build_android == true }}
     timeout-minutes: 60
+    # Android is the main userbase: this job always runs. Signing uses the
+    # upload key when the ANDROID_* secrets are configured, otherwise the
+    # debug keystore (installable for testing, not for Play Store).
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -297,7 +279,7 @@ jobs:
       # Only runs when the keystore secret exists; otherwise Gradle falls back
       # to the debug keystore (installable for testing, not for Play Store).
       - name: Configure release signing keystore
-        if: needs.detect.outputs.android == 'true'
+        if: env.HAS_KEYSTORE == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -321,8 +303,20 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p release-assets
-          if [ -f bin/hesabu.apk ]; then cp bin/hesabu.apk release-assets/; fi
-          if [ -f bin/hesabu.aab ]; then cp bin/hesabu.aab release-assets/; fi
+          # Name assets with the tag version when there is one, and mark
+          # debug-signed builds so a testing APK is never mistaken for the
+          # Play Store artifact.
+          TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+ ]]; then
+            SUFFIX="-${TAG#v}"
+          else
+            SUFFIX=""
+          fi
+          if [ "${HAS_KEYSTORE}" != "true" ]; then
+            SUFFIX="${SUFFIX}-debug-signed"
+          fi
+          if [ -f bin/hesabu.apk ]; then cp bin/hesabu.apk "release-assets/hesabu${SUFFIX}.apk"; fi
+          if [ -f bin/hesabu.aab ]; then cp bin/hesabu.aab "release-assets/hesabu${SUFFIX}.aab"; fi
           ls -la release-assets
 
       - name: Upload packaged artifacts
@@ -337,10 +331,9 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: [build-desktop, build-android]
-    # Publish once the desktop builds succeeded. Android is optional, so a
-    # skipped or failed Android job must not block the release. Requires a tag
-    # (from the push event or the manual `tag_name` input).
-    if: ${{ always() && needs.build-desktop.result == 'success' && (github.ref_type == 'tag' || inputs.tag_name != '') }}
+    # Android is required (main userbase): both jobs must succeed. Requires
+    # a tag (from the push event or the manual `tag_name` input).
+    if: ${{ always() && needs.build-desktop.result == 'success' && needs.build-android.result == 'success' && (github.ref_type == 'tag' || inputs.tag_name != '') }}
     steps:
       - name: Download all packaged artifacts
         uses: actions/download-artifact@v4
