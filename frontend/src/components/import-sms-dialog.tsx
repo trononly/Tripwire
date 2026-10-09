@@ -14,8 +14,8 @@ import { Button } from "@/components/ui/button";
 import { RefreshSmsImport } from "../../bindings/mpesa-analyzer/parseservice";
 import type { SmsRefreshResult } from "../../bindings/mpesa-analyzer/models";
 import {
-  hasSmsPermission,
   requestSmsImport,
+  smsPermissions,
   type SmsBridgeResult,
 } from "@/lib/sms-bridge";
 
@@ -92,7 +92,7 @@ export function ImportSmsDialog({
   // and always after a launch-time auto-import): skip the explainer and
   // refetch straight away.
   useEffect(() => {
-    if (!open || phaseRef.current !== "ready" || !hasSmsPermission()) return;
+    if (!open || phaseRef.current !== "ready" || !smsPermissions().read) return;
     startImport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open ]);

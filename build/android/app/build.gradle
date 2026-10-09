@@ -14,8 +14,11 @@ android {
         applicationId "com.hesabu.app"
         minSdk 21
         targetSdk 35
-        versionCode 1
-        versionName "1.0"
+        // Release CI overrides these from the git tag
+        // (ANDROID_VERSION_CODE / ANDROID_VERSION_NAME); local builds keep
+        // the defaults below.
+        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
 
         // Configure supported ABIs
         ndk {
