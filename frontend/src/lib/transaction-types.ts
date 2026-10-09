@@ -16,7 +16,6 @@ import {
   Send,
   ShoppingBag,
   Smartphone,
-  User,
   Wallet,
   Wifi,
   type LucideIcon,

@@ -22,7 +22,7 @@ vars:
   EMULATOR:
     sh: 'command -v emulator || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/emulator/emulator"'
   # avdmanager lives under cmdline-tools/<version>/bin; used to auto-create an
-  # AVD when none exists (mirrors the iOS `ensure-simulator` auto-create flow).
+  # AVD when none exists.
   AVDMANAGER:
     sh: 'command -v avdmanager || ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"/cmdline-tools/*/bin/avdmanager 2>/dev/null | tail -1 || true'
 

@@ -21,7 +21,6 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { formatMoney } from "@/lib/format";
 import { ThemeProvider } from "@/components/theme-provider";
 
 import type * as parser from "../bindings/mpesa-analyzer/internal/parser/models";
@@ -35,15 +34,15 @@ import {
   RefreshSmsImport,
 } from "../bindings/mpesa-analyzer/parseservice";
 import {
-  hasSmsPermission,
-  hasSmsReceivePermission,
   drainPendingSms,
   isAndroidBridge,
   requestSmsImport,
+  smsPermissions,
   startUssdSession,
   type SmsBridgeMessage,
   type SmsBridgeResult,
 } from "@/lib/sms-bridge";
+import { useSmsPermissions } from "@/hooks/use-sms-permissions";
 import { MobileNav } from "@/components/mobile-nav";
 import type {
   SmsImportResult,
@@ -104,6 +103,9 @@ function App() {
   // mount so desktop rendering never touches window.wails.
   const [smsOpen, setSmsOpen] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  // Live grant state for READ_SMS / RECEIVE_SMS / CALL_PHONE. Refreshes on
+  // foreground; every SMS path consults it before doing work.
+  const { permissions: smsPerms, refresh: refreshSmsPerms } = useSmsPermissions();
   // Last SMS audit of this session, kept here so the SMS page survives
   // closing the import dialog and navigating around. Not persisted.
   const [smsResult, setSmsResult] = useState<SmsImportResult | null>(null);
@@ -178,9 +180,12 @@ function App() {
     });
   }
   // Explicit refresh (pull-to-refresh): merge whatever the catcher has
-  // queued, bypassing the silent throttle. Resolves when settled.
+  // queued, bypassing the silent throttle. Draining the queue needs no
+  // permission, so RECEIVE_SMS alone is enough. Resolves when settled.
   function refreshSmsNow(): Promise<boolean> {
-    if (!isAndroidBridge() || !hasSmsPermission()) return Promise.resolve(false);
+    if (!isAndroidBridge()) return Promise.resolve(false);
+    const perms = smsPermissions();
+    if (!perms.read && !perms.receive) return Promise.resolve(false);
     return mergeSmsBatch(drainPendingSms(), 0, true);
   }
 
@@ -189,6 +194,7 @@ function App() {
   // indirection keeps the global stable while always calling fresh code.
   const foregroundHandler = useRef(() => {});
   foregroundHandler.current = () => {
+    refreshSmsPerms();
     void refreshSmsNow();
   };
   useEffect(() => {
@@ -198,7 +204,11 @@ function App() {
     };
   }, []);
   function refreshSmsSilently(announce: boolean) {
-    if (!isAndroidBridge() || !hasSmsPermission()) return;
+    if (!isAndroidBridge()) return;
+    // Either permission can yield data: RECEIVE_SMS feeds the catcher queue,
+    // READ_SMS covers the full-inbox fallback below.
+    const perms = smsPermissions();
+    if (!perms.read && !perms.receive) return;
     const now = Date.now();
     // Mount and an immediate resume event would otherwise double-fire.
     if (now - lastSilentRefresh.current < 15000) return;
@@ -208,6 +218,8 @@ function App() {
       void mergeSmsBatch(queued, queued.length, announce);
       return;
     }
+    // Everything below re-reads the whole inbox, which needs READ_SMS.
+    if (!perms.read) return;
     let seeded = false;
     let lastFullRead = 0;
     try {
@@ -219,7 +231,7 @@ function App() {
     // Self-heal: broadcasts missed while the catcher was off (stale
     // install, revoked permission) surface on the next full read, at most
     // once a day.
-    if (seeded && hasSmsReceivePermission() && now - lastFullRead < 86400000) {
+    if (seeded && perms.receive && now - lastFullRead < 86400000) {
       return;
     }
     try {
@@ -261,7 +273,9 @@ function App() {
   // merges only when something actually queued.
   useEffect(() => {
     const tick = () => {
-      if (!isAndroidBridge() || !hasSmsPermission()) return;
+      if (!isAndroidBridge()) return;
+      const perms = smsPermissions();
+      if (!perms.read && !perms.receive) return;
       const queued = drainPendingSms();
       if (queued.length === 0) return;
       void mergeSmsBatch(queued, queued.length, true);
@@ -373,6 +387,8 @@ function App() {
     refresh: SmsRefreshResult,
     count: number,
   ) {
+    // Grant state may have just changed behind the permission dialog.
+    refreshSmsPerms();
     if (!refresh.record) {
       setSmsResult(refresh.result);
       setSmsBridgeCount(count);
@@ -599,6 +615,7 @@ function App() {
                       mode={mode}
                       onModeChange={setMode}
                       isAndroid={isAndroid}
+                      smsPermissions={smsPerms}
                       statements={statements}
                       statementTxCount={statementTxs.length}
                       smsTxCount={smsTxs.length}

@@ -34,7 +34,6 @@ declare global {
 	 * this WebView: cold start and pull-to-refresh both bypass it, which
 	 * is exactly why only those two paths ever delivered.
 	 */
-	// eslint-disable-next-line no-var
 	var __mpesaOnForeground: (() => void) | undefined;
 }
 
@@ -57,6 +56,35 @@ export function isAndroidBridge(): boolean {
 	);
 }
 
+/**
+ * The three runtime permissions the M-Pesa features rely on, each with a
+ * distinct job — the whole point of keeping them apart:
+ *
+ *   read    READ_SMS    read the historical inbox (manual/full import)
+ *   receive RECEIVE_SMS the always-on catcher can queue new confirmations
+ *   call    CALL_PHONE  the app can place the *334# USSD call
+ *
+ * A device can hold any combination. Treating "SMS permission" as one flag
+ * is what let the catcher queue go undrained while READ_SMS was missing.
+ */
+export interface SmsPermissions {
+	read: boolean;
+	receive: boolean;
+	call: boolean;
+}
+
+const NO_PERMISSIONS: SmsPermissions = { read: false, receive: false, call: false };
+
+/** Current grant state for every SMS-related permission. All false off-Android. */
+export function smsPermissions(): SmsPermissions {
+	if (!isAndroidBridge()) return NO_PERMISSIONS;
+	return {
+		read: window.wails?.hasSmsPermission?.() ?? false,
+		receive: window.wails?.hasSmsReceivePermission?.() ?? false,
+		call: window.wails?.hasCallPermission?.() ?? false,
+	};
+}
+
 /** Start a payment session: USSD call plus confirmation listening. */
 export function startUssdSession(code: string): void {
 	window.wails?.startUssdSession?.(code);
@@ -72,18 +100,6 @@ export function drainPendingSms(): SmsBridgeMessage[] {
 	} catch {
 		return [];
 	}
-}
-
-/** RECEIVE_SMS check without prompting. False when the bridge is missing. */
-export function hasSmsReceivePermission(): boolean {
-	return (
-		isAndroidBridge() && (window.wails?.hasSmsReceivePermission?.() ?? false)
-	);
-}
-
-/** Permission check without prompting. False when the bridge is missing. */
-export function hasSmsPermission(): boolean {
-	return isAndroidBridge() && (window.wails?.hasSmsPermission?.() ?? false);
 }
 
 /** Start a permission-gated inbox read; the result arrives as "common:sms". */

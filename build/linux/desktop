@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A mpesa-analyzer application
+Name=Hesabu
+Comment=Understand your mobile money
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/mpesa-analyzer.exe %u
+Exec=/usr/local/bin/hesabu %u
 Terminal=false
 Type=Application
-Icon=mpesa-analyzer.exe
+Icon=hesabu
 Categories=Utility;
-StartupWMClass=mpesa-analyzer.exe
+StartupWMClass=hesabu
 
  

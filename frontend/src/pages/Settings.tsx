@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useKonamiCode } from "@/hooks/use-konami-code";
-import { hasSmsPermission, isAndroidBridge } from "@/lib/sms-bridge";
+import { isAndroidBridge, type SmsPermissions } from "@/lib/sms-bridge";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import {
   Card,
@@ -93,6 +93,7 @@ export default function Settings({
   mode,
   onModeChange,
   isAndroid,
+  smsPermissions,
   statements,
   statementTxCount,
   smsTxCount,
@@ -101,6 +102,7 @@ export default function Settings({
   mode: "statements" | "sms";
   onModeChange: (mode: "statements" | "sms") => void;
   isAndroid: boolean;
+  smsPermissions: SmsPermissions;
   statements: store.StatementMeta[];
   statementTxCount: number;
   smsTxCount: number;
@@ -110,6 +112,9 @@ export default function Settings({
   const debug = useKonamiCode();
   const smsRecords = statements.filter((s) => s.source === "sms");
   const statementRecords = statements.filter((s) => s.source !== "sms");
+  const bridge = isAndroidBridge();
+  const grantLabel = (granted: boolean) =>
+    !bridge ? "n/a" : granted ? "granted" : "not granted";
   return (
     <div className="space-y-6">
       <div>
@@ -163,14 +168,16 @@ export default function Settings({
                 <dd>{isAndroid ? "Android" : "Desktop"}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-muted-foreground">SMS permission</dt>
-                <dd>
-                  {!isAndroidBridge()
-                    ? "n/a"
-                    : hasSmsPermission()
-                      ? "granted"
-                      : "not granted"}
-                </dd>
+                <dt className="text-muted-foreground">Read SMS</dt>
+                <dd>{grantLabel(smsPermissions.read)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Receive SMS</dt>
+                <dd>{grantLabel(smsPermissions.receive)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Call phone</dt>
+                <dd>{grantLabel(smsPermissions.call)}</dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">Data mode</dt>

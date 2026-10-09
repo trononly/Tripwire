@@ -257,7 +257,12 @@ func TestImportSmsResultRetention(t *testing.T) {
 
 func TestRefreshSmsImportMerges(t *testing.T) {
 	tz := -180
-	p := &ParseService{store: store.New(filepath.Join(t.TempDir(), "statements.json"))}
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
 	msg := func(id, fixture string, ms int64) SmsMessage {
 		return SmsMessage{ID: id, Address: "MPESA", DateMs: ms, Body: fixtureBody(t, fixture), TzOffsetMinutes: &tz}
 	}

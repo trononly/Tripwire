@@ -20,8 +20,7 @@ func requireTestPDF(t *testing.T) {
 	}
 }
 
-// withTimeout runs fn in a goroutine and fails the test if it hangs,
-// mirroring the wrong-password hang regression the dslipak path once had.
+// withTimeout runs fn in a goroutine and fails the test if it hangs.
 func withTimeout(t *testing.T, name string, fn func() error) error {
 	t.Helper()
 	done := make(chan error, 1)
@@ -32,19 +31,6 @@ func withTimeout(t *testing.T, name string, fn func() error) error {
 	case <-time.After(15 * time.Second):
 		t.Fatalf("HANG: %s did not return within 15s", name)
 		return nil
-	}
-}
-
-func TestReadPDFWrongPassword(t *testing.T) {
-	requireTestPDF(t)
-	err := withTimeout(t, "ReadPDF(wrong PIN)", func() error {
-		_, err := ReadPDF(testPDF, "0000")
-		return err
-	})
-	if err == nil {
-		t.Error("dslipak: expected error for wrong password, got nil")
-	} else {
-		t.Logf("dslipak wrong password -> %v", err)
 	}
 }
 
@@ -61,9 +47,9 @@ func TestReadPDFTXWrongPassword(t *testing.T) {
 	}
 }
 
-// TestGopdfBalanceChain validates the gopdf pipeline without needing the
-// regex parser as an oracle: in a statement, every balance equals the
-// previous balance plus the transaction amount.
+// TestGopdfBalanceChain validates the gopdf pipeline without an external
+// oracle: in a statement, every balance equals the previous balance plus the
+// transaction amount.
 func TestGopdfBalanceChain(t *testing.T) {
 	requireTestPDF(t)
 	var txs []parser.Transaction
@@ -82,8 +68,7 @@ func TestGopdfBalanceChain(t *testing.T) {
 	// balance plus the newer row's amount equals the newer row's balance.
 	// M-Pesa prints paired "Pay Bill Charge" fee rows with a balance from
 	// elsewhere in the chain, which trips this heuristic — that quirk is
-	// present in the source data (both pipelines produce identical rows),
-	// so log it rather than fail.
+	// present in the source data, so log it rather than fail.
 	breaks := 0
 	for i := 1; i < len(txs); i++ {
 		if txs[i].Balance+txs[i-1].Amount != txs[i-1].Balance {
@@ -96,53 +81,4 @@ func TestGopdfBalanceChain(t *testing.T) {
 		t.Errorf("too many balance chain breaks: %d of %d rows", breaks, len(txs))
 	}
 	t.Logf("%d transactions, %d balance chain breaks (M-Pesa fee-row quirk)", len(txs), breaks)
-}
-
-// TestComparePipelines runs both implementations and diffs the results.
-func TestComparePipelines(t *testing.T) {
-	requireTestPDF(t)
-
-	var oldTxs, newTxs []parser.Transaction
-	var oldErr, newErr error
-
-	if err := withTimeout(t, "dslipak pipeline", func() error {
-		text, err := ReadPDF(testPDF, testPIN)
-		if err != nil {
-			return err
-		}
-		oldTxs, oldErr = parser.ParseTX(text)
-		return oldErr
-	}); err != nil {
-		t.Fatalf("dslipak pipeline failed: %v", err)
-	}
-
-	if err := withTimeout(t, "gopdf pipeline", func() error {
-		newTxs, newErr = ReadPDFTX(testPDF, testPIN)
-		return newErr
-	}); err != nil {
-		t.Fatalf("gopdf pipeline failed: %v", err)
-	}
-
-	t.Logf("dslipak+regex: %d transactions | gopdf tables: %d transactions", len(oldTxs), len(newTxs))
-
-	if len(oldTxs) != len(newTxs) {
-		t.Errorf("transaction count differs: dslipak=%d gopdf=%d", len(oldTxs), len(newTxs))
-	}
-
-	descDiffs := 0
-	n := min(len(oldTxs), len(newTxs))
-	for i := 0; i < n; i++ {
-		o, g := oldTxs[i], newTxs[i]
-		if o.ID != g.ID || o.Date != g.Date || o.Amount != g.Amount || o.Balance != g.Balance {
-			t.Errorf("row %d differs:\n  dslipak: %+v\n  gopdf:   %+v", i, o, g)
-			continue
-		}
-		if o.Description != g.Description {
-			descDiffs++
-			if descDiffs <= 5 {
-				t.Logf("desc diff row %d (%s):\n  dslipak: %q\n  gopdf:   %q", i, o.ID, o.Description, g.Description)
-			}
-		}
-	}
-	t.Logf("identical ID/date/amount/balance on %d rows; %d description diffs", n, descDiffs)
 }

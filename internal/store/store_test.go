@@ -1,6 +1,8 @@
 package store
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,8 +24,18 @@ func sampleRecord(id string) StatementRecord {
 	}
 }
 
+func newTestStore(t *testing.T) *Store {
+	t.Helper()
+	s, err := New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 func TestStoreRoundTrip(t *testing.T) {
-	s := New(filepath.Join(t.TempDir(), "statements.json"))
+	s := newTestStore(t)
 
 	if err := s.Add(sampleRecord("a")); err != nil {
 		t.Fatalf("Add: %v", err)
@@ -34,7 +46,25 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	// A fresh Store over the same file must see both records, newest
 	// import first (same ImportedAt, so reverse insertion order).
-	other := New(s.path)
+	path := filepath.Join(t.TempDir(), "statements.db")
+	first, err := New(path)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := first.Add(sampleRecord("a")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := first.Add(sampleRecord("b")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	first.Close()
+
+	other, err := New(path)
+	if err != nil {
+		t.Fatalf("New reopen: %v", err)
+	}
+	defer other.Close()
+
 	metas, err := other.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -56,7 +86,7 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestStoreMissingFileIsEmpty(t *testing.T) {
-	s := New(filepath.Join(t.TempDir(), "missing.json"))
+	s := newTestStore(t)
 	metas, err := s.List()
 	if err != nil {
 		t.Fatalf("List on missing file: %v", err)
@@ -67,7 +97,7 @@ func TestStoreMissingFileIsEmpty(t *testing.T) {
 }
 
 func TestStoreDeleteAndRename(t *testing.T) {
-	s := New(filepath.Join(t.TempDir(), "statements.json"))
+	s := newTestStore(t)
 	s.Add(sampleRecord("a"))
 	s.Add(sampleRecord("b"))
 
@@ -107,10 +137,9 @@ func TestDateRangeAndName(t *testing.T) {
 
 // TestStoreSourceDefaultsAndSms proves the two source kinds share one store:
 // legacy records with no Source list as statements, SMS records keep their
-// marker, and both persist through the same file.
+// marker, and both persist through the same database.
 func TestStoreSourceDefaultsAndSms(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "statements.json")
-	s := New(path)
+	s := newTestStore(t)
 
 	// Legacy shape: Source unset (records written by older builds).
 	legacy := sampleRecord("legacy")
@@ -138,14 +167,94 @@ func TestStoreSourceDefaultsAndSms(t *testing.T) {
 	if metas[1].ID != "legacy" || metas[1].Source != SourceStatement {
 		t.Fatalf("legacy meta = %+v, want source defaulted to statement", metas[1])
 	}
+}
 
-	// Round trip: a fresh Store must keep the explicit source.
-	other := New(path)
-	rec, err := other.Get("sms1")
-	if err != nil {
-		t.Fatalf("Get sms: %v", err)
+func TestAppendFresh(t *testing.T) {
+	s := newTestStore(t)
+	first := parser.Transaction{ID: "R1", Date: "2025-01-03 10:00:00", Amount: 100, Balance: 100}
+	rec := StatementRecord{
+		ID:         "sms",
+		Name:       NameOf(DateRangeOf([]parser.Transaction{first})),
+		Source:     SourceSms,
+		DateRange:  DateRangeOf([]parser.Transaction{first}),
+		TxCount:    1,
+		ImportedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+		Txs:        []parser.Transaction{first},
 	}
-	if rec.Source != SourceSms || rec.Name != "Sep 2026" {
-		t.Fatalf("round trip = %+v", rec)
+	if err := s.Add(rec); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Baseline: the stored record holds exactly the first transaction.
+	stored, err := s.Get("sms")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(stored.Txs) != 1 || stored.Txs[0].ID != "R1" {
+		t.Fatalf("stored Txs = %+v, want [R1]", stored.Txs)
+	}
+
+	fresh := parser.Transaction{ID: "R3", Date: "2026-09-01 08:00:00", Amount: -20, Balance: 30}
+	rec.Txs = []parser.Transaction{first, fresh}
+	rec.TxCount = 2
+	rec.DateRange = DateRangeOf(rec.Txs)
+	rec.Name = NameOf(rec.DateRange)
+	if err := s.AppendFresh(rec, []parser.Transaction{fresh}); err != nil {
+		t.Fatalf("AppendFresh: %v", err)
+	}
+
+	got, err := s.Get("sms")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.Txs) != 2 || got.Txs[1].ID != "R3" {
+		t.Fatalf("after append Txs = %+v, want R1 then R3", got.Txs)
+	}
+	if got.TxCount != 2 || got.Name != "Jan 2025 – Sep 2026" {
+		t.Fatalf("metadata after append = %+v", got)
+	}
+}
+
+// TestLegacyJSONMigration proves a pre-SQLite JSON store is imported once and
+// archived, so upgrading never loses history.
+func TestLegacyJSONMigration(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, "statements.json")
+	payload := struct {
+		Statements []StatementRecord `json:"statements"`
+	}{Statements: []StatementRecord{sampleRecord("old")}}
+	raw, _ := json.Marshal(payload)
+	if err := os.WriteFile(legacyPath, raw, 0o600); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+
+	dbPath := filepath.Join(dir, "statements.db")
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	got, err := s.Get("old")
+	if err != nil {
+		t.Fatalf("Get migrated: %v", err)
+	}
+	if got.Name != "Jan 2025 – Mar 2025" || len(got.Txs) != 2 {
+		t.Fatalf("migrated record = %+v", got)
+	}
+	if _, err := os.Stat(legacyPath + ".migrated"); err != nil {
+		t.Fatalf("legacy file not archived: %v", err)
+	}
+
+	// Reopening must not import again (archived file is out of the way).
+	s.Close()
+	again, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New reopen: %v", err)
+	}
+	defer again.Close()
+	metas, _ := again.List()
+	if len(metas) != 1 {
+		t.Fatalf("after reopen List = %+v, want 1 record", metas)
 	}
 }
