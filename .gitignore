@@ -24,3 +24,4 @@ mpesa-analyzer.exe
 
 # Windows findstr redirect artifact
 nul
+.pi
