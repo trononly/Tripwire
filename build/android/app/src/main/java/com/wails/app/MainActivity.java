@@ -18,6 +18,7 @@ import android.os.PowerManager;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
@@ -84,6 +85,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Transparent WebView over the dark window background: no white
+        // flash between launch and first paint (the HTML carries the same
+        // background inline as a second net).
+        findViewById(R.id.webview).setBackgroundColor(Color.TRANSPARENT);
 
         // Initialize the native Go library
         bridge = new WailsBridge(this);

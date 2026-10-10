@@ -421,6 +421,30 @@ func TestRealFormatExpansion(t *testing.T) {
 			cats: []string{"Send Money"},
 		},
 		{
+			name: "airtime without recipient, ksh20",
+			file: "25-airtime-no-recipient.txt",
+			want: []parser.Transaction{
+				{ID: "TLSAP2B9RU", Date: "2025-12-28 22:24:00", Description: "Airtime Purchase", Status: "Completed", Amount: -2000, Balance: 70230},
+			},
+			cats: []string{"Airtime"},
+		},
+		{
+			name: "airtime without recipient, ksh5",
+			file: "26-airtime-no-recipient-5.txt",
+			want: []parser.Transaction{
+				{ID: "UDQAP2AMDL", Date: "2026-04-26 17:23:00", Description: "Airtime Purchase", Status: "Completed", Amount: -500, Balance: 17379},
+			},
+			cats: []string{"Airtime"},
+		},
+		{
+			name: "airtime without recipient, ksh3",
+			file: "27-airtime-no-recipient-3.txt",
+			want: []parser.Transaction{
+				{ID: "UDQAP2AOUR", Date: "2026-04-26 17:24:00", Description: "Airtime Purchase", Status: "Completed", Amount: -300, Balance: 17079},
+			},
+			cats: []string{"Airtime"},
+		},
+		{
 			name: "reversal crediting the wallet",
 			file: "24-reversal.txt",
 			want: []parser.Transaction{

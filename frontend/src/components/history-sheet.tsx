@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, FileUp, Trash2 } from "lucide-react";
+import { Check, ChevronDown, FileUp, MessageSquareText, Trash2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +61,8 @@ export function HistorySheet({
           <SheetHeader>
             <SheetTitle>Statement history</SheetTitle>
             <SheetDescription>
-              One active at a time. Switching re-renders the dashboard.
+              Statements and saved SMS imports. One active at a time;
+              switching re-renders the dashboard.
             </SheetDescription>
           </SheetHeader>
           <div className="px-3 pb-3">
@@ -95,6 +96,9 @@ export function HistorySheet({
                     }}
                   >
                     <span className="flex w-full items-center gap-1.5 text-sm font-medium">
+                      {s.source === "sms" && (
+                        <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
                       {isActive && <Check className="size-4 shrink-0" />}
                       <span className="truncate">{s.name || "Untitled statement"}</span>
                     </span>

@@ -6,7 +6,6 @@ import type { TooltipValueType } from "recharts";
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
 
-const INITIAL_DIMENSION = { width: 320, height: 200 } as const;
 type TooltipNameType = number | string;
 
 export type ChartConfig = Record<
@@ -41,7 +40,6 @@ function ChartContainer({
   className,
   children,
   config,
-  initialDimension = INITIAL_DIMENSION,
   debounce = 175,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -49,10 +47,6 @@ function ChartContainer({
   children: React.ComponentProps<
     typeof RechartsPrimitive.ResponsiveContainer
   >["children"];
-  initialDimension?: {
-    width: number;
-    height: number;
-  };
   // Milliseconds to wait before re-measuring on container resize. Tuned to
   // sit just past the sidebar's 150ms width transition: nothing re-measures
   // while the sidebar animates, and the single re-measure lands the moment
@@ -76,7 +70,6 @@ function ChartContainer({
       >
         <ChartStyle id={chartId} config={config} />
         <RechartsPrimitive.ResponsiveContainer
-          // initialDimension={initialDimension}
           initialDimension={{ width: 600, height: 300 }}
           debounce={debounce}
         >

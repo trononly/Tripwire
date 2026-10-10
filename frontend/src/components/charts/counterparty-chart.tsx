@@ -14,6 +14,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { formatMoney } from "@/lib/format";
+import { isAndroidBridge } from "@/lib/sms-bridge";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
@@ -22,8 +23,10 @@ const chartConfig = {
 
 export function CounterpartyChart({
   counterparties,
+  onSelectCounterparty,
 }: {
   counterparties: analysis.Counterparty[];
+  onSelectCounterparty?: (name: string) => void;
 }) {
   // Backend is sorted by count descending; recharts renders vertical-layout
   // bars bottom-up, so feed the data as-is to get the biggest bar on top.
@@ -45,7 +48,7 @@ export function CounterpartyChart({
       <CardHeader>
         <CardTitle>Top Counterparties</CardTitle>
         <CardDescription>
-          People and businesses you transact with most
+          {isAndroidBridge() ? "Tap" : "Click"} a bar to see its transactions.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -74,12 +77,16 @@ export function CounterpartyChart({
               axisLine={false}
               width={axisWidth}
             />
-            <ChartTooltip
-              cursor={{ fill: "var(--muted)", opacity: 0.4 }}
-              content={
-                <ChartTooltipContent
-                  hideLabel
-                  formatter={(_, __, item) => {
+            {/* No hover tooltip on touch devices: it spawns at the tap
+                point and slides off-screen, and the tap itself already
+                navigates to these transactions. */}
+            {!isAndroidBridge() && (
+              <ChartTooltip
+                cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+                content={
+                  <ChartTooltipContent
+                    hideLabel
+                    formatter={(_, __, item) => {
                     const p = item?.payload as
                       { in: number; out: number } | undefined;
                     if (!p) return null;
@@ -89,7 +96,7 @@ export function CounterpartyChart({
                     if (p.in > 0) parts.push(`In ${formatMoney(p.in)}`);
                     if (p.out > 0) parts.push(`Out ${formatMoney(p.out)}`);
                     return (
-                      <span className="flex w-full flex-col gap-0.5">
+                      <span className="flex w-full max-w-[calc(100vw-4rem)] flex-col gap-0.5 break-words">
                         <span className="font-medium">
                           {(item?.payload as { name: string })?.name}
                         </span>
@@ -106,12 +113,23 @@ export function CounterpartyChart({
                 />
               }
             />
+            )}
             <Bar
               dataKey="count"
               fill="var(--color-count)"
               radius={[0, 4, 4, 0]}
               isAnimationActive={false}
               barSize={16}
+              className={
+                onSelectCounterparty
+                  ? "cursor-pointer outline-hidden"
+                  : "outline-hidden"
+              }
+              onClick={(_: unknown, index: number) => {
+                const entry = data[index];
+                if (entry && onSelectCounterparty)
+                  onSelectCounterparty(entry.name);
+              }}
             />
           </BarChart>
         </ChartContainer>

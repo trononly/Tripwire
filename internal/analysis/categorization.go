@@ -91,22 +91,28 @@ func CounterpartyOf(description string) string {
 }
 
 // TopCounterparties returns the n counterparties by transaction count.
+// Names are grouped by normalized identity (case and phone-number
+// formatting ignored) and displayed under the most common original form.
 // Entries with empty names are skipped.
 func TopCounterparties(transactions []parser.Transaction, n int) []Counterparty {
 	if n <= 0 {
 		return nil
 	}
 	index := make(map[string]*Counterparty)
+	votes := make(map[string]map[string]int)
 	for _, tx := range transactions {
 		name := CounterpartyOf(tx.Description)
 		if name == "" {
 			continue
 		}
-		c, ok := index[name]
+		key := counterparty.GroupKey(name)
+		c, ok := index[key]
 		if !ok {
 			c = &Counterparty{Name: name}
-			index[name] = c
+			index[key] = c
+			votes[key] = map[string]int{}
 		}
+		votes[key][name]++
 		c.Count++
 		c.Amount += tx.Amount
 		if tx.Amount < 0 {
@@ -116,7 +122,15 @@ func TopCounterparties(transactions []parser.Transaction, n int) []Counterparty 
 		}
 	}
 	out := make([]Counterparty, 0, len(index))
-	for _, c := range index {
+	for key, c := range index {
+		// Display the most common original spelling/numbering.
+		best, bestN := c.Name, -1
+		for form, count := range votes[key] {
+			if count > bestN {
+				best, bestN = form, count
+			}
+		}
+		c.Name = best
 		out = append(out, *c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })

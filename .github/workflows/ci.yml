@@ -1,0 +1,156 @@
+# Continuous integration for Hesabu (Wails v3 + React/TypeScript).
+#
+# Runs on:
+#   * every pull_request
+#   * every push to `main`
+#
+# Jobs:
+#   go       - `go vet ./...` and `go test ./...` on Linux, with the GTK4 /
+#              WebKitGTK 6.0 development libraries the Wails CGO build needs.
+#   frontend - regenerates the Wails bindings, then type-checks, lints and
+#              tests the React app.
+#
+# This workflow produces no release artifacts; it only validates the code.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "11"
+  WAILS3_VERSION: latest
+
+jobs:
+  go:
+    name: Go vet + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Wails links against GTK4 + WebKitGTK 6.0 on Linux and the root package
+      # is CGO, so the native headers are required before vet/test can compile.
+      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            libwayland-dev xvfb x11-xserver-utils at-spi2-core xdg-desktop-portal-gtk
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Add Go bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
+
+      # main.go embeds `all:frontend/dist`, which is git-ignored. A placeholder
+      # is enough to compile/vet/test; the real bundle is built by release.yml.
+      - name: Create placeholder frontend/dist for //go:embed
+        run: |
+          mkdir -p frontend/dist
+          printf '<!doctype html><html><body>ci</body></html>\n' > frontend/dist/index.html
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The wails3 CLI itself links GTK/WebKit on Linux
+      # (internal/operatingsystem uses CGO), so the system libraries must be
+      # installed before `go install` — same as the `go` job. Only the later
+      # bindings step runs with CGO disabled.
+      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            libwayland-dev
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Add Go bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
+
+      # frontend/bindings is generated output and may not be committed, so it
+      # must be regenerated before tsc/vite/vitest run. Generation itself runs
+      # with CGO_ENABLED=0 (Go AST only); the CLI binary above was still
+      # compiled with CGO, which is why the system libraries were installed.
+      - name: Generate Wails bindings
+        env:
+          CGO_ENABLED: "0"
+        run: wails3 generate bindings -f '' -clean=true -ts -i
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: frontend
+        run: pnpm exec tsc --noEmit
+
+      # Lint only when an ESLint flat/legacy config is present, so a missing
+      # config never fails the whole pipeline.
+      - name: Lint
+        working-directory: frontend
+        run: |
+          if compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
+            pnpm run lint
+          else
+            echo "::warning::No ESLint configuration found; skipping 'pnpm run lint'."
+          fi
+
+      # The `test` script runs the vitest suite; --passWithNoTests keeps this
+      # green if the suite is ever temporarily empty.
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm test -- --passWithNoTests

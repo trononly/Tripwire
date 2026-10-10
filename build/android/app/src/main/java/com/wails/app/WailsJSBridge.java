@@ -139,6 +139,48 @@ public class WailsJSBridge {
     }
 
     /**
+     * Start a payment session (USSD call + confirmation listening, asking
+     * for CALL_PHONE/RECEIVE_SMS together when missing).
+     * Called from JavaScript: wails.startUssdSession(code)
+     */
+    @JavascriptInterface
+    public void startUssdSession(String code) {
+        final String ussd = code;
+        executor.execute(() -> bridge.startUssdSession(ussd));
+    }
+
+    /**
+     * Read and clear the catcher queue of incoming M-Pesa SMS.
+     * Called from JavaScript: wails.drainPendingSms()
+     *
+     * @return JSON array of {id, address, dateMs, body}, "[]" when empty.
+     */
+    @JavascriptInterface
+    public String drainPendingSms() {
+        return bridge.drainPendingSms();
+    }
+
+    /**
+     * Check RECEIVE_SMS without prompting.
+     * Called from JavaScript: wails.hasSmsReceivePermission()
+     */
+    @JavascriptInterface
+    public boolean hasSmsReceivePermission() {
+        return bridge.hasSmsReceivePermission();
+    }
+
+    /**
+     * Check CALL_PHONE without prompting.
+     * Called from JavaScript: wails.hasCallPermission()
+     *
+     * @return true when a USSD call can be placed right now
+     */
+    @JavascriptInterface
+    public boolean hasCallPermission() {
+        return bridge.hasCallPermission();
+    }
+
+    /**
      * Send a callback response to JavaScript
      */
     private void sendCallback(String callbackId, String result, String error) {

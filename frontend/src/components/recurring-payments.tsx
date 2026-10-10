@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -138,18 +139,51 @@ export function RecurringPayments({
   payments: recurring.RecurringPayment[];
 }) {
   const sorted = useMemo(() => [...payments].sort(byRelevance), [payments]);
+  // Pager, not a scrolling list: one bill at a time with left/right
+  // stepping and a position readout.
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    setIndex(0);
+  }, [payments]);
+  const current = sorted[Math.min(index, sorted.length - 1)];
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Recurring payments</CardTitle>
-        <CardDescription>
-          Periodic outflows the detector found in this statement
-        </CardDescription>
+        {sorted.length > 1 && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Previous bill"
+              disabled={index <= 0}
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              className="size-8"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-10 text-center text-xs tabular-nums text-muted-foreground">
+              {Math.min(index, sorted.length - 1) + 1} of {sorted.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Next bill"
+              disabled={index >= sorted.length - 1}
+              onClick={() =>
+                setIndex((i) => Math.min(sorted.length - 1, i + 1))
+              }
+              className="size-8"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent>
-        {sorted.length === 0 ? (
+        {sorted.length === 0 || !current ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No recurring payments detected.
             <br />
@@ -174,9 +208,7 @@ export function RecurringPayments({
               <span>Last paid</span>
             </div>
 
-            {sorted.map((payment) => (
-              <PaymentItem key={payment.counterparty} payment={payment} />
-            ))}
+            <PaymentItem key={current.counterparty} payment={current} />
           </div>
         )}
       </CardContent>

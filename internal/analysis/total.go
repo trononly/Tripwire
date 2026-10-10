@@ -11,7 +11,7 @@ func TotalAmount(transactions []parser.Transaction) (totalIn, totalOut int64) {
 			continue
 		}
 		if tx.Amount < 0 {
-			totalOut += tx.Amount
+			totalOut += -tx.Amount
 		} else {
 			totalIn += tx.Amount
 		}
@@ -33,7 +33,7 @@ func NetAmount(transactions []parser.Transaction) (netAmount int64) {
 	totalIn, totalOut := TotalAmount(transactions)
 	totalFees := TotalFees(transactions)
 
-	netAmount = totalIn + totalOut - totalFees
+	netAmount = totalIn - totalOut - totalFees
 	return netAmount
 }
 

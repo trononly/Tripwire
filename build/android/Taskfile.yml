@@ -4,7 +4,7 @@ includes:
   common: ../Taskfile.yml
 
 vars:
-  APP_ID: '{{.APP_ID | default "com.wails.app"}}'
+  APP_ID: '{{.APP_ID | default "com.hesabu.app"}}'
   MIN_SDK: '21'
   TARGET_SDK: '35'
   # The emulator runs the host architecture; physical devices are arm64
@@ -22,7 +22,7 @@ vars:
   EMULATOR:
     sh: 'command -v emulator || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/emulator/emulator"'
   # avdmanager lives under cmdline-tools/<version>/bin; used to auto-create an
-  # AVD when none exists (mirrors the iOS `ensure-simulator` auto-create flow).
+  # AVD when none exists.
   AVDMANAGER:
     sh: 'command -v avdmanager || ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"/cmdline-tools/*/bin/avdmanager 2>/dev/null | tail -1 || true'
 
@@ -208,7 +208,7 @@ tasks:
         chmod +x ./gradlew
         # On Windows the wrapper is gradlew.bat; './gradlew' is a Unix-only
         # shell script that cmd cannot execute.
-        {{if eq OS "windows"}}cmd /c gradlew.bat{{else}}./gradlew{{end}} assembleDebug
+        {{if eq OS "windows"}}MSYS_NO_PATHCONV=1 cmd /c '.\gradlew.bat'{{else}}./gradlew{{end}} assembleDebug
         cp app/build/outputs/apk/debug/app-debug.apk "../../{{.BIN_DIR}}/{{.APP_NAME}}.apk"
         echo "APK created: {{.BIN_DIR}}/{{.APP_NAME}}.apk"
 
@@ -223,7 +223,7 @@ tasks:
         # The exec bit is lost when gradlew is extracted from the embedded
         # build assets, so restore it before invoking the wrapper.
         chmod +x ./gradlew
-        {{if eq OS "windows"}}cmd /c gradlew.bat{{else}}./gradlew{{end}} assembleRelease
+        {{if eq OS "windows"}}MSYS_NO_PATHCONV=1 cmd /c '.\gradlew.bat'{{else}}./gradlew{{end}} assembleRelease
         cp app/build/outputs/apk/release/app-release.apk "../../{{.BIN_DIR}}/{{.APP_NAME}}.apk"
         echo "Release APK created: {{.BIN_DIR}}/{{.APP_NAME}}.apk"
 
@@ -238,7 +238,7 @@ tasks:
         # The exec bit is lost when gradlew is extracted from the embedded
         # build assets, so restore it before invoking the wrapper.
         chmod +x ./gradlew
-        {{if eq OS "windows"}}cmd /c gradlew.bat{{else}}./gradlew{{end}} bundleDebug
+        {{if eq OS "windows"}}MSYS_NO_PATHCONV=1 cmd /c '.\gradlew.bat'{{else}}./gradlew{{end}} bundleDebug
         cp app/build/outputs/bundle/debug/app-debug.aab "../../{{.BIN_DIR}}/{{.APP_NAME}}.aab"
         echo "AAB created: {{.BIN_DIR}}/{{.APP_NAME}}.aab"
 
@@ -262,7 +262,7 @@ tasks:
         # The exec bit is lost when gradlew is extracted from the embedded
         # build assets, so restore it before invoking the wrapper.
         chmod +x ./gradlew
-        {{if eq OS "windows"}}cmd /c gradlew.bat{{else}}./gradlew{{end}} bundleRelease
+        {{if eq OS "windows"}}MSYS_NO_PATHCONV=1 cmd /c '.\gradlew.bat'{{else}}./gradlew{{end}} bundleRelease
         cp app/build/outputs/bundle/release/app-release.aab "../../{{.BIN_DIR}}/{{.APP_NAME}}.aab"
         echo "Release AAB created: {{.BIN_DIR}}/{{.APP_NAME}}.aab"
 
@@ -415,8 +415,13 @@ tasks:
         fi
 
         echo "Deploying {{.BIN_DIR}}/{{.APP_NAME}}.apk to device $DEVICE..."
-        "{{.ADB}}" -s "$DEVICE" uninstall {{.APP_ID}} 2>/dev/null || true
-        "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        # Reinstall over the existing install so app data (statement store)
+        # and runtime permission grants survive dev iterations. Only when
+        # that fails (e.g. signature change) fall back to a clean install.
+        "{{.ADB}}" -s "$DEVICE" install -r "{{.BIN_DIR}}/{{.APP_NAME}}.apk" || {
+          "{{.ADB}}" -s "$DEVICE" uninstall {{.APP_ID}} 2>/dev/null || true
+          "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        }
         "{{.ADB}}" -s "$DEVICE" shell am start -n {{.APP_ID}}/com.wails.app.MainActivity
     preconditions:
       - sh: '[ -x "{{.ADB}}" ] || command -v adb'
@@ -445,8 +450,13 @@ tasks:
         fi
 
         echo "Deploying {{.BIN_DIR}}/{{.APP_NAME}}.apk to device $DEVICE..."
-        "{{.ADB}}" -s "$DEVICE" uninstall {{.APP_ID}} 2>/dev/null || true
-        "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        # Reinstall over the existing install so app data (statement store)
+        # and runtime permission grants survive. Only when that fails (e.g.
+        # signature change) fall back to a clean install.
+        "{{.ADB}}" -s "$DEVICE" install -r "{{.BIN_DIR}}/{{.APP_NAME}}.apk" || {
+          "{{.ADB}}" -s "$DEVICE" uninstall {{.APP_ID}} 2>/dev/null || true
+          "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        }
         "{{.ADB}}" -s "$DEVICE" shell am start -n {{.APP_ID}}/com.wails.app.MainActivity
     preconditions:
       - sh: '[ -x "{{.ADB}}" ] || command -v adb'
