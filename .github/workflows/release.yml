@@ -215,6 +215,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # `go install` compiles the wails3 CLI for the host, and on Linux that
+      # links GTK/WebKit (internal/operatingsystem uses CGO) — same system
+      # libraries as the desktop Linux build, even though the app itself
+      # cross-compiles to Android via the NDK.
+      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            libwayland-dev
+
       - name: Setup Java (JDK 21)
         uses: actions/setup-java@v4
         with:

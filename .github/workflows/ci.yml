@@ -85,6 +85,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The wails3 CLI itself links GTK/WebKit on Linux
+      # (internal/operatingsystem uses CGO), so the system libraries must be
+      # installed before `go install` — same as the `go` job. Only the later
+      # bindings step runs with CGO disabled.
+      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            libwayland-dev
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -99,8 +110,9 @@ jobs:
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
       # frontend/bindings is generated output and may not be committed, so it
-      # must be regenerated before tsc/vite/vitest run. Bindings come from the
-      # Go AST, so CGO is not needed for this step.
+      # must be regenerated before tsc/vite/vitest run. Generation itself runs
+      # with CGO_ENABLED=0 (Go AST only); the CLI binary above was still
+      # compiled with CGO, which is why the system libraries were installed.
       - name: Generate Wails bindings
         env:
           CGO_ENABLED: "0"
