@@ -7,25 +7,18 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Observe network connectivity / type for android:NetworkChanged events -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Historical M-Pesa SMS import: runtime permission, requested on first
          use. No SEND_SMS/WRITE_SMS — this app never sends or alters messages. -->
+    <!-- Direct USSD calls from the M-Pesa shortcut: runtime permission,
+         requested on first use. The session UI stays in the system phone
+         app; this app never sees keypresses or the PIN. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Always-on M-Pesa catcher: runtime permission, requested with the
+         transact button. Sender-checked and queue-only. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-
-    <queries>
-        <intent>
-            <action android:name="android.media.action.IMAGE_CAPTURE" />
-        </intent>
-        <intent>
-            <action android:name="android.media.action.VIDEO_CAPTURE" />
-        </intent>
-    </queries>
 
     <application
         android:allowBackup="true"
@@ -33,7 +26,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.WailsApp"
+        android:theme="@style/Theme.HesabuApp"
         tools:targetApi="31">
 
         <activity
@@ -61,6 +54,19 @@
             android:name=".WailsForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- M-Pesa catcher: always on, sender-checked, queue-only. The
+             BROADCAST_SMS guard means only the system telephony stack can
+             deliver to it. Bodies are queued, never parsed here. -->
+        <receiver
+            android:name=".SmsReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

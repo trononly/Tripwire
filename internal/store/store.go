@@ -1,18 +1,25 @@
-// Package store persists imported statements as one JSON file in the
-// app's data directory. It holds parsed transactions, never PDFs or file
-// paths: the parser runs once at import time and the password is never
-// written to disk.
+// Package store persists imported datasets — parsed PDF statements and
+// confirmed Android SMS imports — in a single SQLite database in the app's
+// data directory. It holds parsed transactions, never PDFs or file paths: the
+// parser runs once at import time and the password is never written to disk.
+//
+// The store is deliberately pure Go (modernc.org/sqlite) so the same code
+// compiles for desktop and Android with CGO disabled.
 package store
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"mpesa-analyzer/internal/parser"
 )
@@ -25,10 +32,21 @@ type DateRange struct {
 	End   string `json:"end"`
 }
 
-// StatementRecord is one imported statement and its transactions.
+// Record source kinds. Empty Source (older store files) is a statement:
+// SMS imports are the only other kind.
+const (
+	SourceStatement = "statement"
+	SourceSms       = "sms"
+)
+
+// StatementRecord is one imported dataset — a parsed PDF statement or a
+// confirmed SMS import — and its transactions. Both kinds share the same
+// normalized transaction model and the same analysis pipeline; Source only
+// records where the rows came from.
 type StatementRecord struct {
 	ID         string               `json:"id"`
 	Name       string               `json:"name"`
+	Source     string               `json:"source,omitempty"`
 	DateRange  DateRange            `json:"dateRange"`
 	TxCount    int                  `json:"txCount"`
 	ImportedAt time.Time            `json:"importedAt"`
@@ -39,73 +57,139 @@ type StatementRecord struct {
 type StatementMeta struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
+	Source     string    `json:"source,omitempty"`
 	DateRange  DateRange `json:"dateRange"`
 	TxCount    int       `json:"txCount"`
 	ImportedAt time.Time `json:"importedAt"`
 }
 
-type fileData struct {
-	Statements []StatementRecord `json:"statements"`
-}
+// schema is applied on every open; every statement is idempotent.
+const schema = `
+CREATE TABLE IF NOT EXISTS statements (
+	id          TEXT PRIMARY KEY,
+	name        TEXT NOT NULL,
+	source      TEXT NOT NULL DEFAULT 'statement',
+	start_date  TEXT NOT NULL DEFAULT '',
+	end_date    TEXT NOT NULL DEFAULT '',
+	tx_count    INTEGER NOT NULL DEFAULT 0,
+	imported_at TEXT NOT NULL
+);
 
-// Store wraps the statements JSON file. All methods are safe for
-// concurrent use.
+CREATE TABLE IF NOT EXISTS transactions (
+	statement_id TEXT NOT NULL REFERENCES statements(id) ON DELETE CASCADE,
+	seq          INTEGER NOT NULL,
+	id           TEXT NOT NULL,
+	date         TEXT NOT NULL,
+	description  TEXT NOT NULL,
+	status       TEXT NOT NULL,
+	amount       INTEGER NOT NULL,
+	balance      INTEGER NOT NULL,
+	PRIMARY KEY (statement_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_statements_source_imported
+	ON statements (source, imported_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_statement_date
+	ON transactions (statement_id, date);
+CREATE INDEX IF NOT EXISTS idx_transactions_receipt
+	ON transactions (id);
+`
+
+// Store wraps the SQLite database. All methods are safe for concurrent use.
 type Store struct {
-	mu   sync.Mutex
-	path string
-	data fileData
+	mu sync.Mutex
+	db *sql.DB
 }
 
-// New returns a Store backed by path. The file is read on first use; a
-// missing file is an empty store, not an error.
-func New(path string) *Store {
-	return &Store{path: path}
-}
-
-func (s *Store) load() error {
-	if s.data.Statements != nil {
-		return nil
+// New opens (creating if needed) the store at path. A missing file is an
+// empty store, not an error. If a legacy `*.json` store sits next to the
+// database, it is imported once and archived.
+func New(path string) (*Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("could not create data directory: %w", err)
 	}
-	s.data.Statements = []StatementRecord{}
-	raw, err := os.ReadFile(s.path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		return nil, fmt.Errorf("could not open statement store: %w", err)
+	}
+	// One pooled connection: the store is single-process and small, and this
+	// serializes writers so there is never a SQLITE_BUSY retry loop.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	// PRAGMAs are per-connection; with a single pooled connection setting
+	// them here persists for the process lifetime.
+	for _, pragma := range []string{
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA foreign_keys = ON",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("could not configure statement store: %w", err)
 		}
-		return fmt.Errorf("could not read statement store: %w", err)
 	}
-	if err := json.Unmarshal(raw, &s.data); err != nil {
-		return fmt.Errorf("could not parse statement store: %w", err)
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("could not initialize statement store: %w", err)
 	}
-	return nil
+
+	s := &Store{db: db}
+	if err := s.migrateLegacyJSON(path); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
-// save writes the file atomically: temp file in the same directory, then
-// rename over the target.
-func (s *Store) save() error {
-	raw, err := json.MarshalIndent(s.data, "", "  ")
+// Close releases the database handle.
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+// normalizeSource maps the empty legacy source to a statement.
+func normalizeSource(src string) string {
+	if src == "" {
+		return SourceStatement
+	}
+	return src
+}
+
+// count returns how many records are stored.
+func (s *Store) count() (int, error) {
+	var n int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM statements").Scan(&n)
+	return n, err
+}
+
+// migrateLegacyJSON imports the pre-SQLite `statements.json` file (if present
+// and the database is empty) and archives it. The JSON schema is exactly
+// StatementRecord, so it round-trips unchanged.
+func (s *Store) migrateLegacyJSON(dbPath string) error {
+	legacy := dbPath[:len(dbPath)-len(filepath.Ext(dbPath))] + ".json"
+	raw, err := os.ReadFile(legacy)
 	if err != nil {
-		return fmt.Errorf("could not encode statement store: %w", err)
+		return nil // no legacy store: nothing to do
 	}
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("could not create data directory: %w", err)
+	if n, err := s.count(); err != nil {
+		return err
+	} else if n > 0 {
+		return nil // database already has data; leave the file alone
 	}
-	tmp, err := os.CreateTemp(dir, "statements-*.json")
-	if err != nil {
-		return fmt.Errorf("could not create temp file: %w", err)
+	var data struct {
+		Statements []StatementRecord `json:"statements"`
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath) // no-op after a successful rename
-	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		return fmt.Errorf("could not write temp file: %w", err)
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return fmt.Errorf("could not parse legacy statement store: %w", err)
 	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("could not close temp file: %w", err)
+	for _, rec := range data.Statements {
+		if err := s.Add(rec); err != nil {
+			return fmt.Errorf("could not migrate legacy statement %q: %w", rec.ID, err)
+		}
 	}
-	if err := os.Rename(tmpPath, s.path); err != nil {
-		return fmt.Errorf("could not replace statement store: %w", err)
+	// Archive rather than delete: migration should never destroy the old copy.
+	if err := os.Rename(legacy, legacy+".migrated"); err != nil {
+		return fmt.Errorf("could not archive legacy store: %w", err)
 	}
 	return nil
 }
@@ -114,19 +198,32 @@ func (s *Store) save() error {
 func (s *Store) List() ([]StatementMeta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.load(); err != nil {
-		return nil, err
+
+	rows, err := s.db.Query(`
+		SELECT id, name, source, start_date, end_date, tx_count, imported_at
+		FROM statements
+		ORDER BY imported_at DESC, rowid DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("could not list statements: %w", err)
 	}
-	out := make([]StatementMeta, 0, len(s.data.Statements))
-	for i := len(s.data.Statements) - 1; i >= 0; i-- {
-		r := s.data.Statements[i]
-		out = append(out, StatementMeta{
-			ID:         r.ID,
-			Name:       r.Name,
-			DateRange:  r.DateRange,
-			TxCount:    r.TxCount,
-			ImportedAt: r.ImportedAt,
-		})
+	defer rows.Close()
+
+	out := make([]StatementMeta, 0, 8)
+	for rows.Next() {
+		var (
+			m        StatementMeta
+			imported string
+		)
+		if err := rows.Scan(&m.ID, &m.Name, &m.Source, &m.DateRange.Start,
+			&m.DateRange.End, &m.TxCount, &imported); err != nil {
+			return nil, fmt.Errorf("could not read statement: %w", err)
+		}
+		m.Source = normalizeSource(m.Source)
+		m.ImportedAt = parseTime(imported)
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not list statements: %w", err)
 	}
 	return out, nil
 }
@@ -135,66 +232,207 @@ func (s *Store) List() ([]StatementMeta, error) {
 func (s *Store) Get(id string) (StatementRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.load(); err != nil {
-		return StatementRecord{}, err
-	}
-	for _, r := range s.data.Statements {
-		if r.ID == id {
-			return r, nil
-		}
-	}
-	return StatementRecord{}, fmt.Errorf("no statement with id %q", id)
+	return s.get(id)
 }
 
-// Add appends a record and writes the file immediately.
+// get is the lock-free body of Get, shared by locked callers.
+func (s *Store) get(id string) (StatementRecord, error) {
+	var (
+		rec      StatementRecord
+		imported string
+	)
+	err := s.db.QueryRow(`
+		SELECT id, name, source, start_date, end_date, tx_count, imported_at
+		FROM statements WHERE id = ?`, id).
+		Scan(&rec.ID, &rec.Name, &rec.Source, &rec.DateRange.Start,
+			&rec.DateRange.End, &rec.TxCount, &imported)
+	if errors.Is(err, sql.ErrNoRows) {
+		return StatementRecord{}, fmt.Errorf("no statement with id %q", id)
+	}
+	if err != nil {
+		return StatementRecord{}, fmt.Errorf("could not read statement: %w", err)
+	}
+	rec.Source = normalizeSource(rec.Source)
+	rec.ImportedAt = parseTime(imported)
+
+	txs, err := s.transactions(id)
+	if err != nil {
+		return StatementRecord{}, err
+	}
+	rec.Txs = txs
+	return rec, nil
+}
+
+// transactions returns a record's transactions in insertion order.
+func (s *Store) transactions(id string) ([]parser.Transaction, error) {
+	rows, err := s.db.Query(`
+		SELECT id, date, description, status, amount, balance
+		FROM transactions WHERE statement_id = ? ORDER BY seq ASC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("could not read transactions: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]parser.Transaction, 0, 64)
+	for rows.Next() {
+		var tx parser.Transaction
+		if err := rows.Scan(&tx.ID, &tx.Date, &tx.Description, &tx.Status,
+			&tx.Amount, &tx.Balance); err != nil {
+			return nil, fmt.Errorf("could not read transaction: %w", err)
+		}
+		out = append(out, tx)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read transactions: %w", err)
+	}
+	return out, nil
+}
+
+// Add stores a record and its transactions, writing immediately. IDs are
+// random per import, so in practice this always inserts; a repeated Add of
+// the same ID replaces its rows atomically rather than duplicating them.
 func (s *Store) Add(rec StatementRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.load(); err != nil {
-		return err
-	}
-	s.data.Statements = append(s.data.Statements, rec)
-	return s.save()
+	return s.write(rec)
 }
 
-// Delete removes a record and its transactions, writing the file
-// immediately.
+func (s *Store) write(rec StatementRecord) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start store write: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Replace semantics: drop the old rows so a re-write is self-consistent.
+	if _, err := tx.Exec("DELETE FROM transactions WHERE statement_id = ?", rec.ID); err != nil {
+		return fmt.Errorf("could not replace transactions: %w", err)
+	}
+	if err := upsertStatement(tx, rec); err != nil {
+		return err
+	}
+	if err := insertTransactions(tx, rec.ID, rec.Txs, 0); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// AppendFresh adds only fresh transactions to an existing record and updates
+// its metadata, leaving the already-stored rows untouched. This is the SMS
+// refresh path's write: a growing feed appends incrementally instead of
+// rewriting its whole history on every merge.
+func (s *Store) AppendFresh(rec StatementRecord, fresh []parser.Transaction) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start store write: %w", err)
+	}
+	defer tx.Rollback()
+
+	var maxSeq sql.NullInt64
+	if err := tx.QueryRow(
+		"SELECT MAX(seq) FROM transactions WHERE statement_id = ?", rec.ID,
+	).Scan(&maxSeq); err != nil {
+		return fmt.Errorf("could not read transaction sequence: %w", err)
+	}
+	start := 0
+	if maxSeq.Valid {
+		start = int(maxSeq.Int64) + 1
+	}
+	if err := insertTransactions(tx, rec.ID, fresh, start); err != nil {
+		return err
+	}
+	if err := upsertStatement(tx, rec); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Delete removes a record and its transactions (cascade), writing immediately.
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.load(); err != nil {
-		return err
+
+	res, err := s.db.Exec("DELETE FROM statements WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("could not delete statement: %w", err)
 	}
-	kept := s.data.Statements[:0]
-	found := false
-	for _, r := range s.data.Statements {
-		if r.ID == id {
-			found = true
-			continue
-		}
-		kept = append(kept, r)
-	}
-	if !found {
+	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("no statement with id %q", id)
 	}
-	s.data.Statements = kept
-	return s.save()
+	return nil
 }
 
-// Rename sets a record's name and writes the file immediately.
+// Rename sets a record's name, writing immediately.
 func (s *Store) Rename(id, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.load(); err != nil {
-		return err
+
+	res, err := s.db.Exec("UPDATE statements SET name = ? WHERE id = ?", name, id)
+	if err != nil {
+		return fmt.Errorf("could not rename statement: %w", err)
 	}
-	for i := range s.data.Statements {
-		if s.data.Statements[i].ID == id {
-			s.data.Statements[i].Name = name
-			return s.save()
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no statement with id %q", id)
+	}
+	return nil
+}
+
+// upsertStatement writes a record's metadata row without touching its
+// transactions.
+func upsertStatement(tx *sql.Tx, rec StatementRecord) error {
+	_, err := tx.Exec(`
+		INSERT INTO statements
+			(id, name, source, start_date, end_date, tx_count, imported_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name        = excluded.name,
+			source      = excluded.source,
+			start_date  = excluded.start_date,
+			end_date    = excluded.end_date,
+			tx_count    = excluded.tx_count,
+			imported_at = excluded.imported_at`,
+		rec.ID, rec.Name, normalizeSource(rec.Source), rec.DateRange.Start,
+		rec.DateRange.End, rec.TxCount, rec.ImportedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("could not write statement: %w", err)
+	}
+	return nil
+}
+
+// insertTransactions appends transactions at seq startSeq, startSeq+1, ...
+func insertTransactions(tx *sql.Tx, statementID string, txs []parser.Transaction, startSeq int) error {
+	if len(txs) == 0 {
+		return nil
+	}
+	stmt, err := tx.Prepare(`
+		INSERT INTO transactions
+			(statement_id, seq, id, date, description, status, amount, balance)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("could not prepare transactions: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, t := range txs {
+		if _, err := stmt.Exec(statementID, startSeq+i, t.ID, t.Date,
+			t.Description, t.Status, t.Amount, t.Balance); err != nil {
+			return fmt.Errorf("could not write transaction %q: %w", t.ID, err)
 		}
 	}
-	return fmt.Errorf("no statement with id %q", id)
+	return nil
+}
+
+// parseTime reads a stored RFC3339Nano timestamp, tolerating zero values.
+func parseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // DateRangeOf returns the min and max transaction dates, "2006-01-02".

@@ -3,26 +3,29 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "mpesa-analyzer.exe"
+name: "hesabu"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
+version: "0.0.1"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A mpesa-analyzer application"
-vendor: "My Company"
-homepage: "https://wails.io"
+description: "Understand your mobile money"
+vendor: "Hesabu"
+# Note: `wails3 task common:update:build-assets` regenerates this file from
+# build/config.yml and resets homepage to the Wails default; re-apply the
+# repo URL afterwards if you ever re-run it.
+homepage: "https://github.com/trononly/mpesa-analyzer"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/mpesa-analyzer.exe"
-    dst: "/usr/local/bin/mpesa-analyzer.exe"
+  - src: "./bin/hesabu"
+    dst: "/usr/local/bin/hesabu"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/mpesa-analyzer.exe.png"
-  - src: "./build/linux/mpesa-analyzer.exe.desktop"
-    dst: "/usr/share/applications/mpesa-analyzer.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/hesabu.png"
+  - src: "./build/linux/hesabu.desktop"
+    dst: "/usr/share/applications/hesabu.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

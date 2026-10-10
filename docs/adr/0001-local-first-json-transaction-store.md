@@ -4,7 +4,10 @@ The Insights page and every analysis feature need a persisted, deduplicated hist
 
 ## Status
 
-accepted. Revised when statement history landed: the flat dedup store described below became per-statement records.
+superseded by [0002-sqlite-transaction-store](0002-sqlite-transaction-store.md):
+the JSON store became SQLite, and the SMS feed merged into the same store.
+Originally accepted; revised when statement history landed: the flat dedup
+store described below became per-statement records.
 
 ## Revision — per-statement records
 

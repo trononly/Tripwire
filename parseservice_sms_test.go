@@ -2,11 +2,13 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"mpesa-analyzer/internal/parser"
+	"mpesa-analyzer/internal/store"
 )
 
 // fixtureBody reads one stored real SMS sample (same fixtures the parser
@@ -250,5 +252,73 @@ func TestImportSmsResultRetention(t *testing.T) {
 		if !found[k] {
 			t.Errorf("result for input %q missing or mispaired", k)
 		}
+	}
+}
+
+func TestRefreshSmsImportMerges(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+	msg := func(id, fixture string, ms int64) SmsMessage {
+		return SmsMessage{ID: id, Address: "MPESA", DateMs: ms, Body: fixtureBody(t, fixture), TzOffsetMinutes: &tz}
+	}
+	msgA := msg("a", "01-send-p2p.txt", nairobiMilli(t, 2026, time.September, 12, 11, 53))
+	msgB := msg("b", "02-receive.txt", nairobiMilli(t, 2026, time.September, 12, 9, 0))
+
+	first, err := p.RefreshSmsImport([]SmsMessage{msgA})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if first.NewCount != 1 || first.Record == nil || first.Record.TxCount != 1 {
+		t.Fatalf("create: %+v", first.Record)
+	}
+	// 01-send-p2p is a customer transfer: receipt-worthy.
+	if !first.Receipt || len(first.NewTxs) != 1 {
+		t.Errorf("create receipt wrong: %+v", first)
+	}
+	if first.Record.Source != store.SourceSms || first.Result.Imported != 1 {
+		t.Errorf("record wrong: %+v", first.Record)
+	}
+	id := first.Record.ID
+
+	// Same inbox again: nothing new, same record, no store write needed.
+	again, err := p.RefreshSmsImport([]SmsMessage{msgA})
+	if err != nil {
+		t.Fatalf("re-refresh: %v", err)
+	}
+	if again.NewCount != 0 || again.Record.ID != id || again.Record.TxCount != 1 {
+		t.Errorf("re-refresh must be a no-op: new=%d txs=%d", again.NewCount, again.Record.TxCount)
+	}
+
+	// One old + one new message: only the new receipt is appended.
+	both, err := p.RefreshSmsImport([]SmsMessage{msgB, msgA})
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if both.NewCount != 1 || both.Record.ID != id || both.Record.TxCount != 2 {
+		t.Fatalf("merge wrong: new=%d txs=%d", both.NewCount, both.Record.TxCount)
+	}
+	if len(both.NewTxs) != 1 || both.NewTxs[0].ID != both.Record.Txs[0].ID {
+		t.Errorf("new txs wrong: %+v", both.NewTxs)
+	}
+	// The only new arrival is inbound (02-receive): merges, no receipt.
+	if both.Receipt {
+		t.Errorf("inbound-only arrival must not pop a receipt")
+	}
+	if both.Record.Txs[0].ID != "ABCAP6LGYW" || both.Record.Txs[1].ID != "ABCAP6H14J" {
+		t.Errorf("merge order wrong: %s, %s", both.Record.Txs[0].ID, both.Record.Txs[1].ID)
+	}
+
+	// A snapshot that parses to nothing yields no record at all.
+	none, err := p.RefreshSmsImport([]SmsMessage{{ID: "x", DateMs: 1, Body: "   "}})
+	if err != nil {
+		t.Fatalf("empty: %v", err)
+	}
+	if none.Record != nil || none.NewCount != 0 {
+		t.Errorf("empty snapshot must yield no record: %+v", none.Record)
 	}
 }

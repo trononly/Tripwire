@@ -79,7 +79,7 @@ public class WailsBridge {
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
     // 1001 (POST_NOTIFICATIONS) and 1003 are taken inside postNotification.
     private static final int SMS_PERMISSION_REQUEST = 1004;
-
+    private static final int USSD_SESSION_PERMISSION_REQUEST = 1006;
     static {
         // Load the native Go library
         System.loadLibrary("wails");
@@ -105,7 +105,9 @@ public class WailsBridge {
     private boolean proximityWanted = false;
     private boolean torchOn = false;
     private boolean pendingLocationRequest = false;
-    // SMS: a one-shot inbox read is waiting on the permission dialog.
+    // M-Pesa menu: a USSD session is waiting on the permission dialog.
+    private boolean pendingSessionRequest = false;
+    private String pendingUssdCode = null;    // SMS: a one-shot inbox read is waiting on the permission dialog.
     private boolean pendingSmsRequest = false;
 
     // Native methods - implemented in Go
@@ -146,6 +148,13 @@ public class WailsBridge {
         } catch (Exception e) {
             Log.e(TAG, "Failed to initialize Wails bridge", e);
         }
+        // The catcher must be on: an earlier build's session sweeps may
+        // have left it disabled, and that state survives reinstalls.
+        try {
+            SmsReceiver.setEnabled(activity, true);
+        } catch (Exception e) {
+            Log.e(TAG, "enabling SmsReceiver failed", e);
+        }
     }
 
     /**
@@ -180,6 +189,21 @@ public class WailsBridge {
 
     public void onResume() {
         if (initialized) nativeOnResume();
+        // Foreground drain trigger: the WebView's visibility signals are
+        // unreliable across Activity pause/resume, so the native side pokes
+        // the (always-registered) JS hook directly. The hook drains the SMS
+        // catcher queue and merges — the same path as pull-to-refresh,
+        // which is why pull always worked while resume often did not.
+        if (initialized && webView != null) {
+            mainHandler.post(() -> {
+                try {
+                    webView.evaluateJavascript(
+                            "window.__mpesaOnForeground && window.__mpesaOnForeground()", null);
+                } catch (Exception e) {
+                    Log.e(TAG, "foreground poke failed", e);
+                }
+            });
+        }
     }
 
     public void onPause() {
@@ -918,6 +942,23 @@ public class WailsBridge {
                 emitLocationError("location permission denied");
             }
         }
+        if (requestCode == USSD_SESSION_PERMISSION_REQUEST) {
+            boolean shouldResume = pendingSessionRequest;
+            String code = pendingUssdCode;
+            pendingSessionRequest = false;
+            pendingUssdCode = null;
+            if (!shouldResume) {
+                return;
+            }
+            if (code == null) {
+                code = "*334#";
+            }
+            if (hasCallPermission()) {
+                placeUssdCall(code);
+            } else {
+                emitUssdError("call permission denied");
+            }
+        }
         if (requestCode == SMS_PERMISSION_REQUEST) {
             boolean shouldResume = pendingSmsRequest;
             pendingSmsRequest = false;
@@ -938,6 +979,90 @@ public class WailsBridge {
     }
 
     // MARK: - SMS inbox (Phase 3)
+
+    public boolean hasCallPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return activity.checkSelfPermission("android.permission.CALL_PHONE")
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void placeUssdCall(String ussd) {
+        try {
+            Intent intent = new Intent(
+                    Intent.ACTION_CALL,
+                    Uri.parse("tel:" + Uri.encode(ussd)));
+            activity.startActivity(intent);
+            emitEvent("common:ussd", new JSONObject().put("ok", true).toString());
+        } catch (Exception e) {
+            Log.e(TAG, "placeUssdCall failed", e);
+            emitUssdError("ussd call failed");
+        }
+    }
+
+    private void emitUssdError(String msg) {
+        try {
+            emitEvent("common:ussd", new JSONObject().put("ok", false).put("error", msg).toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Start a payment session: place the USSD call, asking for CALL_PHONE
+     * and RECEIVE_SMS together up front when missing. The catcher receiver
+     * is always on, so confirmations queue in real time and merge on next
+     * drain. The outcome arrives as a "common:ussd" event ({ok, listening}
+     * or {ok:false, error}).
+     */
+    public void startUssdSession(String code) {
+        final String ussd = code != null ? code : "*334#";
+        mainHandler.post(() -> {
+            try {
+                java.util.List<String> missing = new java.util.ArrayList<>();
+                if (!hasCallPermission()) {
+                    missing.add("android.permission.CALL_PHONE");
+                }
+                if (!hasSmsReceivePermission()) {
+                    missing.add("android.permission.RECEIVE_SMS");
+                }
+                if (!missing.isEmpty()) {
+                    pendingSessionRequest = true;
+                    pendingUssdCode = ussd;
+                    activity.requestPermissions(
+                            missing.toArray(new String[0]), USSD_SESSION_PERMISSION_REQUEST);
+                    return;
+                }
+                emitEvent("common:ussd",
+                        new JSONObject().put("ok", true).put("listening", true).toString());
+                placeUssdCall(ussd);
+            } catch (Exception e) {
+                Log.e(TAG, "startUssdSession failed", e);
+                emitUssdError("ussd session failed");
+            }
+        });
+    }
+
+    public boolean hasSmsReceivePermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return activity.checkSelfPermission("android.permission.RECEIVE_SMS")
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Read and clear the catcher queue. Returns a JSON array of
+     * {id, address, dateMs, body}. Called from the WebView thread.
+     */
+    public String drainPendingSms() {
+        try {
+            return SmsReceiver.drain(activity);
+        } catch (Exception e) {
+            Log.e(TAG, "drainPendingSms failed", e);
+            return "[]";
+        }
+    }
 
     private void emitSmsError(String msg) {
         try {

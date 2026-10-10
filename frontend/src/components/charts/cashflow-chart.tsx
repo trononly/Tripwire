@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -41,13 +40,7 @@ export function CashflowChart({
   granularity: Granularity;
   onGranularityChange: (g: Granularity) => void;
 }) {
-  const data = buckets.map((b) => ({
-    ...b,
-    label: formatBucketLabel(b.label),
-    in: b.in / 100,
-    out: b.out / 100,
-  }));
-  console.log("[CashflowChart] points:", data.length);
+
   const chartData = useMemo(
     () =>
       buckets.map((b) => ({
@@ -65,7 +58,6 @@ export function CashflowChart({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <CardTitle>Cashflow</CardTitle>
-            <CardDescription>Money in vs out over time</CardDescription>
           </div>
           <div className="flex gap-1">
             {GRANULARITIES.map((g) => (

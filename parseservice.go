@@ -9,6 +9,7 @@ import (
 	"mpesa-analyzer/internal/pdf"
 	"mpesa-analyzer/internal/sms"
 	"mpesa-analyzer/internal/store"
+	"mpesa-analyzer/internal/txtype"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -20,13 +21,12 @@ import (
 )
 
 type ParseService struct {
-	mu       sync.Mutex
-	store    *store.Store
-	activeID string
+	mu    sync.Mutex
+	store *store.Store
 }
 
 // statements lazily creates the store the first time a history method
-// runs. The file lives in an app-private directory: getFilesDir() on
+// runs. The database lives in an app-private directory: getFilesDir() on
 // Android (via the Wails bridge — xdg has no Android support and $HOME is
 // unset there, which resolves to a read-only /.local), the xdg data home
 // on desktop.
@@ -41,7 +41,11 @@ func (p *ParseService) statements() (*store.Store, error) {
 			}
 			base = application.Path(application.PathDataHome)
 		}
-		p.store = store.New(filepath.Join(base, "mpesa-analyzer", "statements.json"))
+		s, err := store.New(filepath.Join(base, "mpesa-analyzer", "statements.db"))
+		if err != nil {
+			return nil, err
+		}
+		p.store = s
 	}
 	return p.store, nil
 }
@@ -166,16 +170,6 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 	return out
 }
 
-func (p *ParseService) ParsePDF(filePath, password string) ([]parser.Transaction, error) {
-	// Table-based extraction (gopdf): reads the statement's transaction
-	// table directly instead of regexing flattened text.
-	txs, err := pdf.ReadPDFTX(filePath, password)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse transactions: %w", err)
-	}
-	return txs, nil
-}
-
 // AnalyzeTransactions computes all dashboard analytics for the given
 // transactions in a single call.
 func (p *ParseService) AnalyzeTransactions(txs []parser.Transaction) (*analysis.AnalysisResult, error) {
@@ -209,9 +203,9 @@ func (p *ParseService) PickFile() (string, error) {
 	}).PromptForSingleSelection()
 }
 
-// ImportStatement parses a PDF, stores the transactions under the given
-// name (derived from the date range when the name is blank), activates
-// the new record, and returns it with its transactions.
+// ImportStatement parses a PDF and stores the transactions under the given
+// name (derived from the date range when the name is blank), returning the
+// new record with its transactions.
 func (p *ParseService) ImportStatement(filePath, password, name string) (*store.StatementRecord, error) {
 	txs, err := pdf.ReadPDFTX(filePath, password)
 	if err != nil {
@@ -225,6 +219,7 @@ func (p *ParseService) ImportStatement(filePath, password, name string) (*store.
 	rec := store.StatementRecord{
 		ID:         store.NewID(),
 		Name:       name,
+		Source:     store.SourceStatement,
 		DateRange:  rangeOf,
 		TxCount:    len(txs),
 		ImportedAt: time.Now().UTC(),
@@ -238,10 +233,6 @@ func (p *ParseService) ImportStatement(filePath, password, name string) (*store.
 	if err := s.Add(rec); err != nil {
 		return nil, err
 	}
-
-	p.mu.Lock()
-	p.activeID = rec.ID
-	p.mu.Unlock()
 	return &rec, nil
 }
 
@@ -341,6 +332,149 @@ func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
 	return res
 }
 
+// SaveSmsImport persists a confirmed SMS import as a record in the same
+// store as PDF statements, using the same normalized parser.Transaction
+// model. The preview batch stays exactly what
+// ImportSms returned; nothing here re-parses or re-classifies.
+func (p *ParseService) SaveSmsImport(txs []parser.Transaction) (*store.StatementRecord, error) {
+	if len(txs) == 0 {
+		return nil, fmt.Errorf("no SMS transactions to save")
+	}
+	rec := newSmsRecord(txs)
+
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Add(rec); err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// newSmsRecord wraps parsed SMS transactions as a store record. Shared by
+// the manual save path and the refresh path.
+func newSmsRecord(txs []parser.Transaction) store.StatementRecord {
+	rangeOf := store.DateRangeOf(txs)
+	return store.StatementRecord{
+		ID:         store.NewID(),
+		Name:       store.NameOf(rangeOf),
+		Source:     store.SourceSms,
+		DateRange:  rangeOf,
+		TxCount:    len(txs),
+		ImportedAt: time.Now().UTC(),
+		Txs:        txs,
+	}
+}
+
+// SmsRefreshResult is one inbox snapshot merged into the store: the full
+// per-message audit (same shape as ImportSms, so the manual dialog keeps
+// its breakdown UI on this single import path), the SMS record holding the
+// merged dataset, how many transactions were actually new, the new
+// transactions themselves (for arrival previews), and whether any of them
+// is a user-initiated spend (till, paybill, send-money) worth popping a
+// receipt for. Record is nil and NewTxs empty when the snapshot parsed to
+// nothing.
+type SmsRefreshResult struct {
+	Result   SmsImportResult        `json:"result"`
+	Record   *store.StatementRecord `json:"record,omitempty"`
+	NewCount int                    `json:"newCount"`
+	NewTxs   []parser.Transaction   `json:"newTxns"`
+	Receipt  bool                   `json:"receipt"`
+}
+
+// RefreshSmsImport parses an inbox snapshot and merges it into the latest
+// SMS record — creating one when there is none — keyed by the parser's
+// M-Pesa receipt number. Re-running it over an unchanged inbox adds
+// nothing and writes nothing, so the launch-time auto-import is safe to
+// run on every start. Older SMS records are left alone as snapshots.
+func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResult, error) {
+	res := p.ImportSms(messages)
+	out := &SmsRefreshResult{Result: res}
+	if len(res.Txs) == 0 {
+		return out, nil
+	}
+
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	metas, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	var latest *store.StatementRecord
+	for _, m := range metas {
+		if m.Source == store.SourceSms {
+			rec, err := s.Get(m.ID)
+			if err != nil {
+				return nil, err
+			}
+			latest = &rec
+			break
+		}
+	}
+
+	if latest == nil {
+		rec := newSmsRecord(res.Txs)
+		if err := s.Add(rec); err != nil {
+			return nil, err
+		}
+		out.Record = &rec
+		out.NewCount = len(res.Txs)
+		out.NewTxs = res.Txs
+	} else {
+		seen := make(map[string]bool, len(latest.Txs))
+		for _, tx := range latest.Txs {
+			seen[tx.ID] = true
+		}
+		fresh := make([]parser.Transaction, 0, len(res.Txs))
+		for _, tx := range res.Txs {
+			if !seen[tx.ID] {
+				seen[tx.ID] = true
+				fresh = append(fresh, tx)
+			}
+		}
+		if len(fresh) == 0 {
+			out.Record = latest
+			return out, nil
+		}
+		merged := append(append([]parser.Transaction{}, latest.Txs...), fresh...)
+		sort.SliceStable(merged, func(i, j int) bool { return merged[i].Date < merged[j].Date })
+		latest.Txs = merged
+		latest.DateRange = store.DateRangeOf(merged)
+		latest.Name = store.NameOf(latest.DateRange)
+		latest.TxCount = len(merged)
+		latest.ImportedAt = time.Now().UTC()
+		// Append only the fresh rows: the SMS feed grows by adding
+		// messages, so rewriting its whole history on every merge would
+		// get slower without bound.
+		if err := s.AppendFresh(*latest, fresh); err != nil {
+			return nil, err
+		}
+		out.Record = latest
+		out.NewCount = len(fresh)
+		out.NewTxs = fresh
+	}
+
+	out.Receipt = receiptWorthy(out.NewTxs)
+	return out, nil
+}
+
+// receiptWorthy reports whether any new transaction is a user-initiated
+// spend — till/buy-goods, paybill or send-money. Only those pop the
+// arrival receipt; inbound money, airtime, fees and the rest merge
+// silently into history.
+func receiptWorthy(txs []parser.Transaction) bool {
+	for _, tx := range txs {
+		switch txtype.TypeOf(tx.Description) {
+		case txtype.TypeTill, txtype.TypePaybill, txtype.TypeSendMoney:
+			return true
+		}
+	}
+	return false
+}
+
 // ListStatements returns the stored statements' metadata, newest import
 // first.
 func (p *ParseService) ListStatements() ([]store.StatementMeta, error) {
@@ -351,8 +485,8 @@ func (p *ParseService) ListStatements() ([]store.StatementMeta, error) {
 	return s.List()
 }
 
-// ActivateStatement loads one stored statement's transactions and makes
-// it the active one for this session.
+// ActivateStatement loads one stored statement's transactions for viewing.
+// Activation is a load, not a state: the service keeps no active record.
 func (p *ParseService) ActivateStatement(id string) ([]parser.Transaction, error) {
 	s, err := p.statements()
 	if err != nil {
@@ -362,28 +496,16 @@ func (p *ParseService) ActivateStatement(id string) ([]parser.Transaction, error
 	if err != nil {
 		return nil, err
 	}
-	p.mu.Lock()
-	p.activeID = rec.ID
-	p.mu.Unlock()
 	return rec.Txs, nil
 }
 
-// DeleteStatement removes a stored statement and its transactions. If it
-// was the active one, nothing is active afterwards.
+// DeleteStatement removes a stored statement and its transactions.
 func (p *ParseService) DeleteStatement(id string) error {
 	s, err := p.statements()
 	if err != nil {
 		return err
 	}
-	if err := s.Delete(id); err != nil {
-		return err
-	}
-	p.mu.Lock()
-	if p.activeID == id {
-		p.activeID = ""
-	}
-	p.mu.Unlock()
-	return nil
+	return s.Delete(id)
 }
 
 // RenameStatement sets a new name for a stored statement.
