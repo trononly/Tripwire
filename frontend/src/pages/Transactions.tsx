@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowDown, Loader2, X } from "lucide-react";
+import { ArrowDown, Loader2, SlidersHorizontal, X } from "lucide-react";
 import {
   TransactionList,
   useTransactionGroups,
 } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +72,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   );
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     // Deep links: ?category=X (from dashboard charts). A ?q= navigation starts a fresh view:
@@ -115,12 +124,19 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   );
   const isFiltered = globalFilter.trim() !== "" || activeFilters > 0;
 
+  const clearFilters = () => {
+    setCategoryFilter("all");
+    setDirectionFilter("all");
+    setFromDate("");
+    setToDate("");
+    setSearchParams({}, { replace: true });
+  };
+
   return (
     <div className="space-y-4">
-      {/* toolbar: search + filters. Two equal columns on phones so every
-          control lines up; natural row on wider screens. */}
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-        <div className="relative col-span-2 sm:col-span-1 sm:w-64">
+      {/* Header row: search + filter button. */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
           <Input
             placeholder="Search transactions…"
             value={globalFilter}
@@ -139,76 +155,97 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             </Button>
           )}
         </div>
-        <Select
-          value={categoryFilter}
-          onValueChange={(v) => {
-            setCategoryFilter(v);
-            if (v === "all") setSearchParams({}, { replace: true });
-          }}
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Filters"
+          onClick={() => setFiltersOpen(true)}
+          className="relative size-10 shrink-0"
         >
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Filter by category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {allCategories.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={directionFilter}
-          onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}
-        >
-          <SelectTrigger className="w-full sm:w-32">
-            <SelectValue placeholder="Direction" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Money in & out</SelectItem>
-            <SelectItem value="in">Money in</SelectItem>
-            <SelectItem value="out">Money out</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-1 sm:flex sm:items-center sm:gap-x-3">
-          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            From
-            <Input
-              type="date"
-              aria-label="From date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="min-w-0 flex-1"
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            To
-            <Input
-              type="date"
-              aria-label="To date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="min-w-0 flex-1"
-            />
-          </label>
-        </div>
-        {activeFilters > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setCategoryFilter("all");
-              setDirectionFilter("all");
-              setFromDate("");
-              setToDate("");
-              setSearchParams({}, { replace: true });
-            }}
-          >
-            Clear filters ({activeFilters})
-          </Button>
-        )}
+          <SlidersHorizontal className="size-4" />
+          {activeFilters > 0 && (
+            <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+              {activeFilters}
+            </span>
+          )}
+        </Button>
       </div>
+      {/* Filter sheet: all filter controls in a bottom sheet, like modern mobile apps. */}
+      <Drawer open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Filter transactions</DrawerTitle>
+            <DrawerDescription>
+              {shownCount} of {totalCount} transactions match.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="space-y-4 p-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Category</label>
+              <Select
+                value={categoryFilter}
+                onValueChange={(v) => {
+                  setCategoryFilter(v);
+                  if (v === "all") setSearchParams({}, { replace: true });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {allCategories.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Direction</label>
+              <Select
+                value={directionFilter}
+                onValueChange={(v) => setDirectionFilter(v as "all" | "in" | "out")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Direction" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Money in & out</SelectItem>
+                  <SelectItem value="in">Money in</SelectItem>
+                  <SelectItem value="out">Money out</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">From date</label>
+                <Input
+                  type="date"
+                  aria-label="From date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">To date</label>
+                <Input
+                  type="date"
+                  aria-label="To date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DrawerFooter>
+            <Button variant="outline" onClick={clearFilters} disabled={activeFilters === 0}>
+              Clear filters
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {isFiltered
           ? `Showing ${shownCount.toLocaleString()} of ${totalCount.toLocaleString()} transactions`
@@ -279,26 +316,23 @@ export default function Transactions({
           )}
         </div>
       )}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
-        {transactions.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Normalized financial transactions from PDF and SMS imports.
-          </p>
-        )}
-      </div>
       {transactions.length > 0 ? (
         <TxDataTable txs={transactions} />
       ) : (
-        <Card className="flex min-h-64 items-center justify-center border-dashed">
-          <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
-            <p className="text-lg font-medium">No transactions yet</p>
-            <p className="text-sm text-muted-foreground">
-              Import a PDF statement or, on Android, M-Pesa SMS messages to see
-              normalized transactions here.
-            </p>
-          </CardContent>
-        </Card>
+        <>
+          <p className="text-sm text-muted-foreground">
+            Normalized financial transactions from PDF and SMS imports.
+          </p>
+          <Card className="flex min-h-64 items-center justify-center border-dashed">
+            <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
+              <p className="text-lg font-medium">No transactions yet</p>
+              <p className="text-sm text-muted-foreground">
+                Import a PDF statement or, on Android, M-Pesa SMS messages to
+                see normalized transactions here.
+              </p>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

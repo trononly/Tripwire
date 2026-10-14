@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon (monochrome) layer: GLYPH ONLY, transparent surround.
+     Launchers that theme icons (Nothing OS drawer, Pixel themed icons)
+     fit-center this inside their own shape and supply the background —
+     so a full-bleed square here would shrink into a "postage stamp".
+     The card silhouette with the trigger square and side bars punched
+     out as transparent holes scales up to fill the container instead.
+
+     Knockout works two ways: android:fillType="evenOdd" (API 24+) AND
+     counter-clockwise inner subpaths, so non-zero-winding renderers cut
+     the holes too. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M39.96,27 H68.04 A12.96,12.96 0 0 1 81,39.96 V68.04 A12.96,12.96 0 0 1 68.04,81 H39.96 A12.96,12.96 0 0 1 27,68.04 V39.96 A12.96,12.96 0 0 1 39.96,27 Z M48.65,48.75 V59.25 H59.15 V48.75 Z M32.95,52.89 V55.11 H46.15 V52.89 Z M61.46,52.89 V55.11 H74.66 V52.89 Z" />
+</vector>

@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=Hesabu
+Name=Tripwire
 Comment=Understand your mobile money
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/hesabu %u
+Exec=/usr/local/bin/tripwire %u
 Terminal=false
 Type=Application
-Icon=hesabu
+Icon=tripwire
 Categories=Utility;
-StartupWMClass=hesabu
+StartupWMClass=tripwire
 
  

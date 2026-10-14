@@ -15,6 +15,8 @@ import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SponsorCard } from "@/components/sponsor-card";
+import { useAdsEnabled } from "@/lib/ads";
 import { RecurringPayments } from "@/components/recurring-payments";
 import { formatMoney } from "@/lib/format";
 import { maxDayOf } from "@/lib/date-window";
@@ -188,7 +190,7 @@ function VsLastMonthTile({
         <CardTitle>vs last month</CardTitle>
         <CardDescription>
           {prev && last
-            ? `${prev.start.slice(0, 7)} compared with ${last.start.slice(0, 7)}.`
+            ? `${monthLong(prev.start.slice(0, 7))} compared with ${monthLong(last.start.slice(0, 7))}.`
             : "Monthly cashflow, compared."}
         </CardDescription>
       </CardHeader>
@@ -336,11 +338,12 @@ export default function Insights({
   }, [filteredTxs, month]);
   const displayResult = month === "all" ? result : monthResult;
   const displayLoading = loading || (month !== "all" && !monthResult);
+  // Sponsor slot visibility — user opt-out lives in Settings.
+  const showSponsor = useAdsEnabled();
   if (transactions.length === 0) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
           <p className="text-sm text-muted-foreground">
             Deeper answers about your money, computed from the active
             dataset.
@@ -371,7 +374,6 @@ export default function Insights({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
           {activeStatement && (
             <p className="truncate text-sm text-muted-foreground">
               {`${activeStatement.name} · ${activeStatement.dateRange.start} – ${activeStatement.dateRange.end}`}
@@ -467,6 +469,7 @@ export default function Insights({
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <BillsTile result={result} month={month} />
           <FeeRadarTile result={displayResult} />
+          {showSponsor && <SponsorCard />}
           <VsLastMonthTile
             result={displayResult}
             fullMonths={result?.cashflowMonthly ?? []}
@@ -477,6 +480,16 @@ export default function Insights({
       )}
     </div>
   );
+}
+
+/** "2026-09" → "September 2026". */
+function monthLong(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  const names = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  return `${names[(m ?? 1) - 1] ?? m} ${y ?? ""}`;
 }
 
 /** "2026-09" → "Sep 26". */

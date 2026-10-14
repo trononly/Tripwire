@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FileUp, MessageSquareText } from "lucide-react";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
@@ -53,6 +53,8 @@ export default function Dashboard({
   historyCount,
   smsMode = false,
   onImport,
+  onImportSms,
+  importing = false,
   onBrowseHistory,
 }: {
   transactions: parser.Transaction[];
@@ -64,6 +66,11 @@ export default function Dashboard({
   /** True while the app analyzes the SMS dataset (Android). */
   smsMode?: boolean;
   onImport: () => void;
+  /** Android only: open the SMS import straight away (asks for SMS access
+   * on the spot instead of routing through the SMS page). */
+  onImportSms: () => void;
+  /** True while an SMS import is in flight: show skeletons, not buttons. */
+  importing?: boolean;
   onBrowseHistory: () => void;
 }) {
   const navigate = useNavigate();
@@ -122,19 +129,30 @@ export default function Dashboard({
 
   const [rangedResult, setRangedResult] =
     useState<analysis.AnalysisResult | null>(null);
+  // True while a bounded-range re-analysis is in flight. The previous
+  // result stays on screen (dimmed) instead of flashing skeletons, so new
+  // transactions roll the KPIs up instead of remounting the whole page.
+  const [rangedLoading, setRangedLoading] = useState(false);
   useEffect(() => {
     if (range === "all") {
       setRangedResult(null);
+      setRangedLoading(false);
       return;
     }
     let cancelled = false;
-    setRangedResult(null);
+    setRangedLoading(true);
     AnalyzeTransactions(filteredTxs)
       .then((r) => {
-        if (!cancelled) setRangedResult(r);
+        if (!cancelled) {
+          setRangedResult(r);
+          setRangedLoading(false);
+        }
       })
       .catch((e) => {
-        if (!cancelled) console.error("Dashboard range analysis failed:", e);
+        if (!cancelled) {
+          console.error("Dashboard range analysis failed:", e);
+          setRangedLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -142,19 +160,36 @@ export default function Dashboard({
   }, [filteredTxs, range]);
 
   const displayResult = range === "all" ? result : rangedResult;
-  const displayLoading = loading || (range !== "all" && !rangedResult);
+  // The last good result stays mounted while a re-analysis is in flight,
+  // so range switches and new transactions never flash full-page skeletons:
+  // KPIs roll prev→next via useCountUp and the same chart components update
+  // in place. Skeletons appear only when nothing has ever rendered, delayed
+  // 250ms so fast local analyses never flash at all.
+  const lastGood = useRef<analysis.AnalysisResult | null>(null);
+  if (displayResult) lastGood.current = displayResult;
+  const visible = displayResult ?? lastGood.current;
+  const updating = visible !== null && (loading || rangedLoading);
+  const [slowLoad, setSlowLoad] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setSlowLoad(false);
+      return;
+    }
+    const t = setTimeout(() => setSlowLoad(true), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   const buckets = useMemo(() => {
-    if (!displayResult) return [];
+    if (!visible) return [];
     switch (granularity) {
       case "week":
-        return displayResult.cashflowWeekly ?? [];
+        return visible.cashflowWeekly ?? [];
       case "month":
-        return displayResult.cashflowMonthly ?? [];
+        return visible.cashflowMonthly ?? [];
       default:
-        return displayResult.cashflowDaily ?? [];
+        return visible.cashflowDaily ?? [];
     }
-  }, [displayResult, granularity]);
+  }, [visible, granularity]);
 
   if (transactions.length === 0) {
     return (
@@ -168,29 +203,33 @@ export default function Dashboard({
           </p>
         </div>
         {smsMode ? (
-          <Card className="flex min-h-80 items-center justify-center border-dashed">
-            <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
-              <p className="text-lg font-medium">No SMS imported yet</p>
-              <p className="text-sm text-muted-foreground">
-                Import your M-Pesa messages on the SMS tab and they will show
-                up here.
-              </p>
-              <Button asChild size="lg">
-                <Link to="/sms">
+          importing ? (
+            <div className="space-y-4" aria-busy="true">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24" />
+                ))}
+              </div>
+              <Skeleton className="h-90" />
+            </div>
+          ) : (
+            <Card className="flex min-h-80 items-center justify-center border-dashed">
+              <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
+                <p className="text-lg font-medium">No SMS imported yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Import your M-Pesa messages and they will show up here.
+                </p>
+                <Button size="lg" onClick={onImportSms}>
                   <MessageSquareText />
-                  Go to SMS
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+                  Import SMS
+                </Button>
+              </CardContent>
+            </Card>
+          )
         ) : historyCount === 0 ? (
           <Card className="flex min-h-80 items-center justify-center border-dashed">
             <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
               <p className="text-lg font-medium">No statements yet</p>
-              <p className="text-sm text-muted-foreground">
-                Import an M-Pesa PDF statement to see your spending, balances,
-                and trends here.
-              </p>
               <Button size="lg" onClick={onImport}>
                 <FileUp />
                 Import Statement
@@ -237,7 +276,8 @@ export default function Dashboard({
         </Card>
       )}
 
-      {displayLoading || !displayResult ? (
+      {!visible ? (
+        slowLoad ? (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -251,9 +291,15 @@ export default function Dashboard({
             <Skeleton className="h-90" />
           </div>
         </div>
+        ) : (
+          <div aria-hidden="true" className="min-h-[60vh]" />
+        )
       ) : (
-        <>
-          <TotalsCards totals={displayResult.totals} />
+        <div
+          aria-busy={updating}
+          className={updating ? "space-y-6 opacity-70" : "space-y-6"}
+        >
+          <TotalsCards totals={visible.totals} />
 
           {/* Money flow: where and when, with the category share beside it. */}
           <div className="grid gap-4 lg:grid-cols-3">
@@ -266,7 +312,7 @@ export default function Dashboard({
             </div>
             <div className="min-w-0">
               <CategoryDonut
-                categories={displayResult.categories ?? []}
+                categories={visible.categories ?? []}
                 onSelectCategory={(category) =>
                   navigate(
                     `/transactions?category=${encodeURIComponent(category)}`,
@@ -275,18 +321,18 @@ export default function Dashboard({
               />
             </div>
             <div className="min-w-0 lg:col-span-2">
-              <BalanceChart data={displayResult.balanceSeries ?? []} />
+              <BalanceChart data={visible.balanceSeries ?? []} />
             </div>
             <div className="min-w-0">
               <CounterpartyChart
-                counterparties={displayResult.topCounterparties ?? []}
+                counterparties={visible.topCounterparties ?? []}
                 onSelectCounterparty={(name) =>
                   navigate(`/transactions?q=${encodeURIComponent(name)}`)
                 }
               />
             </div>
           </div>
-        </>
+        </div>
       )}
       {/* Breathing room so the last chart scrolls clear of the floating
           time pill. */}
