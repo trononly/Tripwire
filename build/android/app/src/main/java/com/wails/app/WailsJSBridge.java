@@ -181,6 +181,77 @@ public class WailsJSBridge {
     }
 
     /**
+     * Check READ_PHONE_STATE without prompting (never requests it).
+     * Called from JavaScript: wails.hasPhoneStatePermission()
+     *
+     * @return true when carrier names can be resolved right now
+     */
+    @JavascriptInterface
+    public boolean hasPhoneStatePermission() {
+        return bridge.hasPhoneStatePermission();
+    }
+
+    /**
+     * Ask for READ_PHONE_STATE on demand (Settings opt-in). The outcome
+     * arrives as a "common:simstate" event {granted}.
+     * Called from JavaScript: wails.requestPhoneStatePermission()
+     */
+    @JavascriptInterface
+    public void requestPhoneStatePermission() {
+        executor.execute(bridge::requestPhoneStatePermission);
+    }
+
+    /**
+     * Current SIM list as a JSON array of {subId, slot, simLabel, number}.
+     * Called from JavaScript: wails.getSimCards()
+     */
+    @JavascriptInterface
+    public String getSimCards() {
+        return bridge.getSimCards();
+    }
+
+    /**
+     * True when the M-Pesa automation service is enabled in system Settings.
+     * Called from JavaScript: wails.isUssdAutomationEnabled()
+     */
+    @JavascriptInterface
+    public boolean isUssdAutomationEnabled() {
+        return bridge.isUssdAutomationEnabled();
+    }
+
+    /**
+     * Open system Settings at the accessibility page so the user can enable
+     * the automation service after reading the in-app disclosure.
+     * Called from JavaScript: wails.openUssdAutomationSettings()
+     */
+    @JavascriptInterface
+    public void openUssdAutomationSettings() {
+        executor.execute(bridge::openUssdAutomationSettings);
+    }
+
+    /**
+     * Start a guided payment: the automation service fills the *334# menus
+     * from the step script (JSON, see UssdSession) and stops at the PIN.
+     * Progress arrives as "common:ussd-auto" events.
+     * Called from JavaScript: wails.startUssdQuickEntry(scriptJson)
+     */
+    @JavascriptInterface
+    public void startUssdQuickEntry(String scriptJson) {
+        final String script = scriptJson;
+        executor.execute(() -> bridge.startUssdQuickEntry(script));
+    }
+
+    /**
+     * Open a URL in the system browser (never inside the app WebView).
+     * Called from JavaScript: wails.openURL(url)
+     */
+    @JavascriptInterface
+    public void openURL(String url) {
+        final String target = url;
+        executor.execute(() -> bridge.openURL(target));
+    }
+
+    /**
      * Send a callback response to JavaScript
      */
     private void sendCallback(String callbackId, String result, String error) {
