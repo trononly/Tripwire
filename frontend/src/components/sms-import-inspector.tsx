@@ -2,25 +2,31 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   CheckCircle2,
+  ChevronDown,
   CircleSlash,
   FileWarning,
   Ban,
   Info,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { SlidersHorizontal } from "lucide-react";
 import type {
   SmsImportResult,
   SmsParseResult,
 } from "../../bindings/mpesa-analyzer/models";
 import { formatMoney } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /** List page size; "Show more" extends by PAGE_STEP. Keeps 2,400+ results
  * renderable: only a window of one-line rows is ever mounted. */
@@ -59,36 +65,34 @@ function kindIcon(kind: string) {
   }
 }
 
-/** Plain-text audit report: counts plus every message with its outcome,
- * raw body and generated transactions — sized for pasting into another
- * agent/tool for investigation. Parsed messages are capped to keep the
- * report pasteable; skipped messages are always complete. */
+/** Plain-text audit report of exactly the rows on screen: counts plus
+ * every message with its outcome, raw body and generated transactions —
+ * sized for pasting into another agent/tool for investigation. Parsed
+ * messages are capped to keep the report pasteable. */
 function buildReport(
-  result: SmsImportResult,
+  scope: string,
+  rows: SmsParseResult[],
+  total: number,
   bridgeCount: number | null,
 ): string {
-  const results = result.results ?? [];
-  const txs = result.txs ?? [];
+  const skipped = rows.filter((r) => r.kind !== "imported");
+  const imported = rows.filter((r) => r.kind === "imported");
   const lines: string[] = [
     "SMS import audit report",
     `Generated: ${new Date().toISOString()}`,
-    `Messages read: ${bridgeCount ?? results.length} · results: ${results.length}`,
-    `Parsed: ${result.imported} (transactions: ${txs.length})`,
-    `Skipped: unsupported=${result.unsupported} malformed=${result.malformed} invalid=${result.invalid} non-transactional=${result.nonTransactional}`,
-    "",
-    "== Skipped messages ==",
+    `Scope: ${scope} (${rows.length} of ${total} messages)`,
   ];
-  for (const r of results) {
-    if (r.kind === "imported") continue;
+  if (bridgeCount !== null) lines.push(`Messages read: ${bridgeCount}`);
+  lines.push("", `== Skipped messages (${skipped.length}) ==`);
+  for (const r of skipped) {
     lines.push(
-      `#${r.sourceId || "?"} [${r.kind}] sender=${r.address || "-"} received=${r.dateMs ?? "-"}`,
+      `#${r.sourceId || "?"} [${r.kind}] sim=${r.simLabel || r.simId || "-"} sender=${r.address || "-"} received=${r.dateMs ?? "-"}`,
     );
     lines.push(`reason: ${r.error || "-"}`);
     lines.push(`body: ${r.body || "(empty)"}`);
     lines.push("");
   }
-  lines.push("== Parsed messages ==");
-  const imported = results.filter((r) => r.kind === "imported");
+  lines.push(`== Parsed messages (${imported.length}) ==`);
   for (const r of imported.slice(0, 20)) {
     for (const t of r.txs ?? []) {
       lines.push(
@@ -100,7 +104,7 @@ function buildReport(
   }
   if (imported.length > 20) {
     lines.push(
-      `(… ${imported.length - 20} more parsed messages truncated — filter or import again to inspect)`,
+      `(… ${imported.length - 20} more parsed messages truncated; filter further to inspect)`,
     );
   }
   return lines.join("\n");
@@ -135,12 +139,12 @@ export function SmsImportInspector({
   bridgeCount: number | null;
 }) {
   const results = result.results ?? [];
-  const txCount = (result.txs ?? []).length;
 
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [query, setQuery] = useState("");
   const [visible, setVisible] = useState(PAGE);
-  const [selected, setSelected] = useState<SmsParseResult | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const kindCounts = useMemo(() => {
     const c: Record<string, number> = { all: results.length };
@@ -168,30 +172,15 @@ export function SmsImportInspector({
 
   const keys = useMemo(() => resultKeys(filtered), [filtered]);
 
+  // What the copy button copies: exactly the rows on screen.
+  const scopeLabel = useMemo(() => {
+    const kind = KINDS.find((k) => k.value === kindFilter)?.label ?? "All";
+    const q = query.trim().slice(0, 24);
+    return [kind, q ? `“${q}”` : null].filter(Boolean).join(" · ");
+  }, [kindFilter, query]);
+
   return (
     <div className="space-y-3">
-      {/* Message counts vs generated transaction counts, separately. */}
-      <div className="grid gap-2 text-sm min-[420px]:grid-cols-2">
-        <div className="min-w-0 rounded-md border p-2">
-          <div className="font-medium">
-            {result.imported} parsed · {results.length - result.imported}{" "}
-            skipped
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {result.unsupported} unsupported · {result.malformed} malformed ·{" "}
-            {result.invalid} invalid · {result.nonTransactional}{" "}
-            non-transactional
-            {bridgeCount !== null ? ` · ${bridgeCount} read` : ""}
-          </div>
-        </div>
-        <div className="min-w-0 rounded-md border p-2">
-          <div className="font-medium">{txCount} transactions</div>
-          <div className="text-xs text-muted-foreground">
-            generated from SMS
-          </div>
-        </div>
-      </div>
-
       <div className="flex justify-end">
         <Button
           variant="outline"
@@ -200,7 +189,7 @@ export function SmsImportInspector({
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(
-                buildReport(result, bridgeCount),
+                buildReport(scopeLabel, filtered, results.length, bridgeCount),
               );
               toast.success("Audit report copied to clipboard");
             } catch {
@@ -208,40 +197,98 @@ export function SmsImportInspector({
             }
           }}
         >
-          Copy audit report
+          Copy {scopeLabel} report
         </Button>
       </div>
 
-      {/* Kind filter chips. */}
-      <div className="flex flex-wrap gap-1.5">
-        {KINDS.map((k) => (
-          <Button
-            key={k.value}
-            size="sm"
-            variant={kindFilter === k.value ? "default" : "outline"}
-            className="h-9"
-            onClick={() => {
-              setKindFilter(k.value);
+      {/* Search + filter button row. */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
               setVisible(PAGE);
             }}
-          >
-            {k.label} ({kindCounts[k.value] ?? 0})
-          </Button>
-        ))}
+            placeholder="Filter by sender, receipt ID or message text…"
+            className="pr-9"
+          />
+          {query && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Clear filter"
+              onClick={() => setQuery("")}
+              className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
+            >
+              <X className="size-4" />
+            </Button>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Filters"
+          onClick={() => setFiltersOpen(true)}
+          className="relative size-10 shrink-0"
+        >
+          <SlidersHorizontal className="size-4" />
+          {kindFilter !== "all" && (
+            <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+              1
+            </span>
+          )}
+        </Button>
       </div>
 
-      {/* Free-text filter: sender, IDs, raw body. */}
-      <Input
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setVisible(PAGE);
-        }}
-        placeholder="Filter by sender, receipt ID or message text…"
-        className="h-10"
-      />
+      {/* Drawer: kind filters in a bottom sheet. */}
+      <Drawer open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Filter messages</DrawerTitle>
+            <DrawerDescription>
+              {filtered.length} messages match.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="space-y-1.5 p-4">
+            {KINDS.map((k) => (
+              <button
+                key={k.value}
+                type="button"
+                aria-pressed={kindFilter === k.value}
+                onClick={() => {
+                  setKindFilter(k.value);
+                  setVisible(PAGE);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/50",
+                  kindFilter === k.value && "border-primary bg-accent",
+                )}
+              >
+                <span>{k.label}</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {kindCounts[k.value] ?? 0}
+                </span>
+              </button>
+            ))}
+          </div>
+          <DrawerFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setKindFilter("all");
+                setVisible(PAGE);
+              }}
+              disabled={kindFilter === "all"}
+            >
+              Clear filter
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
-      {/* One-line rows, windowed; tap for the full detail. */}
+      {/* One-line rows, windowed; tap to expand inline like the
+          Transactions list — no fullscreen takeover. */}
       <div className="overflow-hidden rounded-md border">
         {filtered.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted-foreground">
@@ -251,12 +298,18 @@ export function SmsImportInspector({
           <ul className="max-h-[45vh] divide-y overflow-y-auto">
             {filtered.slice(0, visible).map((r) => {
               const firstTx = (r.txs ?? [])[0];
+              const key = keys.get(r) ?? r.sourceId;
+              const expanded = expandedKey === key;
+              const txs = r.txs ?? [];
               return (
-                <li key={keys.get(r)}>
+                <li key={key}>
                   <button
                     type="button"
+                    aria-expanded={expanded}
                     className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/50 active:bg-muted"
-                    onClick={() => setSelected(r)}
+                    onClick={() =>
+                      setExpandedKey((prev) => (prev === key ? null : key))
+                    }
                   >
                     {kindIcon(r.kind)}
                     <span className="min-w-0 flex-1">
@@ -274,7 +327,59 @@ export function SmsImportInspector({
                         {formatMoney(firstTx.amount)}
                       </span>
                     )}
+                    <ChevronDown
+                      className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${
+                        expanded ? "rotate-180" : ""
+                      }`}
+                    />
                   </button>
+                  {expanded && (
+                    <div className="space-y-2 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px] select-text">
+                      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border bg-background/60 p-2 font-mono text-xs">
+                        {r.body || "(empty body)"}
+                      </pre>
+                      <AuditRow label="Provider ID" value={r.sourceId || "-"} mono />
+                      <AuditRow label="Sender" value={r.address || "-"} />
+                      <AuditRow
+                        label="Received"
+                        value={
+                          r.dateMs
+                            ? new Date(r.dateMs).toLocaleString()
+                            : "-"
+                        }
+                      />
+                      <AuditRow
+                        label="Outcome"
+                        value={`${r.kind}${r.error ? `: ${r.error}` : ""}`}
+                      />
+                      <p className="pt-1 text-xs font-medium text-muted-foreground">
+                        Generated transactions ({txs.length})
+                      </p>
+                      {txs.length > 0 && (
+                        <ul className="divide-y rounded-md border bg-background/40">
+                          {txs.map((tx) => (
+                            <li
+                              key={tx.id}
+                              className="min-w-0 space-y-0.5 px-3 py-2 text-xs"
+                            >
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="min-w-0 truncate font-mono">
+                                  {tx.id}
+                                </span>
+                                <span className="shrink-0 font-mono tabular-nums">
+                                  {formatMoney(tx.amount)}
+                                </span>
+                              </div>
+                              <p className="wrap-break-words">
+                                {tx.description}
+                              </p>
+                              <p className="text-muted-foreground">{tx.date}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -292,119 +397,45 @@ export function SmsImportInspector({
             </Button>
           </div>
         )}
+        {/* Sticky bottom bar for pagination */}
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:border-0 md:bg-transparent md:backdrop-blur-0"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="flex items-center justify-between gap-2 px-4 py-2">
+            <span className="text-sm text-muted-foreground">
+              {filtered.length} message{filtered.length === 1 ? "" : "s"}
+            </span>
+            {filtered.length > visible && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisible((v) => v + PAGE_STEP)}
+              >
+                Show more ({filtered.length - visible} hidden)
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        Preview only — these transactions are not saved to history yet.
-      </p>
-
-      <SmsResultDetail result={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
 
-/** Detail view: the original SMS, its metadata, the parser outcome and
- * error, and every generated transaction including charge rows. */
-function SmsResultDetail({
-  result,
-  onClose,
+function AuditRow({
+  label,
+  value,
+  mono,
 }: {
-  result: SmsParseResult | null;
-  onClose: () => void;
+  label: string;
+  value: string;
+  mono?: boolean;
 }) {
-  const txs = result?.txs ?? [];
   return (
-    <Dialog open={result !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] max-sm:pl-[calc(1rem+env(safe-area-inset-left))] max-sm:pr-[calc(1rem+env(safe-area-inset-right))]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {result && kindIcon(result.kind)}
-            {result?.kind === "imported"
-              ? "Parsed message"
-              : result
-                ? `Skipped: ${result.kind}`
-                : ""}
-          </DialogTitle>
-        </DialogHeader>
-
-        {result && (
-          <div className="space-y-3">
-            <section>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">
-                Original SMS
-              </p>
-              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-xs">
-                {result.body || "(empty body)"}
-              </pre>
-            </section>
-
-            <section className="min-w-0 space-y-0.5 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">
-                Metadata
-              </p>
-              <p className="wrap-break-words">
-                Provider ID: {result.sourceId === "" ? "—" : result.sourceId}
-              </p>
-              <p className="wrap-break-words">
-                Sender: {result.address || "—"}
-              </p>
-              <p>
-                Received:{" "}
-                {result.dateMs ? new Date(result.dateMs).toLocaleString() : "—"}
-              </p>
-            </section>
-
-            <section className="space-y-1 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">
-                Outcome
-              </p>
-              <p className="capitalize">{result.kind}</p>
-              <p
-                className={
-                  result.error
-                    ? "wrap-break-words text-destructive"
-                    : "text-muted-foreground"
-                }
-              >
-                {result.error || "No errors."}
-              </p>
-            </section>
-
-            <section>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">
-                Generated transactions ({txs.length})
-              </p>
-              {/* Stacked rows, not a table: long M-Pesa descriptions and
-                 unbroken receipt IDs must never stretch the layout. */}
-              {txs.length === 0 ? (
-                <p className="rounded-md border p-3 text-sm text-muted-foreground">
-                  None — the message produced no transaction.
-                </p>
-              ) : (
-                <ul className="divide-y rounded-md border">
-                  {txs.map((tx) => (
-                    <li
-                      key={tx.id}
-                      className="min-w-0 space-y-0.5 px-3 py-2 text-xs"
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="min-w-0 truncate font-mono">
-                          {tx.id}
-                        </span>
-                        <span className="shrink-0 font-mono tabular-nums">
-                          {formatMoney(tx.amount)}
-                        </span>
-                      </div>
-                      <p className="wrap-break-words">{tx.description}</p>
-                      <p className="text-muted-foreground">{tx.date}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+    <div className="grid grid-cols-[5.5rem_1fr] gap-x-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`${mono ? "font-mono" : ""} wrap-break-words`}>
+        {value}
+      </span>
+    </div>
   );
 }

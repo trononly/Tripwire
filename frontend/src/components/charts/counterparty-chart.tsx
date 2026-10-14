@@ -41,7 +41,7 @@ export function CounterpartyChart({
   // Reserve just enough axis room for the longest name instead of
   // truncating long labels with a fixed width.
   const maxNameLen = Math.max(10, ...data.map((d) => d.name.length));
-  const axisWidth = Math.min(230, Math.max(100, maxNameLen * 7 + 20));
+  const axisWidth = Math.min(200, Math.max(80, maxNameLen * 6 + 8));
 
   return (
     <Card>
@@ -56,7 +56,7 @@ export function CounterpartyChart({
           <BarChart
             data={data}
             layout="vertical"
-            margin={{ left: 4, right: 24, top: 8 }}
+            margin={{ left: 0, right: 24, top: 8 }}
           >
             <CartesianGrid
               horizontal={false}
@@ -76,6 +76,7 @@ export function CounterpartyChart({
               tickLine={false}
               axisLine={false}
               width={axisWidth}
+              tickMargin={4}
             />
             {/* No hover tooltip on touch devices: it spawns at the tap
                 point and slides off-screen, and the tap itself already

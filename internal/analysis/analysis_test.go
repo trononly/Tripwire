@@ -187,3 +187,20 @@ func TestTopCounterpartiesMergesCaseAndMasking(t *testing.T) {
 		t.Errorf("merged entry wrong: %+v", top[0])
 	}
 }
+
+func TestTopCounterpartiesExcludesSafaricomSystem(t *testing.T) {
+	// Safaricom's own products are plumbing, not counterparties: Ziidi
+	// unit-trust rows, Safaricom Offers bundle rows (which extract only the
+	// account name), and M-Shwari/Fuliza-style names must all stay out.
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:29:02", "Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust", -5000, 1),
+		tx("2026-04-21 18:28:22", "Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust", -5000, 1),
+		tx("2026-04-21 18:08:45", "Customer Bundle Purchase to Safaricom Offers - Tunukiwa", -1000, 1),
+		tx("2026-04-21 18:02:45", "Customer Bundle Purchase to Safaricom Offers - Tunukiwa", -1000, 1),
+		tx("2026-04-21 17:06:40", "Funds received from - Calvin Kamara", 3000, 1),
+	}
+	top := TopCounterparties(txs, 8)
+	if len(top) != 1 || top[0].Name != "Calvin Kamara" || top[0].Count != 1 {
+		t.Errorf("system counterparties should be excluded, got %+v", top)
+	}
+}

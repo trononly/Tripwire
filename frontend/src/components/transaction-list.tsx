@@ -186,8 +186,8 @@ function TxRow({
           <span
             className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
               moneyIn
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-red-600 dark:text-red-400"
+                ? "text-[#22c55e]"
+                : "text-[#EF4444]"
             }`}
           >
             {formatAmount(tx.amount)}
@@ -319,7 +319,7 @@ export function TransactionList({
           {page.map((g) => (
             <section
               key={g.dayKey}
-              className="overflow-hidden rounded-xl border"
+              className="overflow-hidden rounded-none border"
             >
               <header className="flex items-baseline justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
                 <span className="text-[13px] font-medium">
@@ -346,59 +346,62 @@ export function TransactionList({
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border py-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-none border py-8 text-center text-sm text-muted-foreground">
           No transactions match your search or filters.
         </div>
       )}
 
       {showPagination && (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Rows per page</span>
-            <Select
-              value={String(pageSize)}
-              onValueChange={(value) => {
-                setPageIndex(0);
-                setPageSize(Number(value));
-              }}
-            >
-              <SelectTrigger className="w-20" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZES.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span>
-              · {totalRows} transaction{totalRows === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">
-              Page {pageCount === 0 ? 0 : pageIndex + 1} of {pageCount}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPageIndex((p) => p - 1)}
-              disabled={pageIndex <= 0}
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() =>
-                setPageIndex((p) => Math.min(p + 1, pageCount - 1))
-              }
-              disabled={pageIndex >= pageCount - 1}
-            >
-              <ChevronRight />
-            </Button>
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:border-0 md:bg-transparent md:backdrop-blur-0"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="flex items-center justify-between gap-2 px-4 py-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageIndex(0);
+                  setPageSize(Number(value));
+                }}
+              >
+                <SelectTrigger className="w-16" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZES.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>
+                {totalRows} tx{totalRows === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPageIndex((p) => p - 1)}
+                disabled={pageIndex <= 0}
+              >
+                <ChevronLeft />
+              </Button>
+              <span className="min-w-16 text-center text-sm tabular-nums">
+                {pageCount === 0 ? 0 : pageIndex + 1} / {pageCount}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  setPageIndex((p) => Math.min(p + 1, pageCount - 1))
+                }
+                disabled={pageIndex >= pageCount - 1}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
           </div>
         </div>
       )}

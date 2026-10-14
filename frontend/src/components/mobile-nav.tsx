@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { LayoutDashboard, ArrowLeftRight, Lightbulb } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { vibrateIfEnabled } from "@/lib/motion-settings";
 
 // SMS is not a destination: the data mode in Settings decides what the
 // Dashboard/Transactions/Insights analyze, and the SMS audit lives behind
@@ -34,6 +35,7 @@ export function MobileNav() {
             key={to}
             to={to}
             end={end}
+            onClick={() => vibrateIfEnabled(10)}
             className={({ isActive }) =>
               cn(
                 "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-muted-foreground",
