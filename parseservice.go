@@ -57,12 +57,49 @@ type SmsMessage struct {
 	Address string `json:"address"`
 	DateMs  int64  `json:"dateMs"`
 	Body    string `json:"body"`
+	// SubID/Slot/SimLabel identify the SIM that received the message: the
+	// subscription id and logical slot from Android's telephony layer, plus
+	// the carrier's display name for the SIM. Slot is -1 (and SubID -1)
+	// when the bridge could not resolve them (pre-API-22, missing
+	// READ_PHONE_STATE, or a non-Android source). They are never parsed out
+	// of the SMS body — an M-Pesa message is identical on every SIM.
+	SubID    int    `json:"subId,omitempty"`
+	Slot     int    `json:"slot,omitempty"`
+	SimLabel string `json:"simLabel,omitempty"`
 	// TzOffsetMinutes renders the received time in the device timezone,
 	// following the JS Date.getTimezoneOffset convention (minutes behind
 	// UTC: Nairobi is -180). The Go runtime on Android has no reliable
 	// local timezone database, so the frontend always sends the offset;
 	// nil falls back to time.Local for desktop/test convenience only.
 	TzOffsetMinutes *int `json:"tzOffsetMinutes,omitempty"`
+}
+
+// simKeyOf derives a record key and human label for a message's SIM. The
+// key prefers the physical slot (stable across reboots, unlike a sub id)
+// and falls back to the subscription id when the bridge could not resolve
+// a slot. Minutes precision is irrelevant here; this is grouping only.
+func simKeyOf(m SmsMessage) (key, label string) {
+	label = strings.TrimSpace(m.SimLabel)
+	switch {
+	case m.Slot >= 0:
+		key = fmt.Sprintf("sim-%d", m.Slot)
+		if label == "" {
+			label = fmt.Sprintf("SIM %d", m.Slot+1)
+		}
+	case m.SubID >= 0:
+		key = fmt.Sprintf("sub-%d", m.SubID)
+		if label == "" {
+			// No carrier name (READ_PHONE_STATE denied): the sub id is the
+			// only identity left. Kept distinct so two SIMs never merge.
+			label = fmt.Sprintf("SIM %d", m.SubID)
+		}
+	default:
+		key = "sim-unknown"
+		if label == "" {
+			label = "SIM"
+		}
+	}
+	return key, label
 }
 
 // Per-message outcome kinds. Unsupported (no sample-backed format) is
@@ -86,6 +123,8 @@ type SmsParseResult struct {
 	Address  string               `json:"address,omitempty"`
 	DateMs   int64                `json:"dateMs,omitempty"`
 	Body     string               `json:"body,omitempty"`
+	SimID    string               `json:"simId,omitempty"`
+	SimLabel string               `json:"simLabel,omitempty"`
 	Kind     string               `json:"kind"`
 	Error    string               `json:"error,omitempty"`
 	Txs      []parser.Transaction `json:"txs,omitempty"`
@@ -282,11 +321,14 @@ func (p *ParseService) ImportSms(messages []SmsMessage) SmsImportResult {
 // "invalid"; parser problems come back classified as "malformed" or
 // "unsupported" exactly as internal/sms distinguishes them.
 func (p *ParseService) parseSmsMessage(msg SmsMessage) SmsParseResult {
+	simKey, simLabel := simKeyOf(msg)
 	res := SmsParseResult{
 		SourceID: msg.ID,
 		Address:  msg.Address,
 		DateMs:   msg.DateMs,
 		Body:     msg.Body,
+		SimID:    simKey,
+		SimLabel: simLabel,
 	}
 	if strings.TrimSpace(msg.Body) == "" {
 		res.Kind, res.Error = smsKindInvalid, "missing message body"
@@ -340,7 +382,7 @@ func (p *ParseService) SaveSmsImport(txs []parser.Transaction) (*store.Statement
 	if len(txs) == 0 {
 		return nil, fmt.Errorf("no SMS transactions to save")
 	}
-	rec := newSmsRecord(txs)
+	rec := newSmsRecord(txs, "", "")
 
 	s, err := p.statements()
 	if err != nil {
@@ -353,13 +395,16 @@ func (p *ParseService) SaveSmsImport(txs []parser.Transaction) (*store.Statement
 }
 
 // newSmsRecord wraps parsed SMS transactions as a store record. Shared by
-// the manual save path and the refresh path.
-func newSmsRecord(txs []parser.Transaction) store.StatementRecord {
+// the manual save path and the refresh path. simID/simLabel identify the
+// source SIM; the manual path leaves them empty.
+func newSmsRecord(txs []parser.Transaction, simID, simLabel string) store.StatementRecord {
 	rangeOf := store.DateRangeOf(txs)
 	return store.StatementRecord{
 		ID:         store.NewID(),
 		Name:       store.NameOf(rangeOf),
 		Source:     store.SourceSms,
+		SimID:      simID,
+		SimLabel:   simLabel,
 		DateRange:  rangeOf,
 		TxCount:    len(txs),
 		ImportedAt: time.Now().UTC(),
@@ -367,32 +412,67 @@ func newSmsRecord(txs []parser.Transaction) store.StatementRecord {
 	}
 }
 
-// SmsRefreshResult is one inbox snapshot merged into the store: the full
-// per-message audit (same shape as ImportSms, so the manual dialog keeps
-// its breakdown UI on this single import path), the SMS record holding the
-// merged dataset, how many transactions were actually new, the new
-// transactions themselves (for arrival previews), and whether any of them
-// is a user-initiated spend (till, paybill, send-money) worth popping a
-// receipt for. Record is nil and NewTxs empty when the snapshot parsed to
-// nothing.
-type SmsRefreshResult struct {
-	Result   SmsImportResult        `json:"result"`
+// SmsSimRefresh is one SIM's slice of an inbox snapshot: the SMS record
+// holding that SIM's merged dataset, how many transactions were actually
+// new, the new transactions themselves (for arrival previews), and whether
+// any of them is a user-initiated spend (till, paybill, send-money) worth
+// popping a receipt for. Record is nil and NewTxs empty when nothing new
+// came from this SIM.
+type SmsSimRefresh struct {
+	SimID    string                 `json:"simId"`
+	SimLabel string                 `json:"simLabel"`
 	Record   *store.StatementRecord `json:"record,omitempty"`
 	NewCount int                    `json:"newCount"`
 	NewTxs   []parser.Transaction   `json:"newTxns"`
 	Receipt  bool                   `json:"receipt"`
 }
 
-// RefreshSmsImport parses an inbox snapshot and merges it into the latest
-// SMS record — creating one when there is none — keyed by the parser's
-// M-Pesa receipt number. Re-running it over an unchanged inbox adds
-// nothing and writes nothing, so the launch-time auto-import is safe to
-// run on every start. Older SMS records are left alone as snapshots.
+// SmsRefreshResult is one inbox snapshot merged into the store: the full
+// per-message audit (same shape as ImportSms, so the manual dialog keeps
+// its breakdown UI on this single import path) plus one entry per SIM that
+// the snapshot touched. SMS records are stored one per SIM, so a dual-SIM
+// inbox yields two Sim entries and each wallet keeps its own balance
+// series.
+type SmsRefreshResult struct {
+	Result SmsImportResult `json:"result"`
+	Sims   []SmsSimRefresh `json:"sims"`
+}
+
+// RefreshSmsImport parses an inbox snapshot and merges each SIM's messages
+// into that SIM's latest SMS record — creating one when there is none —
+// keyed by the parser's M-Pesa receipt number. Re-running it over an
+// unchanged inbox adds nothing and writes nothing, so the launch-time
+// auto-import is safe to run on every start. Older SMS records are left
+// alone as snapshots.
 func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResult, error) {
 	res := p.ImportSms(messages)
 	out := &SmsRefreshResult{Result: res}
 	if len(res.Txs) == 0 {
 		return out, nil
+	}
+
+	// Partition the audit by SIM. Each parse result carries its SIM key, so
+	// this is a single pass over the already-parsed batch rather than a
+	// second parse. Results arrive in received-time order, so each SIM's
+	// transactions stay in order too.
+	type simAgg struct {
+		label string
+		txs   []parser.Transaction
+	}
+	aggs := make(map[string]*simAgg, 2)
+	order := make([]string, 0, 2)
+	for _, r := range res.Results {
+		key := r.SimID
+		if key == "" {
+			key = "sim-unknown"
+		}
+		a := aggs[key]
+		if a == nil {
+			a = &simAgg{label: r.SimLabel}
+			aggs[key] = a
+			order = append(order, key)
+		}
+		a.txs = append(a.txs, r.Txs...)
 	}
 
 	s, err := p.statements()
@@ -403,62 +483,78 @@ func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResul
 	if err != nil {
 		return nil, err
 	}
-	var latest *store.StatementRecord
-	for _, m := range metas {
-		if m.Source == store.SourceSms {
-			rec, err := s.Get(m.ID)
-			if err != nil {
+
+	for _, key := range order {
+		txs := aggs[key].txs
+		if len(txs) == 0 {
+			continue
+		}
+		sim := SmsSimRefresh{SimID: key, SimLabel: aggs[key].label}
+
+		latest, err := latestSmsRecord(s, metas, key)
+		if err != nil {
+			return nil, err
+		}
+		if latest == nil {
+			rec := newSmsRecord(txs, key, sim.SimLabel)
+			if err := s.Add(rec); err != nil {
 				return nil, err
 			}
-			latest = &rec
-			break
-		}
-	}
-
-	if latest == nil {
-		rec := newSmsRecord(res.Txs)
-		if err := s.Add(rec); err != nil {
-			return nil, err
-		}
-		out.Record = &rec
-		out.NewCount = len(res.Txs)
-		out.NewTxs = res.Txs
-	} else {
-		seen := make(map[string]bool, len(latest.Txs))
-		for _, tx := range latest.Txs {
-			seen[tx.ID] = true
-		}
-		fresh := make([]parser.Transaction, 0, len(res.Txs))
-		for _, tx := range res.Txs {
-			if !seen[tx.ID] {
+			sim.Record = &rec
+			sim.NewCount = len(txs)
+			sim.NewTxs = txs
+		} else {
+			seen := make(map[string]bool, len(latest.Txs))
+			for _, tx := range latest.Txs {
 				seen[tx.ID] = true
-				fresh = append(fresh, tx)
 			}
+			fresh := make([]parser.Transaction, 0, len(txs))
+			for _, tx := range txs {
+				if !seen[tx.ID] {
+					seen[tx.ID] = true
+					fresh = append(fresh, tx)
+				}
+			}
+			if len(fresh) > 0 {
+				merged := append(append([]parser.Transaction{}, latest.Txs...), fresh...)
+				sort.SliceStable(merged, func(i, j int) bool { return merged[i].Date < merged[j].Date })
+				latest.Txs = merged
+				latest.DateRange = store.DateRangeOf(merged)
+				latest.Name = store.NameOf(latest.DateRange)
+				latest.TxCount = len(merged)
+				latest.SimLabel = sim.SimLabel
+				latest.ImportedAt = time.Now().UTC()
+				// Append only the fresh rows: the SMS feed grows by
+				// adding messages, so rewriting its whole history on
+				// every merge would get slower without bound.
+				if err := s.AppendFresh(*latest, fresh); err != nil {
+					return nil, err
+				}
+				sim.NewCount = len(fresh)
+				sim.NewTxs = fresh
+			}
+			sim.Record = latest
 		}
-		if len(fresh) == 0 {
-			out.Record = latest
-			return out, nil
+		sim.Receipt = receiptWorthy(sim.NewTxs)
+		out.Sims = append(out.Sims, sim)
+	}
+	return out, nil
+}
+
+// latestSmsRecord returns the newest SMS record for one SIM key, or nil
+// when that SIM has none yet. metas is already newest-import-first.
+func latestSmsRecord(s *store.Store, metas []store.StatementMeta, simKey string) (*store.StatementRecord, error) {
+	for _, m := range metas {
+		if m.Source != store.SourceSms || m.SimID != simKey {
+			continue
 		}
-		merged := append(append([]parser.Transaction{}, latest.Txs...), fresh...)
-		sort.SliceStable(merged, func(i, j int) bool { return merged[i].Date < merged[j].Date })
-		latest.Txs = merged
-		latest.DateRange = store.DateRangeOf(merged)
-		latest.Name = store.NameOf(latest.DateRange)
-		latest.TxCount = len(merged)
-		latest.ImportedAt = time.Now().UTC()
-		// Append only the fresh rows: the SMS feed grows by adding
-		// messages, so rewriting its whole history on every merge would
-		// get slower without bound.
-		if err := s.AppendFresh(*latest, fresh); err != nil {
+		rec, err := s.Get(m.ID)
+		if err != nil {
 			return nil, err
 		}
-		out.Record = latest
-		out.NewCount = len(fresh)
-		out.NewTxs = fresh
+		return &rec, nil
 	}
-
-	out.Receipt = receiptWorthy(out.NewTxs)
-	return out, nil
+	return nil, nil
 }
 
 // receiptWorthy reports whether any new transaction is a user-initiated
@@ -473,6 +569,86 @@ func receiptWorthy(txs []parser.Transaction) bool {
 		}
 	}
 	return false
+}
+
+// SimCard is one SIM as currently seen by the phone: the subscription id
+// and slot from the telephony layer plus the carrier's display name. It
+// carries no messages — it only re-resolves names for wallets imported
+// while READ_PHONE_STATE was unavailable.
+type SimCard struct {
+	SubID    int    `json:"subId"`
+	Slot     int    `json:"slot"`
+	SimLabel string `json:"simLabel"`
+}
+
+// RefreshSimLabels upgrades stored SMS wallets' display names from the
+// phone's current SIM list, and moves subscription-keyed records onto
+// their slot key once the slot is known — without the move, imports after
+// the phone-state grant would open a second record for the same physical
+// SIM. A card matches by slot key first, then subscription key; cards with
+// no carrier name and records that already carry the name are skipped for
+// renaming, and a move is skipped when another record already claims the
+// slot key (the older record stays as a snapshot). Returns how many
+// records changed. Transactions, counts and date ranges are untouched.
+func (p *ParseService) RefreshSimLabels(cards []SimCard) (int, error) {
+	s, err := p.statements()
+	if err != nil {
+		return 0, err
+	}
+	metas, err := s.List()
+	if err != nil {
+		return 0, err
+	}
+	claimed := make(map[string]bool, len(metas))
+	for _, m := range metas {
+		if m.Source == store.SourceSms {
+			claimed[m.SimID] = true
+		}
+	}
+	updated := 0
+	for _, c := range cards {
+		label := strings.TrimSpace(c.SimLabel)
+		var slotKey, subKey string
+		if c.Slot >= 0 {
+			slotKey = fmt.Sprintf("sim-%d", c.Slot)
+		}
+		if c.SubID >= 0 {
+			subKey = fmt.Sprintf("sub-%d", c.SubID)
+		}
+		if slotKey == "" && subKey == "" {
+			continue
+		}
+		for i := range metas {
+			m := &metas[i]
+			if m.Source != store.SourceSms {
+				continue
+			}
+			if m.SimID != slotKey && m.SimID != subKey {
+				continue
+			}
+			changed := false
+			if slotKey != "" && m.SimID == subKey && !claimed[slotKey] {
+				if err := s.SetSimID(m.ID, slotKey); err != nil {
+					return updated, err
+				}
+				delete(claimed, subKey)
+				claimed[slotKey] = true
+				m.SimID = slotKey
+				changed = true
+			}
+			if label != "" && m.SimLabel != label {
+				if err := s.SetSimLabel(m.ID, label); err != nil {
+					return updated, err
+				}
+				m.SimLabel = label
+				changed = true
+			}
+			if changed {
+				updated++
+			}
+		}
+	}
+	return updated, nil
 }
 
 // ListStatements returns the stored statements' metadata, newest import

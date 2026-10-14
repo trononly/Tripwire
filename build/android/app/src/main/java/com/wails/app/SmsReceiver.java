@@ -35,7 +35,7 @@ public class SmsReceiver extends BroadcastReceiver {
         final PendingResult pending = goAsync();
         new Thread(() -> {
             try {
-                JSONObject caught = catchMpesa(intent);
+                JSONObject caught = catchMpesa(context, intent);
                 if (caught != null) {
                     enqueue(context, caught);
                 }
@@ -48,10 +48,11 @@ public class SmsReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Returns the caught message ({id, address, dateMs, body}) when any part
-     * carries an M-Pesa sender, else null. Bodies are carried, never read.
+     * Returns the caught message ({id, address, dateMs, body} plus the SIM
+     * that delivered it) when any part carries an M-Pesa sender, else null.
+     * Bodies are carried, never read.
      */
-    private JSONObject catchMpesa(Intent intent) {
+    private JSONObject catchMpesa(Context context, Intent intent) {
         try {
             SmsMessage[] parts = Telephony.Sms.Intents.getMessagesFromIntent(intent);
             if (parts == null || parts.length == 0) {
@@ -78,11 +79,28 @@ public class SmsReceiver extends BroadcastReceiver {
             if (dateMs == 0) {
                 dateMs = System.currentTimeMillis();
             }
+            // Which SIM delivered it. SMS_RECEIVED carries "subscription" (a
+            // long on new builds, an int on old ones) and sometimes "slot".
+            // Either can be missing on some OEMs, so degrade to -1 and let
+            // Go group those as one unresolved wallet.
+            int subId = -1;
+            Object raw = intent.getExtras() != null
+                    ? intent.getExtras().get("subscription") : null;
+            if (raw instanceof Number) {
+                subId = ((Number) raw).intValue();
+            }
+            JSONObject sim = WailsBridge.describeSim(context, subId);
+            int slot = intent.hasExtra("slot")
+                    ? intent.getIntExtra("slot", -1)
+                    : sim.optInt("slot", -1);
             return new JSONObject()
                     .put("id", address + "_" + dateMs)
                     .put("address", address)
                     .put("dateMs", dateMs)
-                    .put("body", body.toString());
+                    .put("body", body.toString())
+                    .put("subId", subId)
+                    .put("slot", slot)
+                    .put("simLabel", sim.optString("label", ""));
         } catch (Exception e) {
             Log.e(TAG, "sender check failed", e);
             return null;
