@@ -45,6 +45,7 @@ import {
 import { useSmsPermissions } from "@/hooks/use-sms-permissions";
 import { useUpdater } from "@/hooks/use-updater";
 import { UpdateDialog } from "@/components/update-dialog";
+import { RestrictedSettingsGuide } from "@/components/restricted-settings-guide";
 import { MobileNav } from "@/components/mobile-nav";
 import { SimSwitcher } from "@/components/sim-switcher";
 import type {
@@ -140,6 +141,11 @@ function App() {
   const smsMetas = statements.filter((s) => s.source === "sms");
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Step-by-step setup when SMS access is blocked behind Android's
+  // "restricted settings" (sideloaded installs). Replaces the toast for
+  // the permanently-denied case: the fix needs taps in system settings,
+  // then the app re-asks in-app via onRetry.
+  const [guideOpen, setGuideOpen] = useState(false);
   // SMS import is Android-only; the injected bridge is checked once after
   // mount so desktop rendering never touches window.wails.
   // Direct import, no modal: the header/SMS/Dashboard buttons call
@@ -482,9 +488,7 @@ function App() {
       setSmsImporting(false);
       const err = data?.error ?? "Unknown error";
       if (err.includes("permanently denied")) {
-        toast.error(
-          "SMS access is permanently denied. Re-enable it in Android Settings → Apps → Tripwire → Permissions → SMS, then import again.",
-        );
+        setGuideOpen(true);
       } else if (err.includes("permission denied")) {
         toast.error("SMS access was denied. Allow it and import again.");
       } else {
@@ -880,6 +884,11 @@ function App() {
           }}
         />
         <UpdateDialog updater={updater} />
+        <RestrictedSettingsGuide
+          open={guideOpen}
+          onOpenChange={setGuideOpen}
+          onRetry={startSmsImport}
+        />
       </HashRouter>
     </ThemeProvider>
   );
