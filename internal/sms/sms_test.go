@@ -293,10 +293,6 @@ func TestUnsupported(t *testing.T) {
 			sms:  "ABCAP6ZZZ2 Confirmed. Ksh2,000.00 deposited by AGENT TWO on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh2,500.00.",
 		},
 		{
-			name: "fuliza repayment",
-			sms:  "ABCAP6ZZZ3 Confirmed. Fuliza amount repaid Ksh500.00 on 8/9/26 at 1:00 PM. New M-PESA balance is Ksh300.00.",
-		},
-		{
 			// A reversal wording without the "of transaction <ref>" structure
 			// is not one of the sampled reversal shapes; refuse it.
 			name: "reversal without payment structure",
@@ -469,6 +465,191 @@ func TestRealFormatExpansion(t *testing.T) {
 				if cat := txtype.CategoryOf(got[i].Description); cat != tt.cats[i] {
 					t.Errorf("category(%q) = %q, want %q", got[i].Description, cat, tt.cats[i])
 				}
+			}
+		})
+	}
+}
+
+// TestFuliza covers the three sample-backed Fuliza shapes. Fuliza SMS carry
+// no d/m/yy transaction timestamp, so Date is left empty here — ImportSms
+// overwrites it with the SMS received time. Each generated description must
+// classify correctly under the existing txtype classifier.
+func TestFuliza(t *testing.T) {
+	tests := []struct {
+		name  string
+		file  string
+		want  []parser.Transaction
+		types []txtype.TransactionType
+		cats  []string
+	}{
+		{
+			// Only the access fee becomes a transaction: the principal is
+			// already covered by the paired send-money SMS sharing the
+			// same receipt number. The balance is the negated outstanding
+			// (-156.35): using Fuliza is debt owed to M-Pesa, access fee
+			// included.
+			name: "disbursement emits access fee only",
+			file: "30-fuliza-disbursement.txt",
+			want: []parser.Transaction{
+				{ID: "UABPC3DDVW-F", Date: "", Description: "Fuliza Access Fee", Status: "Completed", Amount: -155, Balance: -15635},
+			},
+			types: []txtype.TransactionType{txtype.TypeFees},
+			cats:  []string{"Fees"},
+		},
+		{
+			name: "full repayment",
+			file: "31-fuliza-full-repay.txt",
+			want: []parser.Transaction{
+				{ID: "UACPC3I158", Date: "", Description: "Fuliza Repayment - Fully Paid", Status: "Completed", Amount: -19675, Balance: 30325},
+			},
+			types: []txtype.TransactionType{txtype.TypeFuliza},
+			cats:  []string{"Fees"},
+		},
+		{
+			name: "partial repayment",
+			file: "32-fuliza-partial-repay.txt",
+			want: []parser.Transaction{
+				{ID: "UAKPC46PZ3", Date: "", Description: "Fuliza Repayment - Partially Paid", Status: "Completed", Amount: -5000, Balance: 0},
+			},
+			types: []txtype.TransactionType{txtype.TypeFuliza},
+			cats:  []string{"Fees"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMessage(fixture(t, tt.file))
+			if err != nil {
+				t.Fatalf("ParseMessage: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d transactions, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("transaction %d:\n got  %+v\n want %+v", i, got[i], want)
+				}
+				if ttype := txtype.TypeOf(got[i].Description); ttype != tt.types[i] {
+					t.Errorf("txtype.TypeOf(%q) = %q, want %q", got[i].Description, ttype, tt.types[i])
+				}
+				if cat := txtype.CategoryOf(got[i].Description); cat != tt.cats[i] {
+					t.Errorf("txtype.CategoryOf(%q) = %q, want %q", got[i].Description, cat, tt.cats[i])
+				}
+			}
+		})
+	}
+}
+
+// TestFulizaPairedReceipts documents the paired-message case: one M-Pesa
+// send produces two SMS under one receipt number — the send-money SMS and
+// the Fuliza disbursement SMS. The "-F" suffix keeps their transaction IDs
+// distinct so the import dedup (keyed by tx.ID) keeps both.
+func TestFulizaPairedReceipts(t *testing.T) {
+	send := "UJEPC9V1WA Confirmed. Ksh50.00 sent to JANE DOE on 10/2/26 at 10:00 AM. New M-PESA balance is Ksh0.00. Transaction cost, Ksh0.00."
+	disburse := "UJEPC9V1WA Confirmed. Fuliza M-PESA amount is Ksh 50.00. Access Fee charged Ksh 0.50. Total Fuliza M-PESA outstanding amount is Ksh50.50 due on 11/02/26."
+
+	sendTxs, err := ParseMessage(send)
+	if err != nil {
+		t.Fatalf("send ParseMessage: %v", err)
+	}
+	disburseTxs, err := ParseMessage(disburse)
+	if err != nil {
+		t.Fatalf("disbursement ParseMessage: %v", err)
+	}
+	if len(sendTxs) != 1 || len(disburseTxs) != 1 {
+		t.Fatalf("want 1 transaction each, got %d and %d", len(sendTxs), len(disburseTxs))
+	}
+	if sendTxs[0].ID == disburseTxs[0].ID {
+		t.Errorf("paired receipt IDs collide: %q", sendTxs[0].ID)
+	}
+	if disburseTxs[0].ID != "UJEPC9V1WA-F" {
+		t.Errorf("disbursement ID = %q, want %q", disburseTxs[0].ID, "UJEPC9V1WA-F")
+	}
+	if disburseTxs[0].Amount != -50 {
+		t.Errorf("disbursement amount = %d, want -50", disburseTxs[0].Amount)
+	}
+	if disburseTxs[0].Balance != -5050 {
+		t.Errorf("disbursement balance = %d, want -5050 (negated outstanding owed)", disburseTxs[0].Balance)
+	}
+}
+
+// TestFulizaVariations covers casing/spelling variants and the malformed
+// edges of the Fuliza shapes.
+func TestFulizaVariations(t *testing.T) {
+	tests := []struct {
+		name string
+		sms  string
+		want []parser.Transaction
+	}{
+		{
+			// Casing ("fuliza", "ksh", "KSH") and the "Ksh." spelling.
+			name: "case-insensitive with Ksh variants",
+			sms:  "UABPC3DDVW Confirmed. fuliza m-pesa amount is KSH 154.80. access fee charged Ksh.1.55. total fuliza m-pesa outstanding amount is Ksh156.35 due on 10/02/26.",
+			want: []parser.Transaction{
+				{ID: "UABPC3DDVW-F", Date: "", Description: "Fuliza Access Fee", Status: "Completed", Amount: -155, Balance: -15635},
+			},
+		},
+		{
+			// Repayment wording is matched on structure, not case.
+			name: "uppercase repayment",
+			sms:  "UACPC3I158 Confirmed. KSH 196.75 FROM YOUR M-PESA HAS BEEN USED TO FULLY PAY YOUR OUTSTANDING FULIZA M-PESA. M-PESA BALANCE IS KSH303.25.",
+			want: []parser.Transaction{
+				{ID: "UACPC3I158", Date: "", Description: "Fuliza Repayment - Fully Paid", Status: "Completed", Amount: -19675, Balance: 30325},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMessage(tt.sms)
+			if err != nil {
+				t.Fatalf("ParseMessage: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d transactions, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("transaction %d:\n got  %+v\n want %+v", i, got[i], want)
+				}
+			}
+		})
+	}
+}
+
+// TestFulizaMalformed covers recognized Fuliza shapes with missing fields:
+// they must be rejected, not guessed at.
+func TestFulizaMalformed(t *testing.T) {
+	tests := []struct {
+		name string
+		sms  string
+	}{
+		{
+			name: "disbursement missing access fee",
+			sms:  "UABPC3DDVW Confirmed. Fuliza M-Pesa amount is Ksh 154.80. Total Fuliza M-Pesa outstanding amount is Ksh156.35 due on 10/02/26.",
+		},
+		{
+			name: "access fee without principal",
+			sms:  "UABPC3DDVW Confirmed. Access Fee charged Ksh 1.55. Total Fuliza M-Pesa outstanding amount is Ksh156.35 due on 10/02/26.",
+		},
+		{
+			name: "disbursement missing outstanding amount",
+			sms:  "UABPC3DDVW Confirmed. Fuliza M-Pesa amount is Ksh 154.80. Access Fee charged Ksh 1.55.",
+		},
+		{
+			name: "repayment missing paid amount",
+			sms:  "UACPC3I158 Confirmed. Amount used to fully pay your outstanding Fuliza M-PESA.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMessage(tt.sms)
+			if got != nil {
+				t.Errorf("expected no transactions, got %+v", got)
+			}
+			if !errors.Is(err, ErrMalformed) {
+				t.Errorf("error = %v, want %v", err, ErrMalformed)
 			}
 		})
 	}

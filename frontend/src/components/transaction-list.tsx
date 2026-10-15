@@ -109,7 +109,8 @@ function TxRow({
   onVeil: () => void;
 }) {
   // Who: the counterparty extracted in Go, falling back to the type label
-  // when the statement names none ("Airtime Purchase", "Fuliza M-Pesa").
+  // when the statement names none ("Airtime Purchase", "Fuliza M-Pesa",
+  // "Fuliza Access Fee", "Fuliza Repayment ...").
   // What: the type label + time. The full raw description stays in the
   // expanded detail.
   const { icon: Icon, className: tint, label: typeLabel } = typeStyle(tx.type);

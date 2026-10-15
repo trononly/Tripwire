@@ -68,6 +68,16 @@ var (
 
 	// "Transaction cost, Ksh5.00" and "Transaction cost Ksh.0.00" both occur.
 	reCost = regexp.MustCompile(`(?i)Transaction cost,?\s*Ksh\.?\s*([\d,]+\.\d{2})`)
+
+	// Fuliza disbursements read "Fuliza M-PESA amount is Ksh X. Access Fee
+	// charged Ksh Y. ..." (any casing, "Ksh." variant). Only the access
+	// fee becomes a transaction — the principal is already covered by the
+	// paired send-money SMS sharing the same receipt number.
+	reFulizaPrincipal = regexp.MustCompile(`(?i)Fuliza\s+M-?PESA\s+amount\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
+	reFulizaFee       = regexp.MustCompile(`(?i)Access\s+Fee\s+charged\s+Ksh\.?\s*([\d,]+\.\d{2})`)
+	// "Total Fuliza M-PESA outstanding amount is Ksh Z" — the running debt
+	// after this advance, principal plus access fee included.
+	reFulizaOutstanding = regexp.MustCompile(`(?i)Total\s+Fuliza\s+M-?PESA\s+outstanding\s+amount\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
 )
 
 // Statement-style descriptions, matching the Details column of real
@@ -91,6 +101,14 @@ const (
 	chargeTransfer   = "Customer Transfer of Funds Charge"
 	chargePaybill    = "Pay Bill Charge"
 	chargeWithdrawal = "Withdrawal Charge"
+
+	// Fuliza rows. The disbursement emits only the access fee (the
+	// principal duplicates the paired send-money SMS); repayments emit the
+	// amount taken from M-PESA toward the outstanding Fuliza balance.
+	descFulizaFee          = "Fuliza Access Fee"
+	descFulizaRepayFull    = "Fuliza Repayment - Fully Paid"
+	descFulizaRepayPartial = "Fuliza Repayment - Partially Paid"
+	descFulizaRepay        = "Fuliza Repayment"
 )
 
 // nonTransactional are operational M-Pesa messages with no financial
@@ -134,6 +152,18 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 	}
 	id := t[hdr[2]:hdr[3]]
 	body := t[hdr[1]:]
+
+	// Fuliza messages carry no d/m/yy transaction timestamp (only a "due
+	// on DD/MM/YY" date, or none at all), so they are handled before the
+	// mandatory timestamp check below. Date is left empty: ImportSms
+	// overwrites it with the SMS received time.
+	if strings.Contains(lower, "fuliza") {
+		if fulizaTxs, ok, err := parseFuliza(id, body); ok || err != nil {
+			return fulizaTxs, err
+		}
+		// "Fuliza" mentioned but neither a disbursement nor a repayment
+		// shape — fall through to the normal path.
+	}
 
 	// Required: transaction amount (first Ksh value in the body).
 	amountMatch := reAmount.FindStringSubmatch(body)
@@ -299,6 +329,112 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 		})
 	}
 	return txs, nil
+}
+
+// parseFuliza handles the three sample-backed Fuliza shapes, none of which
+// carries a transaction timestamp. It returns ok=false when the body is not
+// a recognized Fuliza shape (the caller falls through to the normal path).
+// A recognized shape with missing fields is malformed, never guessed at.
+//
+//   - Disbursement ("Fuliza M-PESA amount is Ksh X. Access Fee charged Ksh
+//     Y. Total ... outstanding ... Ksh Z"): one fee transaction, ID
+//     "<receipt>-F" (the paired send-money SMS owns the base receipt ID),
+//     balance -Z (the debt owed, fee included).
+//   - Repayment ("Ksh X ... has been used to fully/partially pay your
+//     outstanding Fuliza M-PESA. ... M-PESA balance is Ksh Z"): one
+//     transaction for the amount taken, ID "<receipt>", balance Z (the
+//     wallet after the sweep; a full repayment clears the debt, a partial
+//     leaves the wallet at ~0 with the remainder unstated in the SMS).
+func parseFuliza(id, body string) (txs []parser.Transaction, ok bool, err error) {
+	lower := strings.ToLower(body)
+
+	// Repayments: "... has been used to fully/partially pay your
+	// outstanding Fuliza M-PESA. ..."
+	if strings.Contains(lower, "pay your outstanding fuliza") ||
+		strings.Contains(lower, "pay your fuliza") {
+		var desc string
+		switch {
+		case strings.Contains(lower, "fully pay") || strings.Contains(lower, "full pay"):
+			desc = descFulizaRepayFull
+		case strings.Contains(lower, "partially pay") || strings.Contains(lower, "partial pay"):
+			desc = descFulizaRepayPartial
+		default:
+			desc = descFulizaRepay
+		}
+		m := reAmount.FindStringSubmatch(body)
+		if m == nil {
+			return nil, true, fmt.Errorf("%w: fuliza repayment missing paid amount", ErrMalformed)
+		}
+		paid, err := parser.ParseMoney(m[1])
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: bad fuliza repayment amount: %v", ErrMalformed, err)
+		}
+		balance, err := fulizaBalance(body)
+		if err != nil {
+			return nil, true, err
+		}
+		return []parser.Transaction{{
+			ID:          id,
+			Date:        "",
+			Description: desc,
+			Status:      "Completed",
+			Amount:      -paid,
+			Balance:     balance,
+		}}, true, nil
+	}
+
+	// Disbursement: "Fuliza M-PESA amount is Ksh X. Access Fee charged
+	// Ksh Y. Total Fuliza M-PESA outstanding amount is Ksh Z. ..."
+	// One fee transaction for the access fee. Its balance is the NEGATED
+	// outstanding (-Z): using Fuliza puts the wallet in debt to M-Pesa,
+	// and the outstanding already includes the access fee — that is the
+	// amount owed. (No wallet balance line exists on disbursements; the
+	// wallet sits at ~0 after the paired send.)
+	if strings.Contains(lower, "access fee") || reFulizaPrincipal.MatchString(body) {
+		if !reFulizaPrincipal.MatchString(body) {
+			return nil, true, fmt.Errorf("%w: fuliza disbursement missing principal amount", ErrMalformed)
+		}
+		m := reFulizaFee.FindStringSubmatch(body)
+		if m == nil {
+			return nil, true, fmt.Errorf("%w: fuliza disbursement missing access fee", ErrMalformed)
+		}
+		fee, err := parser.ParseMoney(m[1])
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: bad fuliza access fee: %v", ErrMalformed, err)
+		}
+		o := reFulizaOutstanding.FindStringSubmatch(body)
+		if o == nil {
+			return nil, true, fmt.Errorf("%w: fuliza disbursement missing outstanding amount", ErrMalformed)
+		}
+		outstanding, err := parser.ParseMoney(o[1])
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: bad fuliza outstanding amount: %v", ErrMalformed, err)
+		}
+		return []parser.Transaction{{
+			ID:          id + "-F",
+			Date:        "",
+			Description: descFulizaFee,
+			Status:      "Completed",
+			Amount:      -fee,
+			Balance:     -outstanding,
+		}}, true, nil
+	}
+
+	return nil, false, nil
+}
+
+// fulizaBalance extracts the wallet balance from a Fuliza message. Zero when
+// absent (disbursements carry no balance line) — the model has no unknown
+// marker, and inventing a value would corrupt balance charts.
+func fulizaBalance(body string) (int64, error) {
+	if m := reBalance.FindStringSubmatch(body); m != nil {
+		balance, err := parser.ParseMoney(m[1])
+		if err != nil {
+			return 0, fmt.Errorf("%w: bad balance: %v", ErrMalformed, err)
+		}
+		return balance, nil
+	}
+	return 0, nil
 }
 
 // parseStamp converts a reStamp match into the application date format
