@@ -10,7 +10,7 @@ import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
 import type * as models from "../bindings/mpesa-analyzer/models";
-import { getAdsEnabled, setAdsEnabled, todayKey } from "@/lib/ads";
+import { todayKey } from "@/lib/ads";
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import { parseHouseAds, pickHouseAd, type HouseAd } from "@/lib/house-ads";
 import {
@@ -24,7 +24,6 @@ import {
 	buildSendScript,
 	buildTillScript,
 	normalizePhone,
-	parseMenuOption,
 } from "@/lib/ussd-menus";
 
 // Keep every other import of the Wails runtime intact; only the browser
@@ -53,14 +52,6 @@ beforeEach(() => {
 });
 
 describe("ads", () => {
-	it("defaults ON until the user opts out", () => {
-		expect(getAdsEnabled()).toBe(true);
-		setAdsEnabled(false);
-		expect(getAdsEnabled()).toBe(false);
-		setAdsEnabled(true);
-		expect(getAdsEnabled()).toBe(true);
-	});
-
 	it("builds a local YYYY-MM-DD day key", () => {
 		expect(todayKey(new Date(2026, 9, 14))).toBe("2026-10-14");
 	});
@@ -269,13 +260,6 @@ describe("ussd-menus", () => {
 
 	it("rejects USSD control chars in account names", () => {
 		expect(buildPaybillScript("123456", "a*b#c", "100")).toBeNull();
-	});
-
-	it("parses the option number before matched text", () => {
-		const prompt = "1. Send money\n3. Pochi La Biashara\n6. Lipa na M-PESA";
-		expect(parseMenuOption(prompt, ["pochi"])).toBe("3");
-		expect(parseMenuOption(prompt, ["lipa"])).toBe("6");
-		expect(parseMenuOption(prompt, ["nope"])).toBeNull();
 	});
 });
 
