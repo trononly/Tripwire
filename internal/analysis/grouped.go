@@ -146,11 +146,18 @@ func DateLabelOf(day string) string {
 
 // GroupedTransactions sorts newest-first, applies the filter, and groups the
 // surviving rows by calendar day (newest day first, newest row first within
-// a day).
+// a day). Same-second ties break by transaction ID descending so paired
+// Fuliza fee ("<receipt>-F") and charge ("<receipt>-C") rows sort before
+// their base row and day end balances stay deterministic.
 func GroupedTransactions(txs []parser.Transaction, filter TransactionFilter) []TransactionGroup {
 	sorted := make([]parser.Transaction, len(txs))
 	copy(sorted, txs)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date > sorted[j].Date })
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Date != sorted[j].Date {
+			return sorted[i].Date > sorted[j].Date
+		}
+		return sorted[i].ID > sorted[j].ID
+	})
 
 	// True end-of-day balances: the first occurrence of a day in
 	// newest-first order is that day's latest transaction.

@@ -1,16 +1,14 @@
 # Tripwire
 
-Tripwire is a local-first personal M-Pesa money analyzer for Android.
+Tripwire is a local-first personal M-Pesa money analyzer for Android(Windows & Linux soon).
 It imports your M-Pesa history - PDF statements, and the M-Pesa SMS in
 your phone's inbox - parses it all into one normalized transaction model,
 and helps you understand where your money goes: cashflow, categories,
 counterparties, the fees Safaricom took, and recurring bills and
 subscriptions.
 
-## Releases
+## Installation
 
-V1 is mobile-only. Pushing a tag like `tripwire-1.2.3` runs the Release
-workflow, which builds a signed release APK and publishes it on the
 [releases page](https://github.com/trononly/Tripwire/releases) as
 `Tripwire-1.2.3.apk` (plus a `Tripwire-1.2.3.aab` Play Store bundle).
 
@@ -22,19 +20,22 @@ installer. The first install of a new version asks you to allow
 "Install unknown apps" for Tripwire once - Android's rule for updates
 outside the Play Store, not something the app can skip.
 
-Renaming note: the app was previously published as `com.hesabu.app`
-(Hesabu). The application ID is now `com.tripwire.app`, which Android
-treats as a different app - existing Hesabu installs do not upgrade in
-place. Uninstall the old app (or keep it side by side) and install the
-Tripwire APK fresh. Your data does not migrate automatically.
+**IMPORTANT**
 
-## Privacy: everything stays on device
+The application asks for the following permissions:
 
-There is no backend, no account, and no telemetry. Statements and SMS are
-parsed locally and persisted in a local database in the app's data directory;
-the parser password is used once, in the import dialog, and is never written to
-disk. The only thing that ever leaves the device is a report you explicitly
-export (image, PDF, or HTML).
+- Manage Calls - To support automated payments by calling `*334#` and getting the Sim Carrier names for users who have two sims
+- Read SMS - To get the transactions from MPESA
+- Read Notifications - To get receipt notifications from MPESA to show masked messages without having to read the entire SMS inbox
+- Accessibility Permissions - To automate `*334#` payments for offline payments
+
+Therefore, the app may be blocked because of security purposes, and thats a good thing. Dont install dumb apps that ask for all these features. The good thing is that this is OSS you can view everything or even ask your agent about this application.
+
+The way to rectify the blocking is by going to Play Store -> Settings > Play Protect > Turn off "Scan apps with Play Protect" and "Improve harmful app detection"
+
+Furthermore Android itself will also block permissions but there are instructions in app on how to fix it. If you struggle with the instructions, I recommend you either, try again and read slowly, or open an issue on the repo and I will help you out.
+
+I'll try to get the app on Play Store but I don't have a developer account, you can sponsor the project so I can get one. Also this app may not be green lit for the playstore but when that does happen I'll update the repository but for now, you can download the APK from the releases page and install it manually. The app is open source and you can verify the code yourself.
 
 ## Limitations
 

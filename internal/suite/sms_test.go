@@ -656,6 +656,59 @@ func TestFulizaMalformed(t *testing.T) {
 	}
 }
 
+// TestFulizaUserSamples locks in the real-world shapes from the October
+// Fuliza thread: compact "Ksh62.00" amounts, outstanding values without a
+// space ("Ksh292.00"), and the Ksh-less repayment balance
+// ("Your M-PESA balance is 0.00."). The outstanding is the debt owed and
+// rides on Balance (negated); the fee rides on Amount - Safaricom already
+// folds the fee into the outstanding, so the two are never added together.
+func TestFulizaUserSamples(t *testing.T) {
+	tests := []struct {
+		name string
+		sms  string
+		want []parser.Transaction
+	}{
+		{
+			name: "62 advance owes 292",
+			sms:  "UJFPC9YWQQ Confirmed. Fuliza M-PESA amount is Ksh 62.00. Access Fee charged Ksh 0.62. Total Fuliza M-PESA outstanding amount is Ksh292.00 due on 12/11/26. To check daily charges, Dial *334#OK Select Query Charges",
+			want: []parser.Transaction{
+				{ID: "UJFPC9YWQQ-F", Date: "", Description: "Fuliza Access Fee", Status: "Completed", Amount: -62, Balance: -29200},
+			},
+		},
+		{
+			name: "90 advance owes 229.38",
+			sms:  "UJFPC9XRKY Confirmed. Fuliza M-PESA amount is Ksh 90.00. Access Fee charged Ksh 0.90. Total Fuliza M-PESA outstanding amount is Ksh229.38 due on 12/11/26. To check daily charges, Dial *334#OK Select Query Charges",
+			want: []parser.Transaction{
+				{ID: "UJFPC9XRKY-F", Date: "", Description: "Fuliza Access Fee", Status: "Completed", Amount: -90, Balance: -22938},
+			},
+		},
+		{
+			name: "partial repayment without Ksh balance marker",
+			sms:  "UJFPC9XD0T Confirmed. Ksh 200.00 from your M-PESA has been used to partially pay your outstanding Fuliza M-PESA. Your available Fuliza M-PESA limit is Ksh 661.52. Your M-PESA balance is 0.00.",
+			want: []parser.Transaction{
+				{ID: "UJFPC9XD0T", Date: "", Description: "Fuliza Repayment - Partially Paid", Status: "Completed", Amount: -20000, Balance: 0},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMessage(tt.sms)
+			if err != nil {
+				t.Fatalf("ParseMessage: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d transactions, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("transaction %d:\n got  %+v\n want %+v", i, got[i], want)
+				}
+			}
+		})
+	}
+}
+
 // TestNonTransactional pins the six operational messages: no transactions,
 // ErrNonTransactional, never malformed.
 func TestNonTransactional(t *testing.T) {

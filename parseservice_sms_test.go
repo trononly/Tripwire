@@ -11,6 +11,27 @@ import (
 	"mpesa-analyzer/internal/store"
 )
 
+// TestTransactionGroupsFulizaTiebreak locks in that a paired send and its
+// Fuliza fee sharing one second-precision timestamp still end the day in
+// debt: the "-F" fee row sorts first (newest) so the day header shows the
+// outstanding (-292.00), not the wallet zero the send left behind.
+func TestTransactionGroupsFulizaTiebreak(t *testing.T) {
+	txs := []parser.Transaction{
+		{ID: "UJFPC9YWQQ", Date: "2026-10-15 14:40:00", Description: "Merchant Payment to - TERESIA WAKERA MUNENE", Status: "Completed", Amount: -6200, Balance: 0},
+		{ID: "UJFPC9YWQQ-F", Date: "2026-10-15 14:40:00", Description: "Fuliza Access Fee", Status: "Completed", Amount: -62, Balance: -29200},
+	}
+	groups := (&ParseService{}).TransactionGroups(txs)
+	if len(groups) != 1 {
+		t.Fatalf("want 1 day group, got %+v", groups)
+	}
+	if groups[0].EndBalance != -29200 {
+		t.Errorf("EndBalance = %d, want -29200 (outstanding owed)", groups[0].EndBalance)
+	}
+	if len(groups[0].Txs) != 2 || groups[0].Txs[0].ID != "UJFPC9YWQQ-F" {
+		t.Errorf("fee row should sort first, got %+v", groups[0].Txs)
+	}
+}
+
 // fixtureBody reads one stored real SMS sample (same fixtures the parser
 // tests use).
 func fixtureBody(t *testing.T, name string) string {
