@@ -49,9 +49,9 @@ import {
   type SmsBridgeResult,
 } from "@/lib/sms-bridge";
 import { useSmsPermissions } from "@/hooks/use-sms-permissions";
-import { usePaymentsEnabled } from "@/lib/payments-mode";
 import { MobileNav } from "@/components/mobile-nav";
 import { SimSwitcher } from "@/components/sim-switcher";
+import { TripwireLogo } from "@/components/tripwire-logo";
 import type {
   SmsImportResult,
   SmsRefreshResult,
@@ -145,7 +145,7 @@ function MpesaFab() {
       {open && (
         <button
           aria-label="Close M-Pesa menu"
-          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
           style={{ animation: "fab-fade 0.2s ease-out both" }}
           onClick={() => setOpen(false)}
         />
@@ -252,8 +252,6 @@ function App() {
   const [smsImporting, setSmsImporting] = useState(false);
   const smsImportingRef = useRef(false);
   const [isAndroid, setIsAndroid] = useState(false);
-  // M-Pesa speed-dial visibility. ON by default; Settings flips it off.
-  const paymentsEnabled = usePaymentsEnabled();
   // Live grant state for READ_SMS / RECEIVE_SMS / CALL_PHONE. Refreshes on
   // foreground; every SMS path consults it before doing work.
   const { permissions: smsPerms, refresh: refreshSmsPerms } = useSmsPermissions();
@@ -815,19 +813,14 @@ function App() {
           {/* overflow-x-clip (not hidden): hidden would make this a
               scroll container and silently disable the sticky header. */}
           <SidebarInset className="min-w-0 overflow-x-clip">
-            <header className="sticky top-0 z-40 border-b bg-background">
-              {/* Notch/status-bar spacer, part of the sticky header so the
-                  header's total height is exactly
-                  calc(3.5rem + env(safe-area-inset-top)) — the dashboard
-                  filter bar pins to that same offset with no gap. */}
+            <header className="sticky top-0 z-40 border-b border-border bg-background">
               <div style={{ height: "env(safe-area-inset-top)" }} />
-              <div className="flex min-h-14 items-center justify-between gap-2 px-4 py-2">
-              {/* The sidebar trigger is meaningless on phones — the sidebar
-                 does not render there; the app name takes its place. */}
-              <SidebarTrigger className="hidden md:inline-flex" />
-              <span className="text-base font-bold tracking-tight md:hidden">
-                Tripwire
-              </span>
+              <div className="flex h-14 items-center justify-between gap-2 px-4">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger className="hidden md:inline-flex" />
+                  <img src="/tripwire.svg" alt="Tripwire" className="w-6 h-6" />
+                  <span className="font-bold text-lg text-foreground">Tripwire</span>
+                </div>
 
               <div className="flex items-center gap-2">
                 {statements.length > 0 && mode === "statements" && (
@@ -855,6 +848,7 @@ function App() {
                 {isAndroid && mode === "sms" ? (
                   <Button
                     size="sm"
+                    variant="ghost"
                     onClick={startSmsImport}
                     disabled={smsImporting}
                   >
@@ -871,21 +865,8 @@ function App() {
                     <span className="sm:hidden">Import</span>
                   </Button>
                 )}
-                {/* Desktop gets Settings from the sidebar; phones get it
-                   here since the bottom bar holds the primary destinations. */}
-                <Button
-                  asChild
-                  variant="outline"
-                  size="icon"
-                  className="md:hidden"
-                  aria-label="Settings"
-                >
-                  <Link to="/settings">
-                    <SettingsIcon className="size-4" />
-                  </Link>
-                </Button>
               </div>
-            </div>
+              </div>
             </header>
             <main className="min-w-0 flex-1 space-y-4 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
               <Routes>
@@ -982,14 +963,7 @@ function App() {
                 />
               </Routes>
             </main>
-            <MobileNav />
-            {/* M-Pesa speed-dial (Android only): opens Send / Lipa / Withdraw
-                pages. Each page dials a prefilled stacked USSD code while the
-                always-on catcher queues the confirmation in real time. The
-                user pays in the system phone UI; spends pop their receipt on
-                merge. */}
-            {isAndroid && paymentsEnabled && <MpesaFab />}
-          </SidebarInset>
+            <MobileNav />          </SidebarInset>
         </SidebarProvider>
 
         <ImportStatementDialog

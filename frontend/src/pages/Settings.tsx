@@ -27,7 +27,6 @@ import {
   isAndroidBridge,
   type SmsPermissions,
 } from "@/lib/sms-bridge";
-import { PAYMENTS_ENABLED_KEY, usePaymentsEnabled } from "@/lib/payments-mode";
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import {
@@ -127,23 +126,6 @@ function MotionSettings() {
     <div className="space-y-2">
       {toggle(reduceMotion, REDUCE_MOTION_KEY, "Reduce motion")}
       {toggle(haptics, HAPTICS_KEY, "Haptics")}
-    </div>
-  );
-}
-
-function PaymentsSettings() {
-  const paymentsOn = usePaymentsEnabled();
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm">Show the payment button</span>
-      <Button
-        variant={paymentsOn ? "default" : "outline"}
-        size="sm"
-        aria-pressed={paymentsOn}
-        onClick={() => setSetting(PAYMENTS_ENABLED_KEY, !paymentsOn)}
-      >
-        {paymentsOn ? "On" : "Off"}
-      </Button>
     </div>
   );
 }
@@ -301,14 +283,6 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>M-Pesa payments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PaymentsSettings />
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Support</CardTitle>

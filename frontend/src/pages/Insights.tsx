@@ -112,7 +112,7 @@ function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
         <CardContent className="space-y-3 pt-0 max-sm:px-4 max-sm:py-4 sm:pt-0">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm text-muted-foreground">Total fees</span>
-            <span className="font-mono text-lg font-semibold tabular-nums">
+            <span className="text-lg font-semibold tabular-nums">
               {formatMoney(totalFees)}
             </span>
           </div>
@@ -120,13 +120,13 @@ function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
             <span className="text-sm text-muted-foreground">
               Share of money out
             </span>
-            <span className="font-mono text-sm tabular-nums">
+            <span className="text-sm tabular-nums">
               {percent ? `${percent}%` : "—"}
             </span>
           </div>
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm text-muted-foreground">Fee entries</span>
-            <span className="font-mono text-sm tabular-nums">
+            <span className="text-sm tabular-nums">
               {fees?.count ?? 0}
             </span>
           </div>
@@ -205,7 +205,7 @@ function VsLastMonthTile({
             <div key={r.label} className="space-y-0.5">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{r.label}</span>
-                <span className="font-mono text-sm font-medium tabular-nums">
+                <span className="text-sm font-medium tabular-nums">
                   {r.value}
                 </span>
               </div>

@@ -27,17 +27,17 @@ function KpiCard({
 }) {
   const toneClass =
     tone === "in"
-      ? "text-emerald-400"
+      ? "text-emerald-600 dark:text-emerald-400"
       : tone === "out"
-        ? "text-red-400"
-        : "text-white";
+        ? "text-rose-600 dark:text-rose-400"
+        : "text-foreground";
   const isPrimary = emphasis !== "secondary";
   return (
     <Card className="@container gap-2 min-w-0">
       <CardHeader className="min-w-0">
-        <CardDescription className="truncate">{label}</CardDescription>
+        <CardDescription className="truncate font-medium text-neutral-500 dark:text-neutral-400">{label}</CardDescription>
         <CardTitle
-          className={`whitespace-nowrap tabular-nums ${isPrimary ? "text-lg @[10rem]:text-xl @[13rem]:text-2xl @[16rem]:text-3xl font-bold" : "text-sm @[10rem]:text-base @[13rem]:text-lg font-medium text-muted-foreground"} ${toneClass}`}
+          className={`whitespace-nowrap tabular-nums ${isPrimary ? "text-2xl font-bold tracking-tight text-neutral-900 dark:text-white" : "text-lg font-semibold"} ${isPrimary ? "" : toneClass}`}
         >
           {value}
         </CardTitle>
@@ -51,11 +51,18 @@ function KpiCard({
   );
 }
 
-export function TotalsCards({ totals }: { totals: analysis.Totals | null }) {
+export function TotalsCards({
+  totals,
+  currentBalance,
+}: {
+  totals: analysis.Totals | null;
+  currentBalance?: number;
+}) {
   const totalIn = useCountUp(totals?.totalIn ?? 0);
   const totalOut = useCountUp(totals?.totalOut ?? 0);
-  const net = useCountUp(totals?.net ?? 0);
-  const closingBalance = useCountUp(totals?.closingBalance ?? 0);
+  const netValue = (totals?.totalIn ?? 0) - (totals?.totalOut ?? 0);
+  const net = useCountUp(netValue);
+  const closingBalance = useCountUp(currentBalance ?? totals?.closingBalance ?? 0);
 
   useEffect(() => {
     if (!totals) return;
@@ -72,12 +79,6 @@ export function TotalsCards({ totals }: { totals: analysis.Totals | null }) {
     );
   }
 
-  const netAbs = Math.abs(net);
-  const netHint =
-    totals.net >= 0
-      ? `+ ${formatMoney(netAbs)} Surplus`
-      : `- ${formatMoney(netAbs)} Deficit`;
-
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <KpiCard
@@ -88,8 +89,7 @@ export function TotalsCards({ totals }: { totals: analysis.Totals | null }) {
       <KpiCard
         label="Net Flow"
         value={formatMoney(net)}
-        tone={totals.net >= 0 ? "in" : "out"}
-        hint={netHint}
+        tone={netValue >= 0 ? "in" : "out"}
         emphasis="secondary"
       />
       <KpiCard

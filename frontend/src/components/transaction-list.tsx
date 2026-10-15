@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { typeStyle } from "@/lib/transaction-types";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { formatMoney } from "@/lib/format";
 import { TransactionReceiptDialog } from "@/components/transaction-receipt-dialog";
 import { TransactionGroups } from "../../bindings/mpesa-analyzer/parseservice";
@@ -23,8 +16,7 @@ export type Group = {
 type TransactionView = NonNullable<DayGroup["txs"]>[number];
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
-const PAGE_SIZES = [10, 20, 30, 50];
-const DEFAULT_PAGE_SIZE = 20;
+const BATCH_SIZE = 20;
 
 // Semantic transaction type -> icon, tint and label: shared with the
 // recurring-payment cards, see lib/transaction-types.
@@ -39,7 +31,7 @@ export function formatAmount(cents: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${cents < 0 ? "-" : "+"}${value}`;
+  return `${cents < 0 ? "-" : "+"}KES ${value}`;
 }
 
 /** Local calendar-day key ("YYYY-MM-DD") for a Date. */
@@ -186,8 +178,8 @@ function TxRow({
           <span
             className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
               moneyIn
-                ? "text-[#22c55e]"
-                : "text-[#EF4444]"
+                ? "text-emerald-600 dark:text-money-in"
+                : "text-rose-600 dark:text-money-out"
             }`}
           >
             {formatAmount(tx.amount)}
@@ -204,7 +196,10 @@ function TxRow({
         <div className="space-y-1 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px] select-text">
           <DetailRow label="Description" value={tx.description} wrap />
           <DetailRow label="Reference" value={tx.id} mono wrap />
-          <DetailRow label="Balance after" value={formatMoney(tx.balance)} />
+          <DetailRow
+            label="Balance after"
+            value={formatMoney(tx.balance)}
+          />
           <DetailRow label="Timestamp" value={tx.date} />
           {tx.status && tx.status.toLowerCase() !== "completed" && (
             <DetailRow label="Status" value={tx.status} />
@@ -245,32 +240,26 @@ function DetailRow({
 export type TransactionListProps = {
   /** Prepared day groups (from useTransactionGroups), already filtered. */
   groups: Group[];
-  /** Render the page-size select + pager footer. Default true. */
+  /** Render the inline load-more footer. Default true. */
   showPagination?: boolean;
 };
 
-/** Slices one page of rows out of the groups, preserving group headers. */
-function paginateGroups(
+/** Slices the first `limit` rows out of the groups, preserving group headers. */
+function sliceGroups(
   groups: Group[],
-  pageIndex: number,
-  pageSize: number,
+  limit: number,
 ): { page: Group[]; totalRows: number } {
   let totalRows = 0;
   for (const g of groups) totalRows += g.txs.length;
-  const start = pageIndex * pageSize;
-  const end = start + pageSize;
   const page: Group[] = [];
   let count = 0;
   for (const g of groups) {
-    const gStart = count;
-    count += g.txs.length;
-    const gEnd = gStart + g.txs.length;
-    if (gEnd <= start || gStart >= end) continue;
-    const from = Math.max(0, start - gStart);
-    const to = Math.min(g.txs.length, end - gStart);
+    if (count >= limit) break;
+    const take = Math.min(g.txs.length, limit - count);
     // Carry the group's true end-of-day balance even when a day is split
-    // across page boundaries.
-    page.push({ ...g, txs: g.txs.slice(from, to) });
+    // across load-more boundaries.
+    page.push({ ...g, txs: g.txs.slice(0, take) });
+    count += take;
   }
   return { page, totalRows };
 }
@@ -288,40 +277,47 @@ export function TransactionList({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Long-press inspection veil (receipt dialog over a censored ledger).
   const [veiled, setVeiled] = useState<TransactionView | null>(null);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [pageIndex, setPageIndex] = useState(0);
-  const listTopRef = useRef<HTMLDivElement | null>(null);
-  const lastPageIndex = useRef(pageIndex);
+  // Infinite scroll: rows render in batches; the sentinel below loads more.
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setPageIndex(0);
-  }, [groups, pageSize]);
-
-  // A page change replaces everything above the pagination controls, so
-  // bring the top of the list back into view. No-ops when the whole page
-  // already fits on screen.
-  useEffect(() => {
-    if (lastPageIndex.current === pageIndex) return;
-    lastPageIndex.current = pageIndex;
-    listTopRef.current?.scrollIntoView({ block: "start" });
-  }, [pageIndex]);
+    setVisibleCount(BATCH_SIZE);
+  }, [groups]);
 
   const { page, totalRows } = useMemo(
-    () => paginateGroups(groups, pageIndex, pageSize),
-    [groups, pageIndex, pageSize],
+    () => sliceGroups(groups, visibleCount),
+    [groups, visibleCount],
   );
-  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const shownCount = page.reduce((n, g) => n + g.txs.length, 0);
+  const hasMore = shownCount < totalRows;
+
+  // Loading more never replaces rendered rows, so no scroll jump to manage.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((c) => Math.min(c + BATCH_SIZE, totalRows));
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, totalRows]);
 
   return (
-    <div ref={listTopRef} className="space-y-4">
+    <div className="space-y-4">
       {page.length ? (
         <div className="space-y-3">
           {page.map((g) => (
             <section
               key={g.dayKey}
-              className="overflow-hidden rounded-none border"
+              className="rounded-none border"
             >
-              <header className="flex items-baseline justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
+              <header className="sticky top-0 z-10 flex items-baseline justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
                 <span className="text-[13px] font-medium">
                   {dateGroupLabel(g.dayKey)}
                 </span>
@@ -351,60 +347,25 @@ export function TransactionList({
         </div>
       )}
 
-      {showPagination && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:border-0 md:bg-transparent md:backdrop-blur-0"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
-          <div className="flex items-center justify-between gap-2 px-4 py-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Select
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  setPageIndex(0);
-                  setPageSize(Number(value));
-                }}
-              >
-                <SelectTrigger className="w-16" size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZES.map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>
-                {totalRows} tx{totalRows === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setPageIndex((p) => p - 1)}
-                disabled={pageIndex <= 0}
-              >
-                <ChevronLeft />
-              </Button>
-              <span className="min-w-16 text-center text-sm tabular-nums">
-                {pageCount === 0 ? 0 : pageIndex + 1} / {pageCount}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setPageIndex((p) => Math.min(p + 1, pageCount - 1))
-                }
-                disabled={pageIndex >= pageCount - 1}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-          </div>
+      {showPagination && totalRows > 0 && (
+        <div className="flex items-center justify-between gap-2 px-1 py-2">
+          <span className="text-sm tabular-nums text-muted-foreground">
+            Showing {shownCount.toLocaleString()} of{" "}
+            {totalRows.toLocaleString()} tx{totalRows === 1 ? "" : "s"}
+          </span>
+          {hasMore && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                setVisibleCount((c) => Math.min(c + BATCH_SIZE, totalRows))
+              }
+            >
+              Load more
+            </Button>
+          )}
         </div>
       )}
+      {hasMore && <div ref={sentinelRef} aria-hidden="true" />}
 
       <TransactionReceiptDialog
         tx={veiled}

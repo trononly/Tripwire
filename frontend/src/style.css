@@ -41,6 +41,11 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-surface: var(--surface);
+    --color-brand: var(--brand);
+    --color-money-in: var(--money-in);
+    --color-money-out: var(--money-out);
+    --color-pay-action: var(--pay-action);
     --font-heading: var(--font-sans);
     --font-sans: "Inter Variable", sans-serif;
     --radius-2xl: calc(var(--radius) * 1.8);
@@ -56,7 +61,7 @@
     --card-foreground: oklch(0.148 0.004 228.8);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.148 0.004 228.8);
-    --primary: oklch(0.508 0.118 165.612);
+    --primary: #F04A48;
     --primary-foreground: oklch(0.979 0.021 166.113);
     --secondary: oklch(0.967 0.001 286.375);
     --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -75,46 +80,59 @@
     --chart-5: oklch(0.47 0.157 37.304);
     --sidebar: oklch(0.987 0.002 197.1);
     --sidebar-foreground: oklch(0.148 0.004 228.8);
-    --sidebar-primary: oklch(0.596 0.145 163.225);
+    --sidebar-primary: #F04A48;
     --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
     --sidebar-accent: oklch(0.963 0.002 197.1);
     --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
     --sidebar-border: oklch(0.925 0.005 214.3);
     --sidebar-ring: oklch(0.723 0.014 214.4);
+    /* App palette (single source: zinc surfaces, rose brand, semantic money
+       in/out). Usage: bg-surface, bg-brand, text-money-in, text-money-out.
+       Green is data-status only (inflow, surplus) — never a control. */
+    --surface: oklch(1 0 0);
+    --brand: #F04A48;
+    --money-in: #10b981;
+    --money-out: #f43f5e;
+    --pay-action: #059669;
 }
 
 .dark {
-    --background: oklch(0.148 0.004 228.8);
-    --foreground: oklch(0.987 0.002 197.1);
-    --card: oklch(0.218 0.008 223.9);
-    --card-foreground: oklch(0.987 0.002 197.1);
-    --popover: oklch(0.218 0.008 223.9);
-    --popover-foreground: oklch(0.987 0.002 197.1);
-    --primary: oklch(0.432 0.095 166.913);
-    --primary-foreground: oklch(0.979 0.021 166.113);
+    --background: #09090b;
+    --foreground: #fafafa;
+    --card: #18181b;
+    --card-foreground: #fafafa;
+    --popover: #18181b;
+    --popover-foreground: #fafafa;
+    --primary: #F04A48;
+    --primary-foreground: #fafafa;
     --secondary: oklch(0.274 0.006 286.033);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.275 0.011 216.9);
-    --muted-foreground: oklch(0.723 0.014 214.4);
+    --muted-foreground: #a1a1aa;
     --accent: oklch(0.275 0.011 216.9);
-    --accent-foreground: oklch(0.987 0.002 197.1);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
+    --accent-foreground: #fafafa;
+    --destructive: #f43f5e;
+    --border: #27272a;
+    --input: #27272a;
     --ring: oklch(0.56 0.021 213.5);
-    --chart-1: oklch(0.837 0.128 66.29);
-    --chart-2: oklch(0.705 0.213 47.604);
-    --chart-3: oklch(0.646 0.222 41.116);
+    --chart-1: #f43f5e;
+    --chart-2: #10b981;
+    --chart-3: #a1a1aa;
     --chart-4: oklch(0.553 0.195 38.402);
     --chart-5: oklch(0.47 0.157 37.304);
-    --sidebar: oklch(0.218 0.008 223.9);
-    --sidebar-foreground: oklch(0.987 0.002 197.1);
-    --sidebar-primary: oklch(0.696 0.17 162.48);
-    --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
+    --sidebar: #18181b;
+    --sidebar-foreground: #fafafa;
+    --sidebar-primary: #F04A48;
+    --sidebar-primary-foreground: #fafafa;
     --sidebar-accent: oklch(0.275 0.011 216.9);
-    --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
-    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-accent-foreground: #fafafa;
+    --sidebar-border: #27272a;
     --sidebar-ring: oklch(0.56 0.021 213.5);
+    --surface: #18181b;
+    --brand: #F04A48;
+    --money-in: #10b981;
+    --money-out: #f43f5e;
+    --pay-action: #059669;
 }
 
 @layer base {
@@ -147,4 +165,17 @@ html,
 button {
     min-height: 44px;
     min-width: 44px;
+}
+
+@layer components {
+    /* Sleek square toggle tile: the single active-state language app-wide.
+       Inactive is a quiet bordered tile; active is a subtle rose tint —
+       clear without blinding. Green stays reserved for data status
+       (inflow amounts, bars, surplus badges), never controls. */
+    .tile {
+        @apply min-h-9 min-w-0 shrink-0 rounded-none border border-border px-3 py-1.5 text-xs font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground;
+    }
+    .tile-active {
+        @apply border-rose-500/50 bg-rose-500/15 text-foreground;
+    }
 }

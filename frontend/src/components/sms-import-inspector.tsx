@@ -323,7 +323,7 @@ export function SmsImportInspector({
                       </span>
                     </span>
                     {r.kind === "imported" && firstTx && (
-                      <span className="shrink-0 font-mono text-xs">
+                      <span className="shrink-0 text-xs tabular-nums">
                         {formatMoney(firstTx.amount)}
                       </span>
                     )}
@@ -366,7 +366,7 @@ export function SmsImportInspector({
                                 <span className="min-w-0 truncate font-mono">
                                   {tx.id}
                                 </span>
-                                <span className="shrink-0 font-mono tabular-nums">
+                                <span className="shrink-0 tabular-nums">
                                   {formatMoney(tx.amount)}
                                 </span>
                               </div>
