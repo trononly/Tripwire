@@ -2040,6 +2040,27 @@ public class WailsBridge {
     }
 
     /**
+     * Open the system App info page for this app (Settings → Apps →
+     * Tripwire) so the user can allow restricted settings and grant SMS
+     * access, then return to the app and retry. Used by the restricted
+     * settings guide when a permission request comes back denied without
+     * a rationale — the sideloaded-install case.
+     */
+    public void openAppSettings() {
+        mainHandler.post(() -> {
+            try {
+                Intent intent = new Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + activity.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "openAppSettings failed", e);
+            }
+        });
+    }
+
+    /**
      * Download an APK from url into the app cache and hand it to the system
      * package installer. Progress and completion arrive as "common:update"
      * events: {state:"downloading",received,total}, {state:"ready"} and

@@ -209,6 +209,15 @@ public class WailsJSBridge {
     }
 
     /**
+     * Open the system App info page for this app.
+     * Called from JavaScript: wails.openAppSettings()
+     */
+    @JavascriptInterface
+    public void openAppSettings() {
+        bridge.openAppSettings();
+    }
+
+    /**
      * Download an APK and hand it to the system installer. Progress arrives
      * as "common:update" events. Never blocks the caller.
      * Called from JavaScript: wails.downloadAndInstallApk(url, fileName)

@@ -22,6 +22,7 @@ interface WailsAndroidBridge {
 	getAppVersion?(): string;
 	canInstallPackages?(): boolean;
 	openInstallPermissionSettings?(): void;
+	openAppSettings?(): void;
 	downloadAndInstallApk?(url: string, fileName: string): void;
 	openUrl?(url: string): void;
 	openURL?(url: string): void;
@@ -202,4 +203,17 @@ export function requestSimCards(): SimCard[] {
  */
 export function requestPhoneStatePermission(): void {
 	window.wails?.requestPhoneStatePermission?.();
+}
+
+/**
+ * Open the system App info page for this app (Settings → Apps → Tripwire)
+ * so the user can allow restricted settings and grant SMS access, then
+ * come back and retry. No-op off-Android.
+ */
+export function openAppSettings(): void {
+	try {
+		window.wails?.openAppSettings?.();
+	} catch {
+		/* ignore */
+	}
 }
