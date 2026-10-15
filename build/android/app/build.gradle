@@ -11,17 +11,13 @@ android {
     }
 
     defaultConfig {
-        applicationId "tron.tripwire.app"
+        applicationId "com.tripwire.app"
         minSdk 21
         targetSdk 35
         // Release CI overrides these from the git tag
         // (ANDROID_VERSION_CODE / ANDROID_VERSION_NAME); local builds keep
-        // the defaults below. Parenthesize the fallback expression: without
-        // the inner parens Groovy passes the raw String to versionCode()
-        // (which matches no setter and fails evaluation) and applies
-        // .toInteger() to its void return instead of to the number.
-        def ciVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").trim()
-        versionCode ciVersionCode.toInteger()
+        // the defaults below.
+        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
         versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
 
         // Configure supported ABIs

@@ -17,6 +17,11 @@
          transact button. Sender-checked and queue-only. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- In-app updates: lets the app hand a downloaded Tripwire-x.y.z APK to
+         the system package installer. The user still approves every install;
+         on Android 8+ they must also enable "Install unknown apps" for
+         Tripwire once (the app deep-links them there). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Identifies which SIM delivered each M-Pesa SMS (slot + carrier name)
          so dual-SIM phones keep one wallet record per SIM. Requested with
          READ_SMS; optional — a denial still imports as a single wallet. -->

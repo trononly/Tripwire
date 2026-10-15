@@ -3,21 +3,28 @@
 // absence — callers never reach into window.wails directly.
 
 interface WailsAndroidBridge {
-  platform?(): string;
-  isDebug?(): boolean;
-  hasSmsPermission?(): boolean;
-  getSms?(): void;
-  hasCallPermission?(): boolean;
-  hasPhoneStatePermission?(): boolean;
-  getSimCards?(): string;
-  requestPhoneStatePermission?(): void;
-  startUssdSession?(code: string): void;
-  isUssdAutomationEnabled?(): boolean;
-  openUssdAutomationSettings?(): void;
-  startUssdQuickEntry?(scriptJson: string): void;
-  drainPendingSms?(): string;
-  hasSmsReceivePermission?(): boolean;
-  openURL?(url: string): void;
+	platform?(): string;
+	isDebug?(): boolean;
+	hasSmsPermission?(): boolean;
+	getSms?(): void;
+	hasCallPermission?(): boolean;
+	hasPhoneStatePermission?(): boolean;
+	getSimCards?(): string;
+	requestPhoneStatePermission?(): void;
+	startUssdSession?(code: string): void;
+	isUssdAutomationEnabled?(): boolean;
+	openUssdAutomationSettings?(): void;
+	startUssdQuickEntry?(scriptJson: string): void;
+	drainPendingSms?(): string;
+	hasSmsReceivePermission?(): boolean;
+	// In-app updates (WailsBridge.java update section). All optional so
+	// desktop and older builds degrade gracefully.
+	getAppVersion?(): string;
+	canInstallPackages?(): boolean;
+	openInstallPermissionSettings?(): void;
+	downloadAndInstallApk?(url: string, fileName: string): void;
+	openUrl?(url: string): void;
+	openURL?(url: string): void;
 }
 
 declare global {

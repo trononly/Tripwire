@@ -11,7 +11,7 @@
 		<key>CFBundleIconName</key>
 		<string>appicon</string>
 		<key>CFBundleIdentifier</key>
-		<string>tron.tripwire.app</string>
+		<string>com.tripwire.app</string>
 		<key>CFBundleName</key>
 		<string>Tripwire</string>
 		<key>CFBundlePackageType</key>
@@ -25,6 +25,6 @@
 		<key>NSHighResolutionCapable</key>
 		<string>true</string>
 		<key>NSHumanReadableCopyright</key>
-		<string>(c) 2026, Tron</string>
+		<string>(c) 2026, Tripwire</string>
 	</dict>
 </plist>

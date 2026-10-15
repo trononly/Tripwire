@@ -5,9 +5,9 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.0.1",
-			"CompanyName": "Tron",
+			"CompanyName": "Tripwire",
 			"FileDescription": "Understand your mobile money",
-			"LegalCopyright": "(c) 2026, Tron",
+			"LegalCopyright": "(c) 2026, Tripwire",
 			"ProductName": "Tripwire",
 			"Comments": "Personal M-Pesa money analyzer"
 		}
