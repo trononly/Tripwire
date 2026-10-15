@@ -85,7 +85,9 @@ export function HistorySheet({
                 <div
                   key={s.id}
                   className={`group flex items-center gap-2 rounded-md border px-3 py-2 ${
-                    isActive ? "border-accent bg-accent" : "hover:bg-accent/50"
+                    isActive
+                      ? "border-rose-500/50 bg-rose-500/15"
+                      : "hover:bg-rose-500/5"
                   }`}
                 >
                   <button

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileUp, MessageSquareText } from "lucide-react";
+import { FileUp, MessageSquareText, Calendar, ChevronDown } from "lucide-react";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
@@ -17,18 +17,13 @@ import { CategoryDonut } from "@/components/charts/category-donut";
 import { CounterpartyChart } from "@/components/charts/counterparty-chart";
 import { TotalsCards } from "@/components/totals-cards";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
-import { cutoffDay, maxDayOf } from "@/lib/date-window";
+import { maxDayOf } from "@/lib/date-window";
+import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
+import { FilterSheet, type FilterRangeKey } from "@/components/filter-sheet";
 
 /** Dashboard-wide time filter, anchored to the newest transaction (not
  * today — imported datasets are often historical). Everything below —
  * totals and every chart — analyzes the filtered subset. */
-type RangeKey = "all" | "90" | "30";
-const RANGE_KEY = "mpesa-analyzer.range";
-const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
-  { key: "30", label: "30D", days: 30 },
-  { key: "90", label: "90D", days: 90 },
-  { key: "all", label: "All", days: null },
-];
 
 function dayOf(dateTime: string) {
   return dateTime.slice(0, 10);
@@ -74,6 +69,20 @@ export default function Dashboard({
   onBrowseHistory: () => void;
 }) {
   const navigate = useNavigate();
+  const [filterOpen, setFilterOpen] = useState(false);
+  // Autohide: the filter bar tucks up underneath the main header on scroll
+  // down and slides back on scroll up, so it never owns screen space.
+  const [filterHidden, setFilterHidden] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      setFilterHidden(y > last && y > 140 && !filterOpen);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [filterOpen]);
   // Cadence auto-matches the dataset span (daily bars turn to hairlines
   // over multi-month histories); the cashflow card buttons override it.
   const [granularityOverride, setGranularityOverride] =
@@ -97,35 +106,24 @@ export default function Dashboard({
   const granularity = granularityOverride ?? autoGranularity;
   // Window persists across sessions; first run starts recent (30D), not
   // All — dense histories are unreadable unscoped.
-  const [range, setRangeState] = useState<RangeKey>(() => {
-    try {
-      const s = localStorage.getItem(RANGE_KEY);
-      return s === "90" || s === "all" ? (s as RangeKey) : "30";
-    } catch {
-      return "30";
-    }
-  });
-  const setRange = (next: RangeKey) => {
-    setRangeState(next);
-    try {
-      localStorage.setItem(RANGE_KEY, next);
-    } catch {
-      /* private mode: range stays session-only */
-    }
-  };
+  const latestDay = maxDay(transactions);
+  const {
+    rangeKey: range,
+    range: dateRange,
+    label: rangeLabel,
+    setRangeKey: setRange,
+    setCustom,
+  } = useDateRange(latestDay);
 
   // The filtered subset, then its own analysis. "All" reuses the app-wide
   // result (no extra call); a bounded range re-analyzes just that window so
   // dense histories stay readable in every chart.
   const filteredTxs = useMemo(() => {
     if (range === "all") return transactions;
-    const latest = maxDay(transactions);
-    if (!latest) return transactions;
-    const days = RANGES.find((r) => r.key === range)?.days ?? null;
-    if (days === null) return transactions;
-    const cutoff = cutoffDay(latest, days);
-    return transactions.filter((t) => dayOf(t.date) >= cutoff);
-  }, [transactions, range]);
+    return transactions.filter(
+      (t) => dayOf(t.date) >= dateRange.start && dayOf(t.date) <= dateRange.end,
+    );
+  }, [transactions, range, dateRange]);
 
   const [rangedResult, setRangedResult] =
     useState<analysis.AnalysisResult | null>(null);
@@ -195,7 +193,6 @@ export default function Dashboard({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
             {smsMode
               ? "Overview of your M-Pesa SMS activity."
@@ -258,106 +255,136 @@ export default function Dashboard({
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+    <>
+      <div
+        className={`sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md transition-transform duration-200 md:-mx-6 md:-mt-6 ${filterHidden ? "-translate-y-[110%]" : "translate-y-0"}`}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => setFilterOpen(true)}
+        >
+          <Calendar className="size-3.5" />
+          {rangeLabel}
+          <ChevronDown className="size-3.5 opacity-60" />
+        </Button>
+      </div>
+      <FilterSheet
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        rangeKey={
+          range === "7"
+            ? "7D"
+            : range === "30"
+              ? "30D"
+              : range === "90"
+                ? "90D"
+                : range === "ytd"
+                  ? "YTD"
+                  : range === "custom"
+                    ? "Custom"
+                    : "All"
+        }
+        range={dateRange}
+        label={rangeLabel}
+        onRangeChange={(k: FilterRangeKey) => {
+          const next: RangeKey =
+            k === "7D"
+              ? "7"
+              : k === "30D"
+                ? "30"
+                : k === "90D"
+                  ? "90"
+                  : k === "YTD"
+                    ? "ytd"
+                    : k === "Custom"
+                      ? "custom"
+                      : "all";
+          setRange(next);
+        }}
+        onCustomSubmit={(s, e) => {
+          setCustom({ start: s, end: e });
+        }}
+      />
+      <div className="space-y-6">
         {activeStatement && (
           <p className="text-sm text-muted-foreground">
             {`${activeStatement.name} · ${activeStatement.dateRange.start} – ${activeStatement.dateRange.end}`}
           </p>
         )}
-      </div>
 
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6 text-sm text-destructive">
-            {error}
-          </CardContent>
-        </Card>
-      )}
+        {error && (
+          <Card className="border-destructive">
+            <CardContent className="pt-6 text-sm text-destructive">
+              {error}
+            </CardContent>
+          </Card>
+        )}
 
-      {!visible ? (
-        slowLoad ? (
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-24" />
-            ))}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Skeleton className="h-90 lg:col-span-2" />
-            <Skeleton className="h-90" />
-            <Skeleton className="h-90 lg:col-span-2" />
-            <Skeleton className="h-90" />
-          </div>
-        </div>
+        {!visible ? (
+          slowLoad ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24" />
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Skeleton className="h-90 lg:col-span-2" />
+                <Skeleton className="h-90" />
+                <Skeleton className="h-90 lg:col-span-2" />
+                <Skeleton className="h-90" />
+              </div>
+            </div>
+          ) : (
+            <div aria-hidden="true" className="min-h-[60vh]" />
+          )
         ) : (
-          <div aria-hidden="true" className="min-h-[60vh]" />
-        )
-      ) : (
-        <div
-          aria-busy={updating}
-          className={updating ? "space-y-6 opacity-70" : "space-y-6"}
-        >
-          <TotalsCards totals={visible.totals} />
+          <div
+            aria-busy={updating}
+            className={updating ? "space-y-6 opacity-70" : "space-y-6"}
+          >
+            <TotalsCards
+              totals={visible.totals}
+              currentBalance={result?.totals?.closingBalance}
+            />
 
-          {/* Money flow: where and when, with the category share beside it. */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="min-w-0 lg:col-span-2">
-              <CashflowChart
-                buckets={buckets}
-                granularity={granularity}
-                onGranularityChange={setGranularityOverride}
-              />
-            </div>
-            <div className="min-w-0">
-              <CategoryDonut
-                categories={visible.categories ?? []}
-                onSelectCategory={(category) =>
-                  navigate(
-                    `/transactions?category=${encodeURIComponent(category)}`,
-                  )
-                }
-              />
-            </div>
-            <div className="min-w-0 lg:col-span-2">
-              <BalanceChart data={visible.balanceSeries ?? []} />
-            </div>
-            <div className="min-w-0">
-              <CounterpartyChart
-                counterparties={visible.topCounterparties ?? []}
-                onSelectCounterparty={(name) =>
-                  navigate(`/transactions?q=${encodeURIComponent(name)}`)
-                }
-              />
+            {/* Money flow: where and when, with the category share beside it. */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="min-w-0 lg:col-span-2">
+                <CashflowChart
+                  buckets={buckets}
+                  granularity={granularity}
+                  onGranularityChange={setGranularityOverride}
+                />
+              </div>
+              <div className="min-w-0">
+                <CategoryDonut
+                  categories={visible.categories ?? []}
+                  onSelectCategory={(category) =>
+                    navigate(
+                      `/transactions?category=${encodeURIComponent(category)}`,
+                    )
+                  }
+                />
+              </div>
+              <div className="min-w-0 lg:col-span-2">
+                <BalanceChart data={visible.balanceSeries ?? []} />
+              </div>
+              <div className="min-w-0">
+                <CounterpartyChart
+                  counterparties={visible.topCounterparties ?? []}
+                  onSelectCounterparty={(name) =>
+                    navigate(`/transactions?q=${encodeURIComponent(name)}`)
+                  }
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      {/* Breathing room so the last chart scrolls clear of the floating
-          time pill. */}
-      <div className="h-12" aria-hidden="true" />
-      {/* Floating time filter, e-commerce style: one glass pill pinned above
-          the bottom nav (own safe-area offset), so the window is always one
-          tap away. Cadence stays on the cashflow card itself. */}
-      <div
-        className="fixed left-1/2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-background/50 p-1 shadow-xl backdrop-blur-2xl supports-[backdrop-filter]:bg-background/40"
-        style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}
-      >
-        <div className="flex gap-1" role="group" aria-label="Time range">
-          {RANGES.map((r) => (
-            <Button
-              key={r.key}
-              size="sm"
-              variant={range === r.key ? "default" : "ghost"}
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setRange(r.key)}
-            >
-              {r.label}
-            </Button>
-          ))}
-        </div>
+        )}
+        <div className="h-12" aria-hidden="true" />
       </div>
-    </div>
+    </>
   );
 }
