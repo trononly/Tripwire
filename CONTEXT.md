@@ -20,12 +20,16 @@ _Avoid_: export, bank statement
 The transactions parsed from Android M-Pesa notification SMS, imported as a preview and — once confirmed — saved into the same store as statements. Android-exclusive; permission grade varies by build. SMS and statements share one transaction model and one analysis pipeline; only the Source field records where rows came from.
 _Avoid_: notification, alert, SMS transaction, separate SMS store
 
+**SIM wallet**:
+One person's M-Pesa account, identified by the SIM it lives on. A phone with two SIMs holds two wallets; an SMS import keeps them as separate records so one wallet's balances and cashflow are never mixed with the other's.
+_Avoid_: SIM, subscription, line, account
+
 **Receipt No.**:
 The unique transaction ID M-Pesa prints on every transaction and includes in every SMS. The dedup key for cross-statement dedup, deferred to v2 — in v1 a re-imported statement is stored as its own record.
 _Avoid_: receipt number, transaction ID
 
 **Data mode**:
-The Settings control (Android only) that picks what the analysis runs over: the statement history or the SMS imports. Importing a statement or SMS switches the mode automatically; the History chip belongs to statements mode. There is no separate SMS analysis — one pipeline, two datasets.
+The Settings control (Android only) that picks what the analysis runs over: the statement history or the SMS wallets. Importing a statement or SMS switches the mode automatically; the History chip belongs to statements mode. There is no separate SMS analysis — one pipeline, with one dataset per record and one SMS record per SIM wallet.
 _Avoid_: analysis mode (the old dashboard switcher), view, tab, switcher, active dataset
 
 **Active statement**:

@@ -6,7 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { vibrateIfEnabled } from "@/lib/motion-settings";
 import {
   type ChartConfig,
   ChartContainer,
@@ -31,6 +32,37 @@ const GRANULARITIES: { key: Granularity; label: string }[] = [
   { key: "month", label: "Monthly" },
 ];
 
+/** Cap rendered bars: wider ranges merge adjacent buckets so bars never
+ *  collapse into thin needles. Labels span the merged window. */
+const MAX_BINS = 32;
+
+type BinnedBucket = { label: string; in: number; out: number };
+
+function binBuckets(
+  buckets: analysis.CashflowBucket[],
+): BinnedBucket[] {
+  const normalized = buckets.map((b) => ({
+    raw: b.label,
+    label: formatBucketLabel(b.label),
+    in: b.in / 100,
+    out: b.out / 100,
+  }));
+  if (normalized.length <= MAX_BINS) return normalized;
+  const chunk = Math.ceil(normalized.length / MAX_BINS);
+  const out: BinnedBucket[] = [];
+  for (let i = 0; i < normalized.length; i += chunk) {
+    const slice = normalized.slice(i, i + chunk);
+    const first = slice[0];
+    const last = slice[slice.length - 1];
+    out.push({
+      label: slice.length > 1 ? `${first.label}–${last.label}` : first.label,
+      in: slice.reduce((n, s) => n + s.in, 0),
+      out: slice.reduce((n, s) => n + s.out, 0),
+    });
+  }
+  return out;
+}
+
 export function CashflowChart({
   buckets,
   granularity,
@@ -41,16 +73,7 @@ export function CashflowChart({
   onGranularityChange: (g: Granularity) => void;
 }) {
 
-  const chartData = useMemo(
-    () =>
-      buckets.map((b) => ({
-        ...b,
-        label: formatBucketLabel(b.label),
-        in: b.in / 100,
-        out: b.out / 100,
-      })),
-    [buckets],
-  );
+  const chartData = useMemo(() => binBuckets(buckets), [buckets]);
 
   return (
     <Card>
@@ -61,15 +84,18 @@ export function CashflowChart({
           </div>
           <div className="flex gap-1">
             {GRANULARITIES.map((g) => (
-              <Button
+              <button
                 key={g.key}
-                size="sm"
-                variant={granularity === g.key ? "default" : "outline"}
-                className="h-7 px-2.5 text-xs"
-                onClick={() => onGranularityChange(g.key)}
+                type="button"
+                aria-pressed={granularity === g.key}
+                className={cn("tile", granularity === g.key && "tile-active")}
+                onClick={() => {
+                  vibrateIfEnabled(8);
+                  onGranularityChange(g.key);
+                }}
               >
                 {g.label}
-              </Button>
+              </button>
             ))}
           </div>
         </div>
@@ -88,12 +114,14 @@ export function CashflowChart({
               axisLine={false}
               tickMargin={8}
               minTickGap={24}
+              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
             />
             <YAxis
               tickLine={false}
               axisLine={false}
               tickMargin={4}
               width={96}
+              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               tickFormatter={(v: number) => formatMoney(v * 100)}
             />
             <ChartTooltip
@@ -114,7 +142,7 @@ export function CashflowChart({
                         />
                         {name === "in" ? "In" : "Out"}
                       </span>
-                      <span className="font-mono tabular-nums">
+                      <span className="tabular-nums">
                         {formatMoney(Number(value) * 100)}
                       </span>
                     </span>
@@ -128,12 +156,14 @@ export function CashflowChart({
               dataKey="in"
               fill="var(--color-in)"
               radius={[4, 4, 0, 0]}
+              maxBarSize={32}
             />
             <Bar
               isAnimationActive={false}
               dataKey="out"
               fill="var(--color-out)"
               radius={[4, 4, 0, 0]}
+              maxBarSize={32}
             />
           </BarChart>
         </ChartContainer>

@@ -814,6 +814,17 @@ public class MainActivity extends AppCompatActivity {
         if (webView != null) {
             webView.destroy();
         }
+        // The Go/Wails runtime cannot be re-initialized in-process
+        // (nativeInit after nativeShutdown aborts). Swiping the app away
+        // destroys the Activity but Android keeps the cached process, so a
+        // relaunch from the drawer would re-run nativeInit in the same
+        // process and crash — then work on the *next* tap once the process
+        // finally died. Kill our own process on a finishing destroy so the
+        // next launch is always a clean nativeInit. Config-change destroys
+        // are not finishing, so rotation is unaffected.
+        if (isFinishing()) {
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }
     }
 
     @Override

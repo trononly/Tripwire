@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Tripwire</string>
+    <string name="ussd_service_label">Tripwire M-Pesa automation</string>
+    <string name="ussd_service_desc">Let Tripwire fill in USSD menus for you but you\'ll always enter the pin yourself</string>
 </resources>

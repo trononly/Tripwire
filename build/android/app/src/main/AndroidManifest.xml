@@ -22,8 +22,16 @@
          on Android 8+ they must also enable "Install unknown apps" for
          Tripwire once (the app deep-links them there). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Identifies which SIM delivered each M-Pesa SMS (slot + carrier name)
+         so dual-SIM phones keep one wallet record per SIM. Requested with
+         READ_SMS; optional — a denial still imports as a single wallet. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Accessibility automation is a sensitive permission: no runtime grant
+         exists, the user opts in via system Settings (see the in-app
+         disclosure). The manifest entry only makes the service offerable. -->
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
 
     <application
         android:allowBackup="true"
@@ -59,6 +67,22 @@
             android:name=".WailsForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- M-Pesa menu stepper (off by default; user enables it in system
+             Settings after reading the in-app disclosure). Arms only on an
+             in-app Send/Pay tap, fills the *334# prompts, stops at the PIN. -->
+        <service
+            android:name=".MpesaUssdService"
+            android:exported="true"
+            android:label="@string/ussd_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ussd_service_config" />
+        </service>
 
         <!-- M-Pesa catcher: always on, sender-checked, queue-only. The
              BROADCAST_SMS guard means only the system telephony stack can
