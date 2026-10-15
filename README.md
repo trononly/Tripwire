@@ -34,9 +34,7 @@ There is no backend, no account, and no telemetry. Statements and SMS are
 parsed locally and persisted in a local database in the app's data directory;
 the parser password is used once, in the import dialog, and is never written to
 disk. The only thing that ever leaves the device is a report you explicitly
-export (image, PDF, or HTML). The reasoning is recorded in
-`docs/adr/0002-sqlite-transaction-store.md` (which supersedes
-`docs/adr/0001-local-first-json-transaction-store.md`).
+export (image, PDF, or HTML).
 
 ## Limitations
 
@@ -77,8 +75,7 @@ Both import sources feed one analysis pipeline; the `Source` field on a stored
 record remembers where a row came from (`statement` or `sms`), and an SMS
 record's `SimID`/`SimLabel` remember which SIM's wallet it is. The SMS parser
 is deliberately strict — only message shapes backed by real samples are
-accepted, and anything else is reported rather than guessed at. `CONTEXT.md` is
-the source of truth for the domain vocabulary.
+accepted, and anything else is reported rather than guessed at.
 
 ## Running it
 
@@ -100,13 +97,6 @@ in the **Android debug workflow (SMS import)** section below.
 
 To run one Go package, e.g. the SMS parser fixtures:
 `go test ./internal/sms/`.
-
-## Where to go next
-
-- `CONTEXT.md` — the domain model and vocabulary; read this first.
-- `FEATURES.md` — the demo/showcase script: what's built and how to exercise it.
-- `TODO.md` — the current UI and bug backlog.
-- `docs/` — ADRs and design plans.
 
 # Android debug workflow (SMS import)
 
