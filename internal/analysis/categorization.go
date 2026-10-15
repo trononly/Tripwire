@@ -1,7 +1,9 @@
 package analysis
 
 import (
+	"regexp"
 	"sort"
+	"strings"
 
 	"mpesa-analyzer/internal/counterparty"
 	"mpesa-analyzer/internal/parser"
@@ -90,6 +92,30 @@ func CounterpartyOf(description string) string {
 	return counterparty.CounterpartyOf(description)
 }
 
+// systemCounterpartyRE matches Safaricom's own products, which are plumbing
+// rather than people or businesses the user chose to transact with:
+// M-Shwari, Ziidi MMF, Fuliza, Safaricom Offers/bundles. Matching rows are
+// excluded from TopCounterparties (they still count everywhere else).
+var systemCounterpartyRE = regexp.MustCompile(`(?i)safaricom|m[-\s]?pesa|m[-\s]?shwari|ziidi|fuliza`)
+
+// isSystemCounterparty reports whether a transaction is with a Safaricom
+// product rather than a real counterparty. Both the extracted name and the
+// business segment before the " - " separator are checked: statement rows
+// like "Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA" match on the
+// name, while SMS rows like "Customer Bundle Purchase to Safaricom Offers
+// - Tunukiwa" extract only the account name ("Tunukiwa") and match on the
+// business segment instead.
+func isSystemCounterparty(description, name string) bool {
+	if systemCounterpartyRE.MatchString(name) {
+		return true
+	}
+	business := description
+	if i := strings.Index(business, " - "); i >= 0 {
+		business = business[:i]
+	}
+	return systemCounterpartyRE.MatchString(business)
+}
+
 // TopCounterparties returns the n counterparties by transaction count.
 // Names are grouped by normalized identity (case and phone-number
 // formatting ignored) and displayed under the most common original form.
@@ -102,7 +128,7 @@ func TopCounterparties(transactions []parser.Transaction, n int) []Counterparty 
 	votes := make(map[string]map[string]int)
 	for _, tx := range transactions {
 		name := CounterpartyOf(tx.Description)
-		if name == "" {
+		if name == "" || isSystemCounterparty(tx.Description, name) {
 			continue
 		}
 		key := counterparty.GroupKey(name)

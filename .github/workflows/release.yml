@@ -1,14 +1,14 @@
-# Builds and publishes a GitHub Release for Hesabu.
+# Builds and publishes a GitHub Release for Tripwire.
 #
 # Runs on:
 #   * a push of a tag matching `v*` (e.g. v0.1.0)
 #   * manual `workflow_dispatch` (optionally with an explicit tag)
 #
 # Artifacts produced (attached to a single GitHub Release):
-#   * Windows: `bin/hesabu.exe` plus the NSIS installer (`bin/*-installer.exe`)
+#   * Windows: `bin/tripwire.exe` plus the NSIS installer (`bin/*-installer.exe`)
 #   * Linux:   AppImage / .deb / .rpm (whatever `wails3 task linux:package`
-#              yields) plus the raw `hesabu` binary
-#   * macOS:   universal `.app` bundle zipped as `hesabu-macos-universal.zip`
+#              yields) plus the raw `tripwire` binary
+#   * macOS:   universal `.app` bundle zipped as `tripwire-macos-universal.zip`
 #              and, when DMG creation succeeds, a `.dmg`
 #   * Android (required - this is the main userbase): release `.apk` and
 #              `.aab`. Signed with your upload key when the ANDROID_* secrets
@@ -176,28 +176,28 @@ jobs:
           mkdir -p release-assets
           # The raw binary is produced by the `build` dependency and must exist
           # even if the packaging formats below fell over.
-          if [ ! -f bin/hesabu ]; then
-            echo "::error::Linux build did not produce bin/hesabu"
+          if [ ! -f bin/tripwire ]; then
+            echo "::error::Linux build did not produce bin/tripwire"
             exit 1
           fi
           find bin -maxdepth 1 -type f \
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) \
             -exec cp {} release-assets/ \;
-          cp bin/hesabu release-assets/hesabu-linux-amd64
+          cp bin/tripwire release-assets/tripwire-linux-amd64
           ls -la release-assets
 
       - name: Stage release assets (macOS)
         if: matrix.name == 'macos-universal'
         run: |
           mkdir -p release-assets
-          ditto -c -k --keepParent bin/hesabu.app release-assets/hesabu-macos-universal.zip
+          ditto -c -k --keepParent bin/tripwire.app release-assets/tripwire-macos-universal.zip
           find bin -maxdepth 1 -name '*.dmg' -type f -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hesabu-${{ matrix.name }}
+          name: tripwire-${{ matrix.name }}
           path: release-assets/*
           if-no-files-found: warn
           retention-days: 7
@@ -326,14 +326,14 @@ jobs:
           if [ "${HAS_KEYSTORE}" != "true" ]; then
             SUFFIX="${SUFFIX}-debug-signed"
           fi
-          if [ -f bin/hesabu.apk ]; then cp bin/hesabu.apk "release-assets/hesabu${SUFFIX}.apk"; fi
-          if [ -f bin/hesabu.aab ]; then cp bin/hesabu.aab "release-assets/hesabu${SUFFIX}.aab"; fi
+          if [ -f bin/tripwire.apk ]; then cp bin/tripwire.apk "release-assets/tripwire${SUFFIX}.apk"; fi
+          if [ -f bin/tripwire.aab ]; then cp bin/tripwire.aab "release-assets/tripwire${SUFFIX}.aab"; fi
           ls -la release-assets
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hesabu-android
+          name: tripwire-android
           path: release-assets/*
           if-no-files-found: warn
           retention-days: 7

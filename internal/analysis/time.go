@@ -3,7 +3,6 @@ package analysis
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"mpesa-analyzer/internal/parser"
@@ -23,7 +22,7 @@ type CashflowBucket struct {
 }
 
 // Cashflow buckets transactions into daily, weekly or monthly periods.
-// Charges (fees) are excluded, consistent with TotalAmount. Buckets are
+// Fees are excluded, consistent with TotalAmount. Buckets are
 // returned chronologically ascending.
 func Cashflow(transactions []parser.Transaction, granularity string) ([]CashflowBucket, error) {
 	switch granularity {
@@ -36,7 +35,7 @@ func Cashflow(transactions []parser.Transaction, granularity string) ([]Cashflow
 	keys := make([]string, 0)
 
 	for _, tx := range transactions {
-		if strings.Contains(tx.Description, "Charge") {
+		if isFee(tx.Description) {
 			continue
 		}
 		t, err := txTime(tx)

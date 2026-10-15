@@ -27,10 +27,8 @@ const navMain = [
       { title: "Dashboard", url: "/", icon: LayoutDashboard },
       { title: "Transactions", url: "/transactions", icon: ArrowLeftRight },
       { title: "Insights", url: "/insights", icon: Lightbulb },
+      { title: "Settings", url: "/settings", icon: Settings },
     ],
-  },
-  {
-    items: [{ title: "Settings", url: "/settings", icon: Settings }],
   },
 ];
 
@@ -41,8 +39,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar className="border-r border-sidebar-border" {...props}>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
+          <img src="/tripwire.svg" alt="Tripwire" className="size-6" />
           <span className="text-lg font-bold tracking-tight">
-            Hesabu
+            Tripwire
           </span>
         </div>
       </SidebarHeader>
