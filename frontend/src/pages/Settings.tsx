@@ -182,7 +182,7 @@ export default function Settings({
   const smsRecords = statements.filter((s) => s.source === "sms");
   const statementRecords = statements.filter((s) => s.source !== "sms");
   // Opening Settings re-resolves carrier names for wallets imported
-  // without phone-state access — but only when that access is already
+  // without phone-state access - but only when that access is already
   // granted. Read-only: never prompts.
   useEffect(() => {
     onRefreshSimNames();
@@ -232,11 +232,11 @@ export default function Settings({
                 ? `Tripwire ${updater.current} installed`
                 : "Tripwire"}
               {updater.status === "checking"
-                ? " — checking…"
+                ? " - checking…"
                 : updater.status === "available" && updater.release
-                  ? ` — ${updater.release.version} ready`
+                  ? ` - ${updater.release.version} ready`
                   : updater.status === "up-to-date"
-                    ? " — you're up to date"
+                    ? " - you're up to date"
                     : ""}
             </CardDescription>
           </CardHeader>

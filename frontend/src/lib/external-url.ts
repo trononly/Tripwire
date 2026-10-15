@@ -6,7 +6,7 @@ export const SODA_URL =
   "https://buymesoda.com/cZxN2bSMZddvzVDzv4EXEgCdogo2";
 
 /**
- * Open an external page in the system browser — never inside the app
+ * Open an external page in the system browser - never inside the app
  * WebView (a WebView navigation would strand the user with no way back).
  * Android uses the injected bridge; desktop uses the Wails runtime; plain
  * browsers fall back to a _blank anchor.

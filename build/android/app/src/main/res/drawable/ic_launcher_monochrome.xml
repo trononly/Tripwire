@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Themed-icon (monochrome) layer: GLYPH ONLY, transparent surround.
      Launchers that theme icons (Nothing OS drawer, Pixel themed icons)
-     fit-center this inside their own shape and supply the background —
+     fit-center this inside their own shape and supply the background -
      so a full-bleed square here would shrink into a "postage stamp".
      The card silhouette with the trigger square and side bars punched
      out as transparent holes scales up to fill the container instead.

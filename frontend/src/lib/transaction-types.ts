@@ -48,7 +48,7 @@ export const TYPE_STYLES: Record<string, TypeStyle> = {
 
 const FALLBACK_STYLE = TYPE_STYLES.other;
 
-/** Plain record lookup — no inference, no per-render matching. */
+/** Plain record lookup - no inference, no per-render matching. */
 export function typeStyle(type: string): TypeStyle {
   return TYPE_STYLES[type] ?? FALLBACK_STYLE;
 }

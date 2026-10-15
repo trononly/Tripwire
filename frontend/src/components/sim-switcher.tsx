@@ -26,7 +26,7 @@ export function simName(meta: StatementMeta): string {
  * SIM switcher for SMS mode. M-Pesa SMS are identical on every SIM, so an
  * import that spans two SIMs produces one record per SIM; this picks which
  * wallet the Dashboard, Transactions and Insights analyze. Rendered only
- * with two or more SIM records — a single-SIM phone needs no picker.
+ * with two or more SIM records - a single-SIM phone needs no picker.
  *
  * Deliberately not a portaled menu: the list renders in place under the
  * header button so it can never cover or displace the header on small

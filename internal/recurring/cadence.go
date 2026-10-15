@@ -20,7 +20,7 @@ type cadenceRule struct {
 //
 // The MAD allowance grows with the cadence because the same deviation is
 // far more significant for a short cycle: ±2 days on a weekly bill is a
-// real timing change, while ±2 days on a monthly bill is ordinary noise —
+// real timing change, while ±2 days on a monthly bill is ordinary noise -
 // month lengths themselves alternate 28/30/31 days, which alone moves
 // calendar-anchored monthly gaps by 2–3 days. Quarterly payments in real
 // life drift around due dates by a couple of weeks.
@@ -28,7 +28,7 @@ type cadenceRule struct {
 // minCount trades recall against false positives per cadence. Weekly and
 // bi-weekly events are frequent and cheap (top-ups, betting, weekly
 // shopping), so three payments span only two to four weeks of history and
-// are easily coincidental — four are required. Monthly and quarterly
+// are easily coincidental - four are required. Monthly and quarterly
 // events are rarer and statements are commonly three to six months long:
 // requiring four monthly payments would set a three-month history floor
 // and four quarterly payments a nine-month floor, making those cadences

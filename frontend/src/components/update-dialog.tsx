@@ -73,7 +73,7 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 					</DialogTitle>
 					<DialogDescription>
 						Tripwire {release.version} is available
-						{current ? ` — you're on ${current}` : ""}.{" "}
+						{current ? ` - you're on ${current}` : ""}.{" "}
 						{release.apkSize > 0 && `Download ${formatBytes(release.apkSize)}.`}
 					</DialogDescription>
 				</DialogHeader>
@@ -116,7 +116,7 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 
 				{installed && (
 					<p className="text-xs/relaxed text-muted-foreground">
-						The Android installer should now be open — confirm the install
+						The Android installer should now be open - confirm the install
 						there to finish. If you missed it, tap Update again.
 					</p>
 				)}

@@ -13,7 +13,7 @@ import { openAppSettings } from "@/lib/sms-bridge";
 
 /**
  * Shown when an SMS permission request comes back denied without a
- * rationale — the sideloaded-install case (GitHub APK): Android blocks the
+ * rationale - the sideloaded-install case (GitHub APK): Android blocks the
  * grant behind "Allow restricted settings" and a toast alone doesn't tell
  * the user where to tap. Walks them through the one-time setup, then they
  * come back and the app asks for the permission itself.
@@ -40,7 +40,7 @@ export function RestrictedSettingsGuide({
 					<DialogDescription>
 						Because Tripwire was installed from GitHub instead of the
 						Play Store, Android blocks SMS access until you allow
-						restricted settings. You do this once — updates keep it.
+						restricted settings. You do this once - updates keep it.
 					</DialogDescription>
 				</DialogHeader>
 				<ol className="list-decimal space-y-2 pl-5 text-sm">
@@ -57,7 +57,7 @@ export function RestrictedSettingsGuide({
 						Back on App info → <strong>Permissions → SMS → Allow</strong>.
 					</li>
 					<li>
-						Come back here and tap <strong>Try again</strong> — the
+						Come back here and tap <strong>Try again</strong> - the
 						app asks for the permission itself.
 					</li>
 				</ol>

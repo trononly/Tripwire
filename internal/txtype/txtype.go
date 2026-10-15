@@ -31,8 +31,8 @@ const (
 )
 
 // txRules classify a description by its transaction kind. Rules are
-// matched case-insensitively against the START of the Details column —
-// M-Pesa always begins the Details with the transaction kind — so the
+// matched case-insensitively against the START of the Details column -
+// M-Pesa always begins the Details with the transaction kind - so the
 // transaction's own type phrase wins and counterparties are never used
 // to infer a type ("KPLC" never implies Pay Bill, "NCBA BANK" never
 // implies a bank transfer). Order matters: more specific fee prefixes
