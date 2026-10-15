@@ -1,4 +1,4 @@
-import { HashRouter, Link, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { HashRouter, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { AppSidebar } from "./components/app-sidebar";
 import {
   SidebarInset,
@@ -11,14 +11,8 @@ import { TransactionReceiptDialog } from "@/components/transaction-receipt-dialo
 import { HistorySheet } from "@/components/history-sheet";
 import { ScrollToTop } from "@/components/scroll-to-top";
 import {
-  Banknote,
   FileUp,
   MessageSquareText,
-  Phone,
-  Send as SendIcon,
-  Settings as SettingsIcon,
-  ShoppingCart,
-  X,
 } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
@@ -51,7 +45,6 @@ import {
 import { useSmsPermissions } from "@/hooks/use-sms-permissions";
 import { MobileNav } from "@/components/mobile-nav";
 import { SimSwitcher } from "@/components/sim-switcher";
-import { TripwireLogo } from "@/components/tripwire-logo";
 import type {
   SmsImportResult,
   SmsRefreshResult,
@@ -103,104 +96,6 @@ function BackToPrimaryTabs() {
     }
   }, [location.pathname, navigationType, navigate]);
   return null;
-}
-
-/**
- * M-Pesa speed-dial (Android only): the FAB opens 3 actions — Send
- * (Send Money / Pochi), Lipa (Paybill / Buy Goods), Withdraw (todo).
- * Each page collects number/amount and dials a prefilled stacked USSD code;
- * the PIN is always entered in the system phone dialog.
- */
-function MpesaFab() {
-  const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  // The speed-dial is redundant on its own destinations and noise on
-  // Settings — hide it there so it never covers form actions.
-  if (
-    pathname === "/settings" ||
-    pathname === "/send" ||
-    pathname === "/lipa" ||
-    pathname === "/withdraw"
-  ) {
-    return null;
-  }
-  const actions = [
-    { to: "/send", label: "Send Money", icon: SendIcon },
-    { to: "/lipa", label: "Lipa na M-PESA", icon: ShoppingCart },
-    { to: "/withdraw", label: "Withdraw", icon: Banknote },
-  ];
-  return (
-    <>
-      <style>
-        {`@keyframes fab-pop {
-          from { opacity: 0; transform: translateY(14px) scale(0.5); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes fab-fade {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }`}
-      </style>
-      {open && (
-        <button
-          aria-label="Close M-Pesa menu"
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
-          style={{ animation: "fab-fade 0.2s ease-out both" }}
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <div
-        className="fixed right-4 z-30 flex flex-col items-end gap-2"
-        style={{ bottom: "calc(8rem + env(safe-area-inset-bottom))" }}
-      >
-        {open &&
-          actions.map(({ to, label, icon: Icon }, i) => (
-            <div
-              key={to}
-              className="flex items-center gap-2"
-              style={{
-                animation: "fab-pop 0.25s ease-out both",
-                animationDelay: `${(actions.length - 1 - i) * 60}ms`,
-              }}
-            >
-              <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground shadow">
-                {label}
-              </span>
-              <Button
-                size="icon"
-                aria-label={label}
-                className="size-11 rounded-full shadow-lg"
-                onClick={() => {
-                  setOpen(false);
-                  navigate(to);
-                }}
-              >
-                <Icon className="size-5" />
-              </Button>
-            </div>
-          ))}
-        <Button
-          size="icon"
-          aria-label={open ? "Close M-Pesa" : "Transact with M-Pesa"}
-          title="M-Pesa (*334#)"
-          onClick={() => {
-            // Read-only grant check (hasCallPermission never prompts):
-            // opening the menu must not request CALL_PHONE, the same way
-            // SMS import never asks for it. That prompt happens only at
-            // dial time (WailsBridge.startUssdQuickEntry); SIM names have
-            // their own tap-only opt-in in Settings.
-            smsPermissions();
-            setOpen((v) => !v);
-          }}
-          aria-expanded={open}
-          className="size-12 rounded-full shadow-lg"
-        >
-          {open ? <X className="size-5" /> : <Phone className="size-5" />}
-        </Button>
-      </div>
-    </>
-  );
 }
 
 /**

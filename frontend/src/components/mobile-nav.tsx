@@ -135,7 +135,7 @@ export function MobileNav() {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="grid grid-cols-5">
-          {items.map((item, idx) =>
+          {items.map((item) =>
             item === null ? (
               <button
                 key="pay"

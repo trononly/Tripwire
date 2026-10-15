@@ -1,9 +1,8 @@
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -23,8 +22,6 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
-  const [hovered, setHovered] = useState<string | null>(null);
-
   const points = useMemo(() => {
     // Group intraday transactions by calendar day, keeping end-of-day
     // closing balance for each date.
@@ -52,15 +49,6 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
           <AreaChart
             data={points}
             margin={{ left: 8, right: 8, top: 8 }}
-            onMouseMove={(e: any) => {
-              const payload = e?.activePayload?.[0]?.payload;
-              if (payload) {
-                setHovered(
-                  `${safeFormatFull(payload.date)} • ${formatMoney(payload.balance * 100)}`,
-                );
-              }
-            }}
-            onMouseLeave={() => setHovered(null)}
           >
             <defs>
               <linearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
