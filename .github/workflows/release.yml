@@ -1,33 +1,33 @@
-# Builds and publishes a GitHub Release for Hesabu.
+# Builds and publishes the Tripwire Android release.
 #
 # Runs on:
-#   * a push of a tag matching `v*` (e.g. v0.1.0)
-#   * manual `workflow_dispatch` (optionally with an explicit tag)
+#   * a push of a tag matching `tripwire-*` (e.g. tripwire-1.2.3)
+#   * manual `workflow_dispatch` (with an explicit tag, e.g. tripwire-1.2.3)
+#
+# V1 is mobile-only: there are no desktop jobs in this workflow. Validation
+# (go vet/test, frontend type-check/lint/test) lives in ci.yml.
 #
 # Artifacts produced (attached to a single GitHub Release):
-#   * Windows: `bin/hesabu.exe` plus the NSIS installer (`bin/*-installer.exe`)
-#   * Linux:   AppImage / .deb / .rpm (whatever `wails3 task linux:package`
-#              yields) plus the raw `hesabu` binary
-#   * macOS:   universal `.app` bundle zipped as `hesabu-macos-universal.zip`
-#              and, when DMG creation succeeds, a `.dmg`
-#   * Android (required - this is the main userbase): release `.apk` and
-#              `.aab`. Signed with your upload key when the ANDROID_* secrets
-#              are configured, otherwise debug-signed (installable for
-#              testing, not for Play Store).
+#   * `Tripwire-<version>.apk` — the sideload APK users install. Signed with
+#     your upload key when the ANDROID_* secrets are configured, otherwise
+#     debug-signed (installable for testing, not for Play Store) and named
+#     `Tripwire-<version>-debug.apk` so it is never mistaken for a release.
+#   * `Tripwire-<version>.aab` — the Play Store bundle (same signing rule).
 #
-# macOS builds are ad-hoc signed (no secrets required). Windows/Linux/macOS use
-# the release runner's native toolchains; nothing is cross-compiled.
+# The release notes generated for the GitHub Release double as the in-app
+# "What's new" text: the Android updater shows the body of the latest
+# release in the update dialog.
 
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'tripwire-*'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag to create/update the release for (e.g. v0.1.0). Leave blank to build without publishing.'
+        description: 'Tag to create/update the release for (e.g. tripwire-1.2.3). Leave blank to build without publishing.'
         required: false
         default: ''
 
@@ -41,174 +41,13 @@ env:
   WAILS3_VERSION: latest
 
 jobs:
-  build-desktop:
-    name: Package (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: windows-amd64
-            os: windows-latest
-          - name: linux-amd64
-            os: ubuntu-latest
-          - name: macos-universal
-            os: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
-            libwayland-dev
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Wails v3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
-
-      # Bake the tag version (v0.1.0 -> 0.1.0) into the desktop artifacts:
-      # build assets (exe metadata, NSIS installer, Info.plist, nfpm) are all
-      # generated from build/config.yml, so stamping it first and
-      # regenerating keeps every format consistent. Manual runs without a tag
-      # keep the committed default.
-      - name: Stamp version from tag
-        shell: python3 {0}
-        run: |
-          import re
-          tag = "${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}"
-          m = re.match(r"^v(\d+\.\d+\.\d+.*)$", tag)
-          if not m:
-              print(f"No version tag ({tag!r}); keeping config default.")
-              raise SystemExit
-          version = m.group(1)
-          path = "build/config.yml"
-          text = open(path).read()
-          # The indented key only: line 4 holds the schema version ('3').
-          text, n = re.subn(r"(?m)^(\s+version:\s*).*$", rf"\1'{version}'", text, count=1)
-          assert n == 1, "app version key not found in build/config.yml"
-          open(path, "w").write(text)
-          print(f"Stamped build/config.yml version {version}")
-
-      - name: Regenerate build assets from stamped config
-        run: wails3 task common:update:build-assets
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      # windows-latest normally ships NSIS; install it only if makensis is
-      # missing, and make sure its directory is on PATH for the build job.
-      - name: Ensure NSIS is available (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
-            choco install nsis -y --no-progress
-            "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          }
-
-      - name: Build + package (Windows, NSIS installer)
-        if: matrix.name == 'windows-amd64'
-        run: wails3 task windows:package
-
-      # `linux:package` ships AppImage plus deb/rpm/aur via
-      # build/linux/nfpm/nfpm.yaml. The packaging formats are not verifiable
-      # from a non-Linux dev machine, so a failure there must not sink the
-      # whole release while the AppImage and raw binary still publish. Once a
-      # Linux release has been observed green, drop `continue-on-error`.
-      - name: Build + package (Linux)
-        if: matrix.name == 'linux-amd64'
-        continue-on-error: true
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: wails3 task linux:package
-
-      - name: Build + bundle (macOS, universal)
-        if: matrix.name == 'macos-universal'
-        run: wails3 task darwin:package:universal
-
-      - name: Create DMG (macOS, best effort)
-        if: matrix.name == 'macos-universal'
-        continue-on-error: true
-        run: wails3 task darwin:create:dmg
-
-      - name: Stage release assets (Windows)
-        if: matrix.name == 'windows-amd64'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          Get-ChildItem -Path bin -Filter *.exe -File | ForEach-Object {
-            Copy-Item $_.FullName -Destination release-assets
-          }
-          Get-ChildItem -Path release-assets
-
-      - name: Stage release assets (Linux)
-        if: matrix.name == 'linux-amd64'
-        run: |
-          mkdir -p release-assets
-          # The raw binary is produced by the `build` dependency and must exist
-          # even if the packaging formats below fell over.
-          if [ ! -f bin/hesabu ]; then
-            echo "::error::Linux build did not produce bin/hesabu"
-            exit 1
-          fi
-          find bin -maxdepth 1 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) \
-            -exec cp {} release-assets/ \;
-          cp bin/hesabu release-assets/hesabu-linux-amd64
-          ls -la release-assets
-
-      - name: Stage release assets (macOS)
-        if: matrix.name == 'macos-universal'
-        run: |
-          mkdir -p release-assets
-          ditto -c -k --keepParent bin/hesabu.app release-assets/hesabu-macos-universal.zip
-          find bin -maxdepth 1 -name '*.dmg' -type f -exec cp {} release-assets/ \;
-          ls -la release-assets
-
-      - name: Upload packaged artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: hesabu-${{ matrix.name }}
-          path: release-assets/*
-          if-no-files-found: warn
-          retention-days: 7
-
   build-android:
     name: Package (android)
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Android is the main userbase: this job always runs. Signing uses the
-    # upload key when the ANDROID_* secrets are configured, otherwise the
-    # debug keystore (installable for testing, not for Play Store).
+    # Signing uses the upload key when the ANDROID_* secrets are configured,
+    # otherwise the debug keystore (installable for testing, not for
+    # Play Store).
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
@@ -216,9 +55,8 @@ jobs:
         uses: actions/checkout@v4
 
       # `go install` compiles the wails3 CLI for the host, and on Linux that
-      # links GTK/WebKit (internal/operatingsystem uses CGO) — same system
-      # libraries as the desktop Linux build, even though the app itself
-      # cross-compiles to Android via the NDK.
+      # links GTK/WebKit (internal/operatingsystem uses CGO) — the app
+      # itself cross-compiles to Android via the NDK.
       - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
         run: |
           sudo apt-get update -qq
@@ -243,17 +81,21 @@ jobs:
       - name: Export NDK path
         run: echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/26.3.11579264" >> "$GITHUB_ENV"
 
-      # versionName follows the release tag (e.g. v0.1.0 -> 0.1.0);
-      # versionCode is the monotonic run number. Manual builds without a tag
-      # keep the defaults in build/android/app/build.gradle.
+      # versionName follows the release tag (tripwire-1.2.3 -> 1.2.3);
+      # versionCode is the monotonic run number. Manual builds without a
+      # tripwire-* tag keep the defaults in build/android/app/build.gradle.
+      # The bare version is also exported as APP_VERSION for asset naming.
       - name: Derive Android version from tag
         run: |
           TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
-          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+ ]]; then
-            echo "ANDROID_VERSION_NAME=${TAG#v}" >> "$GITHUB_ENV"
+          if [[ "$TAG" =~ ^tripwire-([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            echo "APP_VERSION=${VERSION}" >> "$GITHUB_ENV"
+            echo "ANDROID_VERSION_NAME=${VERSION}" >> "$GITHUB_ENV"
             echo "ANDROID_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+            echo "Building Tripwire ${VERSION}"
           else
-            echo "No version tag ($TAG); keeping build.gradle defaults."
+            echo "No tripwire-* version tag ($TAG); keeping build.gradle defaults."
           fi
 
       - name: Setup Go
@@ -314,26 +156,21 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p release-assets
-          # Name assets with the tag version when there is one, and mark
-          # debug-signed builds so a testing APK is never mistaken for the
-          # Play Store artifact.
-          TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
-          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+ ]]; then
-            SUFFIX="-${TAG#v}"
-          else
-            SUFFIX=""
-          fi
+          # The in-app updater looks for an asset named Tripwire-<version>.apk,
+          # so the APK name is part of the update contract — keep it stable.
+          VERSION="${APP_VERSION:-untagged}"
+          SUFFIX=""
           if [ "${HAS_KEYSTORE}" != "true" ]; then
-            SUFFIX="${SUFFIX}-debug-signed"
+            SUFFIX="-debug"
           fi
-          if [ -f bin/hesabu.apk ]; then cp bin/hesabu.apk "release-assets/hesabu${SUFFIX}.apk"; fi
-          if [ -f bin/hesabu.aab ]; then cp bin/hesabu.aab "release-assets/hesabu${SUFFIX}.aab"; fi
+          if [ -f bin/tripwire.apk ]; then cp bin/tripwire.apk "release-assets/Tripwire-${VERSION}${SUFFIX}.apk"; fi
+          if [ -f bin/tripwire.aab ]; then cp bin/tripwire.aab "release-assets/Tripwire-${VERSION}${SUFFIX}.aab"; fi
           ls -la release-assets
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hesabu-android
+          name: tripwire-android
           path: release-assets/*
           if-no-files-found: warn
           retention-days: 7
@@ -341,10 +178,10 @@ jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-desktop, build-android]
-    # Android is required (main userbase): both jobs must succeed. Requires
-    # a tag (from the push event or the manual `tag_name` input).
-    if: ${{ always() && needs.build-desktop.result == 'success' && needs.build-android.result == 'success' && (github.ref_type == 'tag' || inputs.tag_name != '') }}
+    needs: [build-android]
+    # Requires a tripwire-* tag (from the push event or the manual
+    # `tag_name` input). Untagged manual runs stop after building.
+    if: ${{ needs.build-android.result == 'success' && (startsWith(github.ref, 'refs/tags/tripwire-') || startsWith(inputs.tag_name, 'tripwire-')) }}
     steps:
       - name: Download all packaged artifacts
         uses: actions/download-artifact@v4
@@ -354,11 +191,18 @@ jobs:
       - name: List release assets
         run: find dist -type f -print
 
+      - name: Resolve tag and title
+        id: meta
+        run: |
+          TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=Tripwire ${TAG#tripwire-}" >> "$GITHUB_OUTPUT"
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}
-          name: ${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.title }}
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: dist/**/*

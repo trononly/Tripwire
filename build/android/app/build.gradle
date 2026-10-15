@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.hesabu.app"
+        applicationId "com.tripwire.app"
         minSdk 21
         targetSdk 35
         // Release CI overrides these from the git tag

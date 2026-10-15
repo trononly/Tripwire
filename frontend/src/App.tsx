@@ -43,6 +43,8 @@ import {
   type SmsBridgeResult,
 } from "@/lib/sms-bridge";
 import { useSmsPermissions } from "@/hooks/use-sms-permissions";
+import { useUpdater } from "@/hooks/use-updater";
+import { UpdateDialog } from "@/components/update-dialog";
 import { MobileNav } from "@/components/mobile-nav";
 import type {
   SmsImportResult,
@@ -115,6 +117,9 @@ function App() {
   // Arrival receipt: the current fresh transaction, shown as a slip until
   // dismissed. Null means closed.
   const [receiptTx, setReceiptTx] = useState<parser.Transaction | null>(null);
+  // In-app updates (Android only): auto-checks the GitHub Releases page and
+  // prompts with the release notes when a newer Tripwire-x.y.z build exists.
+  const updater = useUpdater();
 
   useEffect(() => {
     setIsAndroid(isAndroidBridge());
@@ -504,7 +509,7 @@ function App() {
                  does not render there; the app name takes its place. */}
               <SidebarTrigger className="hidden md:inline-flex" />
               <span className="text-base font-bold tracking-tight md:hidden">
-                Mpesa Analyzer
+                Tripwire
               </span>
 
               <div className="flex items-center gap-2">
@@ -620,6 +625,7 @@ function App() {
                       statementTxCount={statementTxs.length}
                       smsTxCount={smsTxs.length}
                       onTestArrival={testArrivalAnnouncement}
+                      updater={updater}
                     />
                   }
                 />
@@ -685,6 +691,7 @@ function App() {
             window.location.hash = "#/transactions";
           }}
         />
+        <UpdateDialog updater={updater} />
       </HashRouter>
     </ThemeProvider>
   );

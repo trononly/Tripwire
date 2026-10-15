@@ -22,7 +22,7 @@ build/android/app/src/main/jniLibs/
 *.syso
 
 # Local build output (was accidentally tracked; built by wails3)
-mpesa-analyzer.exe
+tripwire.exe
 *.exe~
 
 # Windows findstr redirect artifact

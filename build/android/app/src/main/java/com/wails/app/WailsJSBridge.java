@@ -181,6 +181,53 @@ public class WailsJSBridge {
     }
 
     /**
+     * Installed app version as JSON
+     * {"versionName","versionCode","packageName"}.
+     * Called from JavaScript: wails.getAppVersion()
+     */
+    @JavascriptInterface
+    public String getAppVersion() {
+        return bridge.getAppVersionJson();
+    }
+
+    /**
+     * Whether the system currently allows APK installs from this app.
+     * Called from JavaScript: wails.canInstallPackages()
+     */
+    @JavascriptInterface
+    public boolean canInstallPackages() {
+        return bridge.canInstallPackages();
+    }
+
+    /**
+     * Open the "Install unknown apps" settings page for this app.
+     * Called from JavaScript: wails.openInstallPermissionSettings()
+     */
+    @JavascriptInterface
+    public void openInstallPermissionSettings() {
+        bridge.openInstallPermissionSettings();
+    }
+
+    /**
+     * Download an APK and hand it to the system installer. Progress arrives
+     * as "common:update" events. Never blocks the caller.
+     * Called from JavaScript: wails.downloadAndInstallApk(url, fileName)
+     */
+    @JavascriptInterface
+    public void downloadAndInstallApk(String url, String fileName) {
+        bridge.downloadAndInstallApk(url, fileName);
+    }
+
+    /**
+     * Open a URL in the system browser.
+     * Called from JavaScript: wails.openUrl(url)
+     */
+    @JavascriptInterface
+    public void openUrl(String url) {
+        bridge.openURL(url);
+    }
+
+    /**
      * Send a callback response to JavaScript
      */
     private void sendCallback(String callbackId, String result, String error) {

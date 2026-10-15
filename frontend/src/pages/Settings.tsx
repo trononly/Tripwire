@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useKonamiCode } from "@/hooks/use-konami-code";
 import { isAndroidBridge, type SmsPermissions } from "@/lib/sms-bridge";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
+import type { Updater } from "@/hooks/use-updater";
 import {
   Card,
   CardContent,
@@ -98,6 +99,7 @@ export default function Settings({
   statementTxCount,
   smsTxCount,
   onTestArrival,
+  updater,
 }: {
   mode: "statements" | "sms";
   onModeChange: (mode: "statements" | "sms") => void;
@@ -108,6 +110,7 @@ export default function Settings({
   smsTxCount: number;
   /** Debug-only: replay the arrival announcement without moving money. */
   onTestArrival: () => void;
+  updater: Updater;
 }) {
   const debug = useKonamiCode();
   const smsRecords = statements.filter((s) => s.source === "sms");
@@ -142,6 +145,47 @@ export default function Settings({
                 <ArrowRight />
               </Link>
             </Button>
+          </CardContent>
+        </Card>
+      )}
+      {isAndroid && (
+        <Card>
+          <CardHeader>
+            <CardTitle>App updates</CardTitle>
+            <CardDescription>
+              {updater.current
+                ? `Tripwire ${updater.current} installed`
+                : "Tripwire"}
+              {updater.status === "checking"
+                ? " — checking…"
+                : updater.status === "available" && updater.release
+                  ? ` — ${updater.release.version} ready`
+                  : updater.status === "up-to-date"
+                    ? " — you're up to date"
+                    : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {updater.status === "error" && updater.error && (
+              <p className="text-sm text-destructive">{updater.error}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updater.check(true)}
+                disabled={updater.status === "checking"}
+              >
+                {updater.status === "checking"
+                  ? "Checking…"
+                  : "Check for updates"}
+              </Button>
+              {updater.status === "available" && updater.release && (
+                <Button size="sm" onClick={updater.reopen}>
+                  View update
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

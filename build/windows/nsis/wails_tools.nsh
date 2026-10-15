@@ -5,19 +5,19 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "hesabu"
+    !define INFO_PROJECTNAME "tripwire"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "Hesabu"
+    !define INFO_COMPANYNAME "Tripwire"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "Hesabu"
+    !define INFO_PRODUCTNAME "Tripwire"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.0.1"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "(c) 2026, Hesabu"
+    !define INFO_COPYRIGHT "(c) 2026, Tripwire"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

@@ -1,11 +1,32 @@
-# Hesabu
+# Tripwire
 
-Hesabu is a local-first personal M-Pesa money analyzer for desktop and Android.
-It imports your M-Pesa history — PDF statements on both platforms, and the
-M-Pesa SMS in your Android phone's inbox — parses it all into one normalized
-transaction model, and helps you understand where your money goes: cashflow,
-categories, counterparties, the fees Safaricom took, and recurring bills and
+Tripwire is a local-first personal M-Pesa money analyzer for Android.
+It imports your M-Pesa history — PDF statements, and the M-Pesa SMS in
+your phone's inbox — parses it all into one normalized transaction model,
+and helps you understand where your money goes: cashflow, categories,
+counterparties, the fees Safaricom took, and recurring bills and
 subscriptions.
+
+## Releases
+
+V1 is mobile-only. Pushing a tag like `tripwire-1.2.3` runs the Release
+workflow, which builds a signed release APK and publishes it on the
+[releases page](https://github.com/trononly/Tripwire/releases) as
+`Tripwire-1.2.3.apk` (plus a `Tripwire-1.2.3.aab` Play Store bundle).
+
+The app checks that releases page for updates: on launch (at most once a
+day) and on demand from **Settings → App updates**. When a newer build
+exists, a dialog shows the version, the release notes as "What's new",
+and an Update button that downloads the APK and hands it to the Android
+installer. The first install of a new version asks you to allow
+"Install unknown apps" for Tripwire once — Android's rule for updates
+outside the Play Store, not something the app can skip.
+
+Renaming note: the app was previously published as `com.hesabu.app`
+(Hesabu). The application ID is now `com.tripwire.app`, which Android
+treats as a different app — existing Hesabu installs do not upgrade in
+place. Uninstall the old app (or keep it side by side) and install the
+Tripwire APK fresh. Your data does not migrate automatically.
 
 ## Privacy: everything stays on device
 
@@ -129,7 +150,7 @@ or copy the APK onto the phone and open it.
 
     go test ./internal/sms/          # parser fixtures + classification tests
     wails3 task android:package      # rebuild after any Go or frontend change
-    adb logcat --pid=$(adb shell pidof com.wails.app)   # runtime logs
+    adb logcat --pid=$(adb shell pidof com.tripwire.app)   # runtime logs
 
 # Notes from creator
 
