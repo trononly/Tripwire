@@ -115,6 +115,31 @@ func TestTotalsOutIsPositive(t *testing.T) {
 	}
 }
 
+// TestFulizaAccessFeeIsAFee locks in that the SMS-derived "Fuliza Access
+// Fee" (which carries no "Charge" word) is accounted as a fee: excluded
+// from totals/cashflow spend, included in TotalFees — exactly like the
+// statement charge rows.
+func TestFulizaAccessFeeIsAFee(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-04-28 19:55:42", "Airtime Purchase", -500, 44679),
+		tx("2026-04-28 17:27:36", "Fuliza Access Fee", -155, 44679),
+	}
+	in, out := TotalAmount(txs)
+	if in != 0 || out != 500 {
+		t.Errorf("TotalAmount = (%d, %d), want (0, 500)", in, out)
+	}
+	if fees := TotalFees(txs); fees != 155 {
+		t.Errorf("TotalFees = %d, want 155", fees)
+	}
+	buckets, err := Cashflow(txs, "day")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 || buckets[0].Out != 500 {
+		t.Errorf("cashflow should exclude the fee, got %+v", buckets)
+	}
+}
+
 func TestCategoryOf(t *testing.T) {
 	cases := map[string]string{
 		"Pay Bill Charge":                                   "Fees",
@@ -185,5 +210,22 @@ func TestTopCounterpartiesMergesCaseAndMasking(t *testing.T) {
 	}
 	if top[0].Name != "Calvin Kamara 0712544752" || top[0].Count != 4 {
 		t.Errorf("merged entry wrong: %+v", top[0])
+	}
+}
+
+func TestTopCounterpartiesExcludesSafaricomSystem(t *testing.T) {
+	// Safaricom's own products are plumbing, not counterparties: Ziidi
+	// unit-trust rows, Safaricom Offers bundle rows (which extract only the
+	// account name), and M-Shwari/Fuliza-style names must all stay out.
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:29:02", "Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust", -5000, 1),
+		tx("2026-04-21 18:28:22", "Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust", -5000, 1),
+		tx("2026-04-21 18:08:45", "Customer Bundle Purchase to Safaricom Offers - Tunukiwa", -1000, 1),
+		tx("2026-04-21 18:02:45", "Customer Bundle Purchase to Safaricom Offers - Tunukiwa", -1000, 1),
+		tx("2026-04-21 17:06:40", "Funds received from - Calvin Kamara", 3000, 1),
+	}
+	top := TopCounterparties(txs, 8)
+	if len(top) != 1 || top[0].Name != "Calvin Kamara" || top[0].Count != 1 {
+		t.Errorf("system counterparties should be excluded, got %+v", top)
 	}
 }

@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="wails_blue">#3574D4</color>
-    <color name="wails_blue_dark">#2C5FB8</color>
-    <color name="wails_background">#1B2636</color>
-    <!-- Launcher icon background: deep emerald, shared with the icon. -->
-    <color name="ic_launcher_background">#064E3B</color>
+    <!-- Tripwire brand palette (see build/tripwire-bg.svg). -->
+    <color name="tripwire_bg">#16171B</color>
+    <color name="tripwire_card">#25262E</color>
+    <color name="tripwire_red">#F04A48</color>
+    <color name="tripwire_red_dark">#B93230</color>
+    <color name="tripwire_text">#F8F8F3</color>
+    <!-- Launcher icon background: near-black, shared with the icon. -->
+    <color name="ic_launcher_background">#16171B</color>
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>
 </resources>

@@ -107,7 +107,7 @@ export function CategoryDonut({
               content={
                 <ChartLegendContent
                   nameKey="name"
-                  className="flex-wrap gap-x-3 gap-y-2 text-xs sm:gap-x-4"
+                  className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs"
                 />
               }
             />

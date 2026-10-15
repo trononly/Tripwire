@@ -28,7 +28,7 @@ func CounterpartyOf(description string) string {
 	// Strip leading masked numbers like "07******752" or "2547******103".
 	for {
 		fields := strings.Fields(name)
-		if len(fields) < 2 || !isMaskedNumber(fields[0]) {
+		if len(fields) < 2 || !IsMaskedNumber(fields[0]) {
 			break
 		}
 		name = strings.TrimSpace(strings.TrimPrefix(name, fields[0]))
@@ -36,7 +36,7 @@ func CounterpartyOf(description string) string {
 	return strings.TrimSpace(name)
 }
 
-func isMaskedNumber(s string) bool {
+func IsMaskedNumber(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {

@@ -2,13 +2,18 @@
 <resources>
     <style name="Theme.TripwireApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/wails_blue</item>
-        <item name="colorPrimaryVariant">@color/wails_blue_dark</item>
-        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorPrimary">@color/tripwire_red</item>
+        <item name="colorPrimaryVariant">@color/tripwire_red_dark</item>
+        <item name="colorOnPrimary">@color/tripwire_text</item>
         <!-- Status bar color. -->
-        <item name="android:statusBarColor">@color/wails_background</item>
-        <item name="android:navigationBarColor">@color/wails_background</item>
-        <!-- Window background -->
-        <item name="android:windowBackground">@color/wails_background</item>
+        <item name="android:statusBarColor">@color/tripwire_bg</item>
+        <item name="android:navigationBarColor">@color/tripwire_bg</item>
+        <!-- Window background: branded launch drawable, which also covers
+             the WebView first-paint flash. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- Android 12+ splash: Tripwire background + launcher icon.
+             Ignored on older releases. -->
+        <item name="android:windowSplashScreenBackground">@color/tripwire_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
     </style>
 </resources>

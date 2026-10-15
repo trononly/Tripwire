@@ -273,25 +273,30 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
-	if first.NewCount != 1 || first.Record == nil || first.Record.TxCount != 1 {
-		t.Fatalf("create: %+v", first.Record)
+	if len(first.Sims) != 1 {
+		t.Fatalf("create: want one SIM, got %+v", first.Sims)
+	}
+	sim := first.Sims[0]
+	if sim.NewCount != 1 || sim.Record == nil || sim.Record.TxCount != 1 {
+		t.Fatalf("create: %+v", sim.Record)
 	}
 	// 01-send-p2p is a customer transfer: receipt-worthy.
-	if !first.Receipt || len(first.NewTxs) != 1 {
-		t.Errorf("create receipt wrong: %+v", first)
+	if !sim.Receipt || len(sim.NewTxs) != 1 {
+		t.Errorf("create receipt wrong: %+v", sim)
 	}
-	if first.Record.Source != store.SourceSms || first.Result.Imported != 1 {
-		t.Errorf("record wrong: %+v", first.Record)
+	if sim.Record.Source != store.SourceSms || first.Result.Imported != 1 {
+		t.Errorf("record wrong: %+v", sim.Record)
 	}
-	id := first.Record.ID
+	id := sim.Record.ID
 
 	// Same inbox again: nothing new, same record, no store write needed.
 	again, err := p.RefreshSmsImport([]SmsMessage{msgA})
 	if err != nil {
 		t.Fatalf("re-refresh: %v", err)
 	}
-	if again.NewCount != 0 || again.Record.ID != id || again.Record.TxCount != 1 {
-		t.Errorf("re-refresh must be a no-op: new=%d txs=%d", again.NewCount, again.Record.TxCount)
+	if len(again.Sims) != 1 || again.Sims[0].NewCount != 0 ||
+		again.Sims[0].Record.ID != id || again.Sims[0].Record.TxCount != 1 {
+		t.Errorf("re-refresh must be a no-op: %+v", again.Sims)
 	}
 
 	// One old + one new message: only the new receipt is appended.
@@ -299,18 +304,22 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
-	if both.NewCount != 1 || both.Record.ID != id || both.Record.TxCount != 2 {
-		t.Fatalf("merge wrong: new=%d txs=%d", both.NewCount, both.Record.TxCount)
+	if len(both.Sims) != 1 {
+		t.Fatalf("merge: want one SIM, got %+v", both.Sims)
 	}
-	if len(both.NewTxs) != 1 || both.NewTxs[0].ID != both.Record.Txs[0].ID {
-		t.Errorf("new txs wrong: %+v", both.NewTxs)
+	sim = both.Sims[0]
+	if sim.NewCount != 1 || sim.Record.ID != id || sim.Record.TxCount != 2 {
+		t.Fatalf("merge wrong: new=%d txs=%d", sim.NewCount, sim.Record.TxCount)
+	}
+	if len(sim.NewTxs) != 1 || sim.NewTxs[0].ID != sim.Record.Txs[0].ID {
+		t.Errorf("new txs wrong: %+v", sim.NewTxs)
 	}
 	// The only new arrival is inbound (02-receive): merges, no receipt.
-	if both.Receipt {
+	if sim.Receipt {
 		t.Errorf("inbound-only arrival must not pop a receipt")
 	}
-	if both.Record.Txs[0].ID != "ABCAP6LGYW" || both.Record.Txs[1].ID != "ABCAP6H14J" {
-		t.Errorf("merge order wrong: %s, %s", both.Record.Txs[0].ID, both.Record.Txs[1].ID)
+	if sim.Record.Txs[0].ID != "ABCAP6LGYW" || sim.Record.Txs[1].ID != "ABCAP6H14J" {
+		t.Errorf("merge order wrong: %s, %s", sim.Record.Txs[0].ID, sim.Record.Txs[1].ID)
 	}
 
 	// A snapshot that parses to nothing yields no record at all.
@@ -318,7 +327,225 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty: %v", err)
 	}
-	if none.Record != nil || none.NewCount != 0 {
-		t.Errorf("empty snapshot must yield no record: %+v", none.Record)
+	if len(none.Sims) != 0 {
+		t.Errorf("empty snapshot must yield no SIMs: %+v", none.Sims)
+	}
+}
+
+// TestRefreshSmsImportSeparatesSims pins the dual-SIM contract: each SIM's
+// messages merge into their own record, and switching SIM never mixes the
+// two wallets.
+func TestRefreshSmsImportSeparatesSims(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	simOne := func(id, fixture string, ms int64) SmsMessage {
+		return SmsMessage{ID: id, Address: "MPESA", DateMs: ms, Body: fixtureBody(t, fixture),
+			Slot: 0, SubID: 1, SimLabel: "Safaricom", TzOffsetMinutes: &tz}
+	}
+	simTwo := func(id, fixture string, ms int64) SmsMessage {
+		return SmsMessage{ID: id, Address: "MPESA", DateMs: ms, Body: fixtureBody(t, fixture),
+			Slot: 1, SubID: 2, SimLabel: "Airtel", TzOffsetMinutes: &tz}
+	}
+
+	out, err := p.RefreshSmsImport([]SmsMessage{
+		simOne("a", "01-send-p2p.txt", nairobiMilli(t, 2026, time.September, 12, 11, 53)),
+		simTwo("c", "02-receive.txt", nairobiMilli(t, 2026, time.September, 12, 9, 0)),
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if len(out.Sims) != 2 {
+		t.Fatalf("want two SIM records, got %+v", out.Sims)
+	}
+	bySim := map[string]SmsSimRefresh{}
+	for _, sim := range out.Sims {
+		bySim[sim.SimID] = sim
+	}
+	one, ok := bySim["sim-0"]
+	if !ok || one.Record == nil || one.SimLabel != "Safaricom" || one.Record.TxCount != 1 {
+		t.Fatalf("SIM 0 record wrong: %+v", bySim["sim-0"])
+	}
+	two, ok := bySim["sim-1"]
+	if !ok || two.Record == nil || two.SimLabel != "Airtel" || two.Record.TxCount != 1 {
+		t.Fatalf("SIM 1 record wrong: %+v", bySim["sim-1"])
+	}
+	if one.Record.ID == two.Record.ID {
+		t.Fatalf("SIMs must not share a record: %s", one.Record.ID)
+	}
+	if one.Record.SimID != "sim-0" || one.Record.SimLabel != "Safaricom" {
+		t.Errorf("record must carry its SIM: %+v", one.Record)
+	}
+	// Re-reading only SIM 1's message must not touch SIM 0's record.
+	only, err := p.RefreshSmsImport([]SmsMessage{simOne("a", "01-send-p2p.txt", nairobiMilli(t, 2026, time.September, 12, 11, 53))})
+	if err != nil {
+		t.Fatalf("re-refresh: %v", err)
+	}
+	if len(only.Sims) != 1 || only.Sims[0].SimID != "sim-0" || only.Sims[0].NewCount != 0 {
+		t.Errorf("SIM 0 re-refresh wrong: %+v", only.Sims)
+	}
+}
+
+// TestRefreshSimLabels pins the carrier-name upgrade: wallets imported
+// while READ_PHONE_STATE was unavailable carry fallback names, and a
+// later SIM-list snapshot renames exactly those records.
+func TestRefreshSimLabels(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	// No carrier names at import time: records get "SIM 1" / "SIM 2".
+	_, err = p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 11, 53),
+			Body: fixtureBody(t, "01-send-p2p.txt"), Slot: 0, SubID: 1, TzOffsetMinutes: &tz},
+		{ID: "c", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 9, 0),
+			Body: fixtureBody(t, "02-receive.txt"), Slot: 1, SubID: 2, TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	n, err := p.RefreshSimLabels([]SimCard{
+		{SubID: 1, Slot: 0, SimLabel: "Safaricom"},
+		{SubID: 2, Slot: 1, SimLabel: "Airtel"},
+	})
+	if err != nil {
+		t.Fatalf("labels: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 renames, got %d", n)
+	}
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	bySim := map[string]string{}
+	for _, m := range metas {
+		bySim[m.SimID] = m.SimLabel
+	}
+	if bySim["sim-0"] != "Safaricom" || bySim["sim-1"] != "Airtel" {
+		t.Errorf("labels wrong: %+v", bySim)
+	}
+
+	// Same names again, blank names, and unknown SIMs change nothing.
+	n, err = p.RefreshSimLabels([]SimCard{
+		{SubID: 1, Slot: 0, SimLabel: "Safaricom"},
+		{SubID: 2, Slot: 1, SimLabel: ""},
+		{SubID: 9, Slot: 5, SimLabel: "Telkom"},
+	})
+	if err != nil {
+		t.Fatalf("re-labels: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("want 0 renames, got %d", n)
+	}
+}
+
+// TestRefreshSimLabelsMigratesSubKeys pins the grant-later path: a wallet
+// imported by subscription id (slot unknown, no phone-state grant) moves
+// onto its slot key once the SIM list resolves it, so later imports merge
+// into the same record instead of opening a second one.
+func TestRefreshSimLabelsMigratesSubKeys(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	// Slot unknown at import time: subscription-keyed record, fallback name.
+	out, err := p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 11, 53),
+			Body: fixtureBody(t, "01-send-p2p.txt"), Slot: -1, SubID: 7, TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if len(out.Sims) != 1 || out.Sims[0].SimID != "sub-7" {
+		t.Fatalf("want one sub-keyed SIM, got %+v", out.Sims)
+	}
+	id := out.Sims[0].Record.ID
+
+	n, err := p.RefreshSimLabels([]SimCard{{SubID: 7, Slot: 0, SimLabel: "Calvin"}})
+	if err != nil {
+		t.Fatalf("labels: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 change, got %d", n)
+	}
+	rec, err := s.Get(id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if rec.SimID != "sim-0" || rec.SimLabel != "Calvin" {
+		t.Errorf("record must move to the slot key with the new name: %+v", rec)
+	}
+	if rec.TxCount != 1 {
+		t.Errorf("migration must not touch transactions: %+v", rec)
+	}
+
+	// A later import for the same SIM merges into the moved record.
+	again, err := p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 11, 53),
+			Body: fixtureBody(t, "01-send-p2p.txt"), Slot: 0, SubID: 7, SimLabel: "Calvin", TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("re-refresh: %v", err)
+	}
+	if len(again.Sims) != 1 || again.Sims[0].Record.ID != id || again.Sims[0].NewCount != 0 {
+		t.Errorf("post-grant import must merge into the moved record: %+v", again.Sims)
+	}
+}
+
+// TestRefreshSimLabelsKeepsClaimedSlotKeys ensures a subscription-keyed
+// record is renamed but never moved when its slot key is already taken by
+// another record — the older one stays as a snapshot.
+func TestRefreshSimLabelsKeepsClaimedSlotKeys(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	msgs := []SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 11, 53),
+			Body: fixtureBody(t, "01-send-p2p.txt"), Slot: 0, SubID: 7, SimLabel: "Old", TzOffsetMinutes: &tz},
+		{ID: "c", Address: "MPESA", DateMs: nairobiMilli(t, 2026, time.September, 12, 9, 0),
+			Body: fixtureBody(t, "02-receive.txt"), Slot: -1, SubID: 9, TzOffsetMinutes: &tz},
+	}
+	if _, err := p.RefreshSmsImport(msgs); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	// Sub 9's card claims slot 0, which sim-0 already owns.
+	n, err := p.RefreshSimLabels([]SimCard{{SubID: 9, Slot: 0, SimLabel: "New"}})
+	if err != nil {
+		t.Fatalf("labels: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 renames, got %d", n)
+	}
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	bySim := map[string]string{}
+	for _, m := range metas {
+		bySim[m.SimID] = m.SimLabel
+	}
+	if bySim["sim-0"] != "New" || bySim["sub-9"] != "New" {
+		t.Errorf("both wallets take the current name, sub-9 keeps its key: %+v", bySim)
 	}
 }
