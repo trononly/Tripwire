@@ -115,6 +115,31 @@ func TestTotalsOutIsPositive(t *testing.T) {
 	}
 }
 
+// TestFulizaAccessFeeIsAFee locks in that the SMS-derived "Fuliza Access
+// Fee" (which carries no "Charge" word) is accounted as a fee: excluded
+// from totals/cashflow spend, included in TotalFees — exactly like the
+// statement charge rows.
+func TestFulizaAccessFeeIsAFee(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-04-28 19:55:42", "Airtime Purchase", -500, 44679),
+		tx("2026-04-28 17:27:36", "Fuliza Access Fee", -155, 44679),
+	}
+	in, out := TotalAmount(txs)
+	if in != 0 || out != 500 {
+		t.Errorf("TotalAmount = (%d, %d), want (0, 500)", in, out)
+	}
+	if fees := TotalFees(txs); fees != 155 {
+		t.Errorf("TotalFees = %d, want 155", fees)
+	}
+	buckets, err := Cashflow(txs, "day")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 || buckets[0].Out != 500 {
+		t.Errorf("cashflow should exclude the fee, got %+v", buckets)
+	}
+}
+
 func TestCategoryOf(t *testing.T) {
 	cases := map[string]string{
 		"Pay Bill Charge":                                   "Fees",

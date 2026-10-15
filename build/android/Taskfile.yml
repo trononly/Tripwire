@@ -405,7 +405,7 @@ tasks:
           DEVICE="${DEVICE_ID:-}"
         fi
         if [ -z "$DEVICE" ]; then
-          DEVICE=$("{{.ADB}}" devices | awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
+          DEVICE=$("{{.ADB}}" devices | awk '{sub(/\r$/,"")} NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
         fi
         if [ -z "$DEVICE" ]; then
           echo "Error: no connected physical Android device found."
@@ -440,7 +440,7 @@ tasks:
           DEVICE="${DEVICE_ID:-}"
         fi
         if [ -z "$DEVICE" ]; then
-          DEVICE=$("{{.ADB}}" devices | awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
+          DEVICE=$("{{.ADB}}" devices | awk '{sub(/\r$/,"")} NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
         fi
         if [ -z "$DEVICE" ]; then
           echo "Error: no connected physical Android device found."
