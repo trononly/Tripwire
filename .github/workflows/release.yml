@@ -70,8 +70,22 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # ubuntu-latest already ships the Android SDK ($ANDROID_SDK_ROOT).
+      # android-actions/setup-android@v3 is broken against current
+      # cmdline-tools (it tries to install the long-removed `tools`
+      # package and fails the job), so just wire the preinstalled
+      # sdkmanager onto PATH instead.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          for d in "$SDK_ROOT/cmdline-tools/latest/bin" "$SDK_ROOT"/cmdline-tools/*/bin; do
+            if [ -x "$d/sdkmanager" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+              export PATH="$d:$PATH"
+              break
+            fi
+          done
+          sdkmanager --version
 
       - name: Install Android SDK platform, build tools and NDK
         run: |
