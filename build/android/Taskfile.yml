@@ -4,7 +4,7 @@ includes:
   common: ../Taskfile.yml
 
 vars:
-  APP_ID: '{{.APP_ID | default "com.hesabu.app"}}'
+  APP_ID: '{{.APP_ID | default "tron.tripwire.app"}}'
   MIN_SDK: '21'
   TARGET_SDK: '35'
   # The emulator runs the host architecture; physical devices are arm64
@@ -405,7 +405,7 @@ tasks:
           DEVICE="${DEVICE_ID:-}"
         fi
         if [ -z "$DEVICE" ]; then
-          DEVICE=$("{{.ADB}}" devices | awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
+          DEVICE=$("{{.ADB}}" devices | awk '{sub(/\r$/,"")} NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
         fi
         if [ -z "$DEVICE" ]; then
           echo "Error: no connected physical Android device found."
@@ -440,7 +440,7 @@ tasks:
           DEVICE="${DEVICE_ID:-}"
         fi
         if [ -z "$DEVICE" ]; then
-          DEVICE=$("{{.ADB}}" devices | awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
+          DEVICE=$("{{.ADB}}" devices | awk '{sub(/\r$/,"")} NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1; exit }')
         fi
         if [ -z "$DEVICE" ]; then
           echo "Error: no connected physical Android device found."

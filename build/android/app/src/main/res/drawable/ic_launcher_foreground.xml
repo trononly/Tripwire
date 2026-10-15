@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Launcher foreground: Hesabu "H" monogram, drawn for the adaptive-icon
-     safe zone. -->
+<!-- Launcher foreground: Tripwire mark on a FULL-BLEED card. The artwork
+     fills the entire viewport corner-to-corner; the launcher masks it to
+     circle/squircle/teardrop. The mark itself stays inside the safe zone,
+     so no mask shape clips it — only the plain card edges get clipped,
+     which is exactly what the mask is for. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#ECFDF5"
-        android:strokeWidth="10"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M40,32 V76 M68,32 V76 M40,54 H68" />
+        android:fillColor="#25262E"
+        android:pathData="M0,0 H108 V108 H0 Z" />
+    <path
+        android:fillColor="#F04A48"
+        android:pathData="M48.65,48.75 H59.15 V59.25 H48.65 Z" />
+    <path
+        android:fillColor="#F8F8F3"
+        android:pathData="M32.95,52.89 H46.15 V55.11 H32.95 Z" />
+    <path
+        android:fillColor="#F8F8F3"
+        android:pathData="M61.46,52.89 H74.66 V55.11 H61.46 Z" />
 </vector>

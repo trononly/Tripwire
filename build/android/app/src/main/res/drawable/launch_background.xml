@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cold-start splash: Tripwire background with the centered mark.
+     Shown as the window background before the WebView first paints.
+     (android:width/height on <item> needs API 23+; on 21-22 the mark
+     fills the screen instead. Negligible on a targetSdk-35 app.) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/tripwire_bg" />
+    <item
+        android:drawable="@drawable/splash_mark"
+        android:gravity="center"
+        android:width="192dp"
+        android:height="192dp" />
+</layer-list>

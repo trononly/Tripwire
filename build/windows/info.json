@@ -5,10 +5,10 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.0.1",
-			"CompanyName": "Hesabu",
+			"CompanyName": "Tron",
 			"FileDescription": "Understand your mobile money",
-			"LegalCopyright": "(c) 2026, Hesabu",
-			"ProductName": "Hesabu",
+			"LegalCopyright": "(c) 2026, Tron",
+			"ProductName": "Tripwire",
 			"Comments": "Personal M-Pesa money analyzer"
 		}
 	}

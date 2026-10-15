@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M-Pesa USSD automation: steps through *334# menus the user started by
+     tapping Send/Pay in-app. Disabled until the user enables it in system
+     Settings (see the in-app disclosure). No package filter here on purpose:
+     OEM dialers vary, so MpesaUssdService hard-filters to phone/dialer
+     windows in code and never touches anything else. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/ussd_service_desc"
+    android:notificationTimeout="200" />

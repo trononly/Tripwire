@@ -3,14 +3,21 @@
 // absence — callers never reach into window.wails directly.
 
 interface WailsAndroidBridge {
-	platform?(): string;
-	isDebug?(): boolean;
-	hasSmsPermission?(): boolean;
-	getSms?(): void;
-	hasCallPermission?(): boolean;
-	startUssdSession?(code: string): void;
-	drainPendingSms?(): string;
-	hasSmsReceivePermission?(): boolean;
+  platform?(): string;
+  isDebug?(): boolean;
+  hasSmsPermission?(): boolean;
+  getSms?(): void;
+  hasCallPermission?(): boolean;
+  hasPhoneStatePermission?(): boolean;
+  getSimCards?(): string;
+  requestPhoneStatePermission?(): void;
+  startUssdSession?(code: string): void;
+  isUssdAutomationEnabled?(): boolean;
+  openUssdAutomationSettings?(): void;
+  startUssdQuickEntry?(scriptJson: string): void;
+  drainPendingSms?(): string;
+  hasSmsReceivePermission?(): boolean;
+  openURL?(url: string): void;
 }
 
 declare global {
@@ -25,6 +32,13 @@ export interface SmsBridgeMessage {
 	address: string;
 	dateMs: number;
 	body: string;
+	// Which SIM received the message. Optional: older bridge builds and
+	// desktop sources omit them, and the bridge sends -1/"" when Android
+	// could not resolve the subscription. The body is identical on every
+	// SIM, so these are the only way to tell the wallets apart.
+	subId?: number;
+	slot?: number;
+	simLabel?: string;
 }
 
 declare global {
@@ -85,9 +99,37 @@ export function smsPermissions(): SmsPermissions {
 	};
 }
 
-/** Start a payment session: USSD call plus confirmation listening. */
-export function startUssdSession(code: string): void {
-	window.wails?.startUssdSession?.(code);
+/** Progress events from the automation service (common:ussd-auto). */
+export interface UssdAutoEvent {
+	state: "step" | "awaiting-pin" | "complete" | "aborted";
+	kind?: string;
+	step?: number;
+	steps?: number;
+	reason?: string;
+}
+
+/** True when the automation service is enabled in system Settings. */
+export function ussdAutomationEnabled(): boolean {
+	if (!isAndroidBridge()) return false;
+	return window.wails?.isUssdAutomationEnabled?.() ?? false;
+}
+
+/** Open system Settings at the accessibility page (user opts in there). */
+export function openUssdAutomationSettings(): void {
+	window.wails?.openUssdAutomationSettings?.();
+}
+
+/**
+ * Start a guided payment: the service fills the *334# menus from the script
+ * and stops at the PIN screen. Progress arrives as common:ussd-auto.
+ */
+export function startUssdQuickEntry(script: {
+	version: 1;
+	kind: string;
+	timeoutSec: number;
+	steps: { match: string[]; input: string }[];
+}): void {
+	window.wails?.startUssdQuickEntry?.(JSON.stringify(script));
 }
 
 /** Read and clear messages the catcher queued since the last drain. */
@@ -105,4 +147,52 @@ export function drainPendingSms(): SmsBridgeMessage[] {
 /** Start a permission-gated inbox read; the result arrives as "common:sms". */
 export function requestSmsImport(): void {
 	window.wails?.getSms?.();
+}
+
+/** One SIM as currently seen by the phone (see WailsBridge.getSimCards). */
+export interface SimCard {
+	subId: number;
+	slot: number;
+	simLabel: string;
+	/** Phone number, when the SIM reports one. Shown as subtext, never parsed. */
+	number: string;
+}
+
+/**
+ * True when carrier names can be resolved right now. Read-only: the only
+ * prompt for it is the Settings "Show SIM names" opt-in — import never asks.
+ */
+export function hasPhoneStatePermission(): boolean {
+	if (!isAndroidBridge()) return false;
+	return window.wails?.hasPhoneStatePermission?.() ?? false;
+}
+
+/**
+ * The phone's current SIM list. Never prompts; entries carry empty
+ * labels/numbers when they cannot be resolved.
+ */
+export function requestSimCards(): SimCard[] {
+	try {
+		const raw = window.wails?.getSimCards?.();
+		if (!raw) return [];
+		const parsed: unknown = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return [];
+		return (parsed as Partial<SimCard>[]).map((c) => ({
+			subId: typeof c.subId === "number" ? c.subId : -1,
+			slot: typeof c.slot === "number" ? c.slot : -1,
+			simLabel: typeof c.simLabel === "string" ? c.simLabel : "",
+			number: typeof c.number === "string" ? c.number : "",
+		}));
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Ask for phone-state access (SIM names/numbers) on demand. The outcome
+ * arrives as a "common:simstate" event {granted}. Call only from an
+ * explicit tap — never at import, never at launch.
+ */
+export function requestPhoneStatePermission(): void {
+	window.wails?.requestPhoneStatePermission?.();
 }

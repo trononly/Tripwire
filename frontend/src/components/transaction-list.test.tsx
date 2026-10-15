@@ -96,7 +96,7 @@ describe("TransactionList", () => {
   });
 
   it("renders signed amounts from integer cents without floats", () => {
-    expect(formatAmount(-245000)).toBe("-2,450.00");
-    expect(formatAmount(50000)).toBe("+500.00");
+    expect(formatAmount(-245000)).toBe("-KES 2,450.00");
+    expect(formatAmount(50000)).toBe("+KES 500.00");
   });
 });

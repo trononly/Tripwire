@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -40,6 +41,8 @@ import android.os.Vibrator;
 import android.provider.Settings;
 import android.provider.Telephony;
 import android.speech.tts.TextToSpeech;
+import android.telephony.SubscriptionInfo;
+import android.telephony.SubscriptionManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
@@ -79,6 +82,7 @@ public class WailsBridge {
     private static final int LOCATION_PERMISSION_REQUEST = 1002;
     // 1001 (POST_NOTIFICATIONS) and 1003 are taken inside postNotification.
     private static final int SMS_PERMISSION_REQUEST = 1004;
+    private static final int SIMSTATE_PERMISSION_REQUEST = 1005;
     private static final int USSD_SESSION_PERMISSION_REQUEST = 1006;
     static {
         // Load the native Go library
@@ -87,6 +91,14 @@ public class WailsBridge {
 
     private final Activity activity;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // App-scoped singleton in practice (one MainActivity); the USSD service
+    // pulls it to emit progress events.
+    private static volatile WailsBridge instance;
+
+    /** Null until the bridge is constructed. */
+    public static WailsBridge getInstance() {
+        return instance;
+    }
     private WebView webView;
     private volatile boolean initialized = false;
     private SharedPreferences cachedSecurePrefs;
@@ -109,6 +121,11 @@ public class WailsBridge {
     private boolean pendingSessionRequest = false;
     private String pendingUssdCode = null;    // SMS: a one-shot inbox read is waiting on the permission dialog.
     private boolean pendingSmsRequest = false;
+    // SIM names: Settings asked for phone-state access on demand.
+    private boolean pendingSimStateRequest = false;
+    // Quick entry: same wait, but carrying an armed-step script for the
+    // automation service instead of a bare dial code.
+    private String pendingQuickEntry = null;
 
     // Native methods - implemented in Go
     private static native void nativeInit(WailsBridge bridge);
@@ -132,6 +149,7 @@ public class WailsBridge {
 
     public WailsBridge(Activity activity) {
         this.activity = activity;
+        instance = this;
     }
 
     /**
@@ -945,9 +963,19 @@ public class WailsBridge {
         if (requestCode == USSD_SESSION_PERMISSION_REQUEST) {
             boolean shouldResume = pendingSessionRequest;
             String code = pendingUssdCode;
+            String script = pendingQuickEntry;
             pendingSessionRequest = false;
             pendingUssdCode = null;
+            pendingQuickEntry = null;
             if (!shouldResume) {
+                return;
+            }
+            if (script != null) {
+                if (hasCallPermission()) {
+                    launchQuickEntry(script);
+                } else {
+                    emitUssdError("call permission denied");
+                }
                 return;
             }
             if (code == null) {
@@ -976,6 +1004,16 @@ public class WailsBridge {
                 emitSmsError("sms permission denied");
             }
         }
+        if (requestCode == SIMSTATE_PERMISSION_REQUEST) {
+            boolean shouldResume = pendingSimStateRequest;
+            pendingSimStateRequest = false;
+            if (!shouldResume) {
+                return;
+            }
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            emitEvent("common:simstate", "{\"granted\":" + granted + "}");
+        }
     }
 
     // MARK: - SMS inbox (Phase 3)
@@ -986,6 +1024,111 @@ public class WailsBridge {
         }
         return activity.checkSelfPermission("android.permission.CALL_PHONE")
                 == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Check READ_PHONE_STATE without prompting.
+     * Called from JavaScript: wails.hasPhoneStatePermission()
+     */
+    public boolean hasPhoneStatePermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return activity.checkSelfPermission("android.permission.READ_PHONE_STATE")
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Ask for READ_PHONE_STATE (SIM names/numbers) on demand — the opt-in
+     * behind the Settings "Show SIM names" button, for installs that
+     * denied that half of the import prompt. The outcome arrives as a
+     * "common:simstate" event {granted:true|false}. Never called without
+     * a tap.
+     * Called from JavaScript: wails.requestPhoneStatePermission()
+     */
+    public void requestPhoneStatePermission() {
+        mainHandler.post(() -> {
+            try {
+                if (hasPhoneStatePermission()) {
+                    emitEvent("common:simstate", "{\"granted\":true}");
+                    return;
+                }
+                pendingSimStateRequest = true;
+                activity.requestPermissions(
+                        new String[]{"android.permission.READ_PHONE_STATE"},
+                        SIMSTATE_PERMISSION_REQUEST);
+            } catch (Exception e) {
+                Log.e(TAG, "requestPhoneStatePermission failed", e);
+                emitEvent("common:simstate", "{\"granted\":false}");
+            }
+        });
+    }
+
+    /**
+     * The phone's current SIM list as a JSON array of
+     * {subId, slot, simLabel, number}. Name preference: the user's own SIM
+     * name, then the mobile network (carrier) name. Number is "" when it
+     * cannot be read (often blank on the SIM, or extra number permission
+     * missing) — callers show it as subtext only when set. Empty array
+     * without phone-state access. Never prompts.
+     * Called from JavaScript: wails.getSimCards()
+     */
+    public String getSimCards() {
+        try {
+            JSONArray out = new JSONArray();
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) {
+                return out.toString();
+            }
+            SubscriptionManager sm = (SubscriptionManager) activity.getSystemService(
+                    Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+            if (sm == null) {
+                return out.toString();
+            }
+            java.util.List<SubscriptionInfo> infos;
+            try {
+                infos = sm.getActiveSubscriptionInfoList();
+            } catch (SecurityException e) {
+                return out.toString(); // READ_PHONE_STATE missing
+            }
+            if (infos == null) {
+                return out.toString();
+            }
+            for (SubscriptionInfo info : infos) {
+                if (info == null) {
+                    continue;
+                }
+                CharSequence name = info.getDisplayName();
+                CharSequence carrier = null;
+                try {
+                    carrier = info.getCarrierName();
+                } catch (Exception ignored) {
+                    // Some devices blank the carrier instead of returning it.
+                }
+                String label = name != null ? name.toString().trim() : "";
+                if (label.isEmpty() && carrier != null) {
+                    label = carrier.toString().trim();
+                }
+                String number = "";
+                try {
+                    String raw = info.getNumber();
+                    if (raw != null) {
+                        number = raw.trim();
+                    }
+                } catch (SecurityException se) {
+                    // Number needs more than phone-state on some releases.
+                } catch (Exception ignored) {
+                }
+                out.put(new JSONObject()
+                        .put("subId", info.getSubscriptionId())
+                        .put("slot", info.getSimSlotIndex())
+                        .put("simLabel", label)
+                        .put("number", number));
+            }
+            return out.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "getSimCards failed", e);
+            return "[]";
+        }
     }
 
     private void placeUssdCall(String ussd) {
@@ -1052,6 +1195,102 @@ public class WailsBridge {
     }
 
     /**
+     * True when the user enabled the M-Pesa automation service in system
+     * Settings. The service is off by default; this only reads the secure
+     * setting, never prompts.
+     */
+    public boolean isUssdAutomationEnabled() {
+        try {
+            String ours = new ComponentName(activity, MpesaUssdService.class)
+                    .flattenToString();
+            String enabled = Settings.Secure.getString(
+                    activity.getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (enabled == null || ours == null) return false;
+            for (String name : enabled.split(":")) {
+                if (ours.equalsIgnoreCase(name.trim())) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "isUssdAutomationEnabled failed", e);
+            return false;
+        }
+    }
+
+    /** Open system Settings at the accessibility page (user opts in there). */
+    public void openUssdAutomationSettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "openUssdAutomationSettings failed", e);
+        }
+    }
+
+    /**
+     * Start a guided payment: arm the automation service with the frontend's
+     * step script, then dial plain *334#. Safaricom drops stacked suffixes,
+     * so the service walks the live menus instead (stops at the PIN screen;
+     * the user finishes with PIN + confirm in the phone dialog). Progress
+     * arrives as "common:ussd-auto" events; the call itself reuses the
+     * "common:ussd" result path.
+     */
+    public void startUssdQuickEntry(String scriptJson) {
+        final String script = scriptJson;
+        mainHandler.post(() -> {
+            try {
+                if (!isUssdAutomationEnabled()) {
+                    emitUssdError("automation disabled");
+                    return;
+                }
+                if (UssdSession.parse(script) == null) {
+                    emitUssdError("invalid script");
+                    return;
+                }
+                java.util.List<String> missing = new java.util.ArrayList<>();
+                if (!hasCallPermission()) {
+                    missing.add("android.permission.CALL_PHONE");
+                }
+                if (!hasSmsReceivePermission()) {
+                    missing.add("android.permission.RECEIVE_SMS");
+                }
+                if (!missing.isEmpty()) {
+                    pendingSessionRequest = true;
+                    pendingUssdCode = null;
+                    pendingQuickEntry = script;
+                    activity.requestPermissions(
+                            missing.toArray(new String[0]), USSD_SESSION_PERMISSION_REQUEST);
+                    return;
+                }
+                launchQuickEntry(script);
+            } catch (Exception e) {
+                Log.e(TAG, "startUssdQuickEntry failed", e);
+                emitUssdError("quick entry failed");
+            }
+        });
+    }
+
+    /** Arm the service and dial. Assumes permissions + valid script. */
+    private void launchQuickEntry(String scriptJson) {
+        UssdSession session = UssdSession.parse(scriptJson);
+        if (session == null) {
+            emitUssdError("invalid script");
+            return;
+        }
+        try {
+            MpesaUssdService.arm(session);
+            emitEvent("common:ussd",
+                    new JSONObject().put("ok", true).put("listening", true).toString());
+            placeUssdCall("*334#");
+        } catch (Exception e) {
+            Log.e(TAG, "launchQuickEntry failed", e);
+            MpesaUssdService.disarm();
+            emitUssdError("quick entry failed");
+        }
+    }
+
+    /**
      * Read and clear the catcher queue. Returns a JSON array of
      * {id, address, dateMs, body}. Called from the WebView thread.
      */
@@ -1082,9 +1321,63 @@ public class WailsBridge {
     }
 
     /**
+     * Resolve a subscription id to its SIM slot and carrier display name,
+     * as {"subId":int,"slot":int,"label":string}. Slot is -1 and label ""
+     * when it cannot be resolved: pre-API-22 (no SubscriptionManager),
+     * READ_PHONE_STATE not granted, or an unknown sub id.
+     *
+     * An M-Pesa message body is identical on every SIM, so this telephony
+     * metadata is the only way to tell one wallet from another; it is read
+     * from the telephony layer, never parsed out of the SMS text. Static so
+     * the broadcast receiver can use it too.
+     */
+    static JSONObject describeSim(Context ctx, int subId) {
+        JSONObject out = new JSONObject();
+        try {
+            out.put("subId", subId);
+            out.put("slot", -1);
+            out.put("label", "");
+            if (ctx == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) {
+                return out; // SubscriptionManager landed in API 22
+            }
+            // Runtime permissions start at API 23; below that READ_PHONE_STATE
+            // is an install-time grant, so the check (which itself needs 23)
+            // is skipped.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && ctx.checkSelfPermission("android.permission.READ_PHONE_STATE")
+                    != PackageManager.PERMISSION_GRANTED) {
+                return out;
+            }
+            SubscriptionManager sm = (SubscriptionManager) ctx.getSystemService(
+                    Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+            if (sm == null) {
+                return out;
+            }
+            for (SubscriptionInfo info : sm.getActiveSubscriptionInfoList()) {
+                if (info == null || info.getSubscriptionId() != subId) {
+                    continue;
+                }
+                out.put("slot", info.getSimSlotIndex());
+                CharSequence name = info.getDisplayName();
+                out.put("label", name != null ? name.toString() : "");
+                break;
+            }
+        } catch (Exception e) {
+            // SecurityException when the telephony service is locked down, or
+            // any OEM oddity: fall back to the unresolved (subId-only) shape.
+            Log.w(TAG, "describeSim failed", e);
+        }
+        return out;
+    }
+
+    /**
      * Read the M-Pesa SMS inbox and emit the raw messages as a "common:sms"
-     * event. Requests READ_SMS at runtime when missing. The result is raw
-     * message data only — parsing happens in Go, never here.
+     * event. Requests READ_SMS at runtime when missing — and nothing else,
+     * so import never shows a phone-calls prompt. Each row still carries
+     * its subscription id (and the broadcasts carry slot), which need no
+     * permission, so per-SIM separation and per-message SIM badges keep
+     * working; carrier names resolve later via the Settings opt-in. The
+     * result is raw message data only — parsing happens in Go, never here.
      */
     public void getSms() {
         mainHandler.post(() -> {
@@ -1095,7 +1388,9 @@ public class WailsBridge {
                 }
                 pendingSmsRequest = true;
                 activity.requestPermissions(
-                        new String[]{"android.permission.READ_SMS"}, SMS_PERMISSION_REQUEST);
+                        new String[]{
+                                "android.permission.READ_SMS"},
+                        SMS_PERMISSION_REQUEST);
             } catch (Exception e) {
                 Log.e(TAG, "getSms failed", e);
                 emitSmsError("sms request failed");
@@ -1112,10 +1407,19 @@ public class WailsBridge {
 
     private void querySmsAndEmit() {
         try {
-            String[] projection = {
-                    Telephony.Sms._ID, Telephony.Sms.ADDRESS,
-                    Telephony.Sms.DATE, Telephony.Sms.BODY,
-            };
+            // SUBSCRIPTION_ID exists from API 22; including it on older
+            // devices would make the provider reject the projection.
+            boolean hasSubIdColumn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1;
+            String[] projection = hasSubIdColumn
+                    ? new String[]{
+                            Telephony.Sms._ID, Telephony.Sms.ADDRESS,
+                            Telephony.Sms.DATE, Telephony.Sms.BODY,
+                            Telephony.Sms.SUBSCRIPTION_ID,
+                    }
+                    : new String[]{
+                            Telephony.Sms._ID, Telephony.Sms.ADDRESS,
+                            Telephony.Sms.DATE, Telephony.Sms.BODY,
+                    };
             // The address filter keeps unrelated SMS out of the result set:
             // the query itself never returns messages from other senders.
             // SQLite LIKE is ASCII-case-insensitive, so mpesa/MPESA match.
@@ -1127,9 +1431,15 @@ public class WailsBridge {
 
                 JSONArray messages = new JSONArray();
                 // The provider can surface the same physical message twice;
-                // identical (address, date, body) triples are collapsed so a
-                // re-read never double-counts one message.
+                // identical (subscription, address, date, body) tuples are
+                // collapsed so a re-read never double-counts one message.
                 java.util.Set<String> seen = new java.util.HashSet<>();
+                // Resolving a subscription is a binder call; one sub id per
+                // SIM, so cache the answer for the whole inbox.
+                java.util.Map<Integer, JSONObject> simCache = new java.util.HashMap<>();
+                int subCol = (hasSubIdColumn && c != null)
+                        ? c.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
+                        : -1;
                 int skipped = 0;
                 while (c != null && c.moveToNext()) {
                     String body = c.getString(3);
@@ -1139,16 +1449,25 @@ public class WailsBridge {
                     }
                     String address = c.getString(1);
                     long date = c.getLong(2);
-                    String key = address + "|" + date + "|" + body;
+                    int subId = subCol >= 0 && !c.isNull(subCol) ? c.getInt(subCol) : -1;
+                    String key = subId + "|" + address + "|" + date + "|" + body;
                     if (!seen.add(key)) {
                         skipped++;
                         continue;
+                    }
+                    JSONObject sim = simCache.get(subId);
+                    if (sim == null) {
+                        sim = describeSim(activity, subId);
+                        simCache.put(subId, sim);
                     }
                     JSONObject m = new JSONObject();
                     m.put("id", String.valueOf(c.getLong(0)));
                     m.put("address", address != null ? address : "");
                     m.put("dateMs", date);
                     m.put("body", body);
+                    m.put("subId", subId);
+                    m.put("slot", sim.optInt("slot", -1));
+                    m.put("simLabel", sim.optString("label", ""));
                     messages.put(m);
                 }
                 JSONObject result = new JSONObject()

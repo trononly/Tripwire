@@ -42,6 +42,7 @@ var txRules = []struct {
 	Prefixes []string
 	Type     TransactionType
 }{
+	{[]string{"fuliza access fee"}, TypeFees},
 	{[]string{"fuliza", "overdraft"}, TypeFuliza},
 	{[]string{"pay bill charge"}, TypeFees},
 	{[]string{"customer transfer of"}, TypeFees}, // "Customer Transfer of Funds Charge"

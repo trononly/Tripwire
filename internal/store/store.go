@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,10 +44,17 @@ const (
 // confirmed SMS import — and its transactions. Both kinds share the same
 // normalized transaction model and the same analysis pipeline; Source only
 // records where the rows came from.
+//
+// SimID/SimLabel identify the SIM an SMS record belongs to (empty for
+// statements). SMS imports are stored one record per SIM so each wallet
+// keeps its own balance series; the two fields are what lets the UI switch
+// between them.
 type StatementRecord struct {
 	ID         string               `json:"id"`
 	Name       string               `json:"name"`
 	Source     string               `json:"source,omitempty"`
+	SimID      string               `json:"simId,omitempty"`
+	SimLabel   string               `json:"simLabel,omitempty"`
 	DateRange  DateRange            `json:"dateRange"`
 	TxCount    int                  `json:"txCount"`
 	ImportedAt time.Time            `json:"importedAt"`
@@ -58,6 +66,8 @@ type StatementMeta struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	Source     string    `json:"source,omitempty"`
+	SimID      string    `json:"simId,omitempty"`
+	SimLabel   string    `json:"simLabel,omitempty"`
 	DateRange  DateRange `json:"dateRange"`
 	TxCount    int       `json:"txCount"`
 	ImportedAt time.Time `json:"importedAt"`
@@ -69,6 +79,8 @@ CREATE TABLE IF NOT EXISTS statements (
 	id          TEXT PRIMARY KEY,
 	name        TEXT NOT NULL,
 	source      TEXT NOT NULL DEFAULT 'statement',
+	sim_id      TEXT NOT NULL DEFAULT '',
+	sim_label   TEXT NOT NULL DEFAULT '',
 	start_date  TEXT NOT NULL DEFAULT '',
 	end_date    TEXT NOT NULL DEFAULT '',
 	tx_count    INTEGER NOT NULL DEFAULT 0,
@@ -132,6 +144,17 @@ func New(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("could not initialize statement store: %w", err)
+	}
+	// Databases written before SMS records carried a SIM lack these columns;
+	// CREATE TABLE IF NOT EXISTS never adds them, so backfill idempotently.
+	for _, stmt := range []string{
+		`ALTER TABLE statements ADD COLUMN sim_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE statements ADD COLUMN sim_label TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			db.Close()
+			return nil, fmt.Errorf("could not migrate statement store: %w", err)
+		}
 	}
 
 	s := &Store{db: db}
@@ -200,7 +223,7 @@ func (s *Store) List() ([]StatementMeta, error) {
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, name, source, start_date, end_date, tx_count, imported_at
+		SELECT id, name, source, sim_id, sim_label, start_date, end_date, tx_count, imported_at
 		FROM statements
 		ORDER BY imported_at DESC, rowid DESC`)
 	if err != nil {
@@ -214,8 +237,8 @@ func (s *Store) List() ([]StatementMeta, error) {
 			m        StatementMeta
 			imported string
 		)
-		if err := rows.Scan(&m.ID, &m.Name, &m.Source, &m.DateRange.Start,
-			&m.DateRange.End, &m.TxCount, &imported); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.Source, &m.SimID, &m.SimLabel,
+			&m.DateRange.Start, &m.DateRange.End, &m.TxCount, &imported); err != nil {
 			return nil, fmt.Errorf("could not read statement: %w", err)
 		}
 		m.Source = normalizeSource(m.Source)
@@ -242,10 +265,10 @@ func (s *Store) get(id string) (StatementRecord, error) {
 		imported string
 	)
 	err := s.db.QueryRow(`
-		SELECT id, name, source, start_date, end_date, tx_count, imported_at
+		SELECT id, name, source, sim_id, sim_label, start_date, end_date, tx_count, imported_at
 		FROM statements WHERE id = ?`, id).
-		Scan(&rec.ID, &rec.Name, &rec.Source, &rec.DateRange.Start,
-			&rec.DateRange.End, &rec.TxCount, &imported)
+		Scan(&rec.ID, &rec.Name, &rec.Source, &rec.SimID, &rec.SimLabel,
+			&rec.DateRange.Start, &rec.DateRange.End, &rec.TxCount, &imported)
 	if errors.Is(err, sql.ErrNoRows) {
 		return StatementRecord{}, fmt.Errorf("no statement with id %q", id)
 	}
@@ -380,22 +403,60 @@ func (s *Store) Rename(id, name string) error {
 	return nil
 }
 
+// SetSimLabel sets a record's SIM display name, writing immediately. Used
+// to upgrade a wallet's fallback name ("SIM 1") once the bridge can
+// resolve the carrier name; transactions are untouched.
+func (s *Store) SetSimLabel(id, label string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("UPDATE statements SET sim_label = ? WHERE id = ?", label, id)
+	if err != nil {
+		return fmt.Errorf("could not set SIM label: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no statement with id %q", id)
+	}
+	return nil
+}
+
+// SetSimID moves a record to another SIM key, writing immediately. Used
+// when a wallet imported by subscription id later resolves to a slot:
+// without the move, post-grant imports would open a second record for the
+// same physical SIM. Only called when no record already claims the key.
+func (s *Store) SetSimID(id, simID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("UPDATE statements SET sim_id = ? WHERE id = ?", simID, id)
+	if err != nil {
+		return fmt.Errorf("could not set SIM id: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no statement with id %q", id)
+	}
+	return nil
+}
+
 // upsertStatement writes a record's metadata row without touching its
 // transactions.
 func upsertStatement(tx *sql.Tx, rec StatementRecord) error {
 	_, err := tx.Exec(`
 		INSERT INTO statements
-			(id, name, source, start_date, end_date, tx_count, imported_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+			(id, name, source, sim_id, sim_label, start_date, end_date, tx_count, imported_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name        = excluded.name,
 			source      = excluded.source,
+			sim_id      = excluded.sim_id,
+			sim_label   = excluded.sim_label,
 			start_date  = excluded.start_date,
 			end_date    = excluded.end_date,
 			tx_count    = excluded.tx_count,
 			imported_at = excluded.imported_at`,
-		rec.ID, rec.Name, normalizeSource(rec.Source), rec.DateRange.Start,
-		rec.DateRange.End, rec.TxCount, rec.ImportedAt.UTC().Format(time.RFC3339Nano),
+		rec.ID, rec.Name, normalizeSource(rec.Source), rec.SimID, rec.SimLabel,
+		rec.DateRange.Start, rec.DateRange.End, rec.TxCount,
+		rec.ImportedAt.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return fmt.Errorf("could not write statement: %w", err)

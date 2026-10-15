@@ -50,6 +50,11 @@ Source evidence: agy headless runs vs `com.wails.app` on device A015 (Android 16
 - [ ] **10. App title still `wails-base-fresh`** — `frontend/index.html:9`
   - Set real title + `<meta name="theme-color">` matching dark bg.
 
+- [ ] **11. Fee radar by-type breakdown (post-v1, coming soon)** —
+  `frontend/src/pages/Insights.tsx:93-135` `FeeRadarTile`
+  - Break fees down by type (ATM, Pay Bill Charge, Fuliza interest,
+    transfer fees) + totals over time. Not in v1 (no Fuliza sample data).
+
 ## Verify on device (after build)
 
 - [ ] Reinstall APK → Dashboard scroll (header pinned, nothing under status bar) →

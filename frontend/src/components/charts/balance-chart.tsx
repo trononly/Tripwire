@@ -1,21 +1,20 @@
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { formatDay, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { safeFormatTick, safeFormatFull } from "@/lib/safe-date";
+// safe-date import if needed
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
@@ -23,51 +22,58 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
-  const points = useMemo(
-    () =>
-      data.map((p) => ({
-        time: p.time,
+  const points = useMemo(() => {
+    // Group intraday transactions by calendar day, keeping end-of-day
+    // closing balance for each date.
+    const byDay = new Map<string, analysis.BalancePoint>();
+    for (const p of data) {
+      const day = (p.time ?? "").slice(0, 10);
+      if (!day) continue;
+      byDay.set(day, p);
+    }
+    return Array.from(byDay.values())
+      .map((p) => ({
+        date: p.time,
         balance: p.balance / 100,
-      })),
-    [data],
-  );
+      }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, [data]);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Balance Trajectory</CardTitle>
-        <CardDescription>
-          Your account balance across the statement period
-        </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-75 w-full">
-          <AreaChart data={points} margin={{ left: 8, right: 8, top: 8 }}>
+        <ChartContainer config={chartConfig} className="w-full h-[220px]">
+          <AreaChart
+            data={points}
+            margin={{ left: 8, right: 8, top: 8 }}
+          >
             <defs>
               <linearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="0%"
-                  stopColor="var(--chart-2)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.45}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--chart-2)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.02}
                 />
               </linearGradient>
             </defs>
-            <CartesianGrid
-              vertical={false}
-              strokeDasharray="3 3"
-              stroke="var(--border)"
-            />
             <XAxis
-              dataKey="time"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={40}
-              tickFormatter={formatDay}
+              dataKey="date"
+              hide={false}
+              tickFormatter={(val) => safeFormatTick(String(val ?? ""))}
+              stroke="var(--muted-foreground)"
+              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+              tickLine={{ stroke: "var(--muted-foreground)" }}
+              fontSize={11}
+              interval="preserveStartEnd"
+              minTickGap={35}
             />
             <YAxis
               tickLine={false}
@@ -80,18 +86,17 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
               cursor={{ stroke: "var(--border)" }}
               content={
                 <ChartTooltipContent
-                  labelFormatter={(_, payload) =>
-                    formatDay(payload?.[0]?.payload?.time ?? "")
+                  labelFormatter={(label) =>
+                    safeFormatFull(String(label ?? ""))
                   }
                   formatter={(value) => formatMoney(Number(value) * 100)}
                 />
               }
             />
-            <ChartLegend content={<ChartLegendContent />} />
             <Area
               dataKey="balance"
               type="monotone"
-              stroke="var(--chart-2)"
+              stroke="var(--primary)"
               strokeWidth={2}
               fill="url(#balanceFill)"
               isAnimationActive={false}

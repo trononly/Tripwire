@@ -15,6 +15,10 @@ export function maxDayOf(dates: string[]): string {
 
 /** The day `days-1` days before `latest` ("YYYY-MM-DD"), UTC arithmetic. */
 export function cutoffDay(latest: string, days: number): string {
-  const ms = Date.parse(`${latest}T00:00:00Z`) - (days - 1) * 86400000;
-  return new Date(ms).toISOString().slice(0, 10);
+  const parsed = Date.parse(`${latest}T00:00:00Z`);
+  if (isNaN(parsed)) return "";
+  const ms = parsed - (days - 1) * 86400000;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
 }

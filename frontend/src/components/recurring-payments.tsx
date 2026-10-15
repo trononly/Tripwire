@@ -101,7 +101,7 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
           {formatMoney(payment.amount)}
         </p>
 
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        <p className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
           {variable
             ? `${formatMoneyShort(payment.amountMin)}–${formatMoneyShort(payment.amountMax)}`
             : "Fixed amount"}

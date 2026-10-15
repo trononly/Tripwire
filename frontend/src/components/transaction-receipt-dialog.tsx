@@ -46,16 +46,16 @@ export function TransactionReceiptDialog({
         {tx && (
           <div className="rounded-lg border border-dashed p-4 text-center">
             <p
-              className={`font-mono text-2xl font-bold tabular-nums ${
+              className={`text-2xl font-bold tabular-nums ${
                 tx.amount >= 0
                   ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
+                  : "text-rose-600 dark:text-rose-400"
               }`}
             >
               {formatMoney(tx.amount)}
             </p>
             <p className="mt-1 text-sm font-medium">{tx.description}</p>
-            <div className="mt-3 space-y-1 border-t border-dashed pt-3 text-left font-mono text-xs tabular-nums">
+            <div className="mt-3 space-y-1 border-t border-dashed pt-3 text-left text-xs tabular-nums">
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Receipt No.</span>
                 <span>{tx.id}</span>

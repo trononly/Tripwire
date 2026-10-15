@@ -1,4 +1,4 @@
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from "recharts";
 
 import {
   Card,
@@ -18,7 +18,7 @@ import { isAndroidBridge } from "@/lib/sms-bridge";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
-  count: { label: "Transactions", color: "var(--chart-3)" },
+  volume: { label: "Volume", color: "var(--brand)" },
 } satisfies ChartConfig;
 
 export function CounterpartyChart({
@@ -28,20 +28,30 @@ export function CounterpartyChart({
   counterparties: analysis.Counterparty[];
   onSelectCounterparty?: (name: string) => void;
 }) {
-  // Backend is sorted by count descending; recharts renders vertical-layout
-  // bars bottom-up, so feed the data as-is to get the biggest bar on top.
-  const data = counterparties.map((c) => ({
-    name: c.name,
-    count: c.count,
-    amount: c.amount,
-    in: c.in,
-    out: c.out,
-  }));
+  // Ranked by total money moved (in + out), top 5 only: a slim leaderboard
+  // of where the money actually goes. Recharts renders vertical-layout
+  // bars bottom-up, so the pre-sorted array puts the biggest bar on top.
+  const data = counterparties
+    .map((c) => ({
+      name: c.name,
+      count: c.count,
+      amount: c.amount,
+      in: c.in,
+      out: c.out,
+      volume: c.in + c.out,
+    }))
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 5);
+  // Traffic-scaled intensity: the heaviest flow glows full brand red,
+  // lighter ones fade toward dull.
+  const maxVolume = Math.max(1, ...data.map((d) => d.volume));
+  const intensity = (volume: number) =>
+    0.3 + 0.7 * (volume / maxVolume);
 
   // Reserve just enough axis room for the longest name instead of
   // truncating long labels with a fixed width.
   const maxNameLen = Math.max(10, ...data.map((d) => d.name.length));
-  const axisWidth = Math.min(230, Math.max(100, maxNameLen * 7 + 20));
+  const axisWidth = Math.min(200, Math.max(80, maxNameLen * 6 + 8));
 
   return (
     <Card>
@@ -56,7 +66,7 @@ export function CounterpartyChart({
           <BarChart
             data={data}
             layout="vertical"
-            margin={{ left: 4, right: 24, top: 8 }}
+            margin={{ left: 0, right: 24, top: 8 }}
           >
             <CartesianGrid
               horizontal={false}
@@ -65,10 +75,12 @@ export function CounterpartyChart({
             />
             <XAxis
               type="number"
+              hide
               tickLine={false}
               axisLine={false}
               tickMargin={8}
               allowDecimals={false}
+              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
             />
             <YAxis
               type="category"
@@ -76,6 +88,8 @@ export function CounterpartyChart({
               tickLine={false}
               axisLine={false}
               width={axisWidth}
+              tickMargin={4}
+              tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
             />
             {/* No hover tooltip on touch devices: it spawns at the tap
                 point and slides off-screen, and the tap itself already
@@ -88,7 +102,7 @@ export function CounterpartyChart({
                     hideLabel
                     formatter={(_, __, item) => {
                     const p = item?.payload as
-                      { in: number; out: number } | undefined;
+                      { in: number; out: number; count: number } | undefined;
                     if (!p) return null;
                     // Show the direction breakdown; a flat net of KSh 0.00
                     // (e.g. sent + received the same amount) is meaningless.
@@ -100,12 +114,12 @@ export function CounterpartyChart({
                         <span className="font-medium">
                           {(item?.payload as { name: string })?.name}
                         </span>
-                        <span className="font-mono tabular-nums text-muted-foreground">
+                        <span className="tabular-nums text-muted-foreground">
                           {parts.length > 0
                             ? parts.join(" · ")
                             : "No money flow"}
                           {" · "}
-                          {item?.value} txs
+                          {p.count} tx{p.count === 1 ? "" : "s"}
                         </span>
                       </span>
                     );
@@ -115,8 +129,8 @@ export function CounterpartyChart({
             />
             )}
             <Bar
-              dataKey="count"
-              fill="var(--color-count)"
+              dataKey="volume"
+              fill="var(--color-volume)"
               radius={[0, 4, 4, 0]}
               isAnimationActive={false}
               barSize={16}
@@ -130,7 +144,15 @@ export function CounterpartyChart({
                 if (entry && onSelectCounterparty)
                   onSelectCounterparty(entry.name);
               }}
-            />
+            >
+              {data.map((d) => (
+                <Cell
+                  key={d.name}
+                  fill="var(--color-volume)"
+                  fillOpacity={intensity(d.volume)}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ChartContainer>
       </CardContent>

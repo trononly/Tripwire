@@ -1,6 +1,6 @@
-# Hesabu
+# Tripwire
 
-Hesabu is a local-first personal M-Pesa money analyzer for desktop and Android.
+Tripwire is a local-first personal M-Pesa money analyzer for desktop and Android.
 It imports your M-Pesa history — PDF statements on both platforms, and the
 M-Pesa SMS in your Android phone's inbox — parses it all into one normalized
 transaction model, and helps you understand where your money goes: cashflow,
@@ -16,6 +16,15 @@ disk. The only thing that ever leaves the device is a report you explicitly
 export (image, PDF, or HTML). The reasoning is recorded in
 `docs/adr/0002-sqlite-transaction-store.md` (which supersedes
 `docs/adr/0001-local-first-json-transaction-store.md`).
+
+## Limitations
+
+- Dual-SIM: SMS import reads the whole M-Pesa inbox and stores one wallet per
+  SIM (physical slot + carrier name, falling back to the subscription id when
+  `READ_PHONE_STATE` is unavailable). A SIM switcher in the SMS-mode header
+  picks which wallet the analysis uses. Records imported before SIM tracking
+  appear as a single untagged wallet.
+- No fee radar by-type breakdown in v1: no Fuliza sample so no Fuliza breakdown.
 
 ## Architecture
 
@@ -44,7 +53,8 @@ React/TypeScript frontend.
 - `frontend/bindings` — generated Wails bindings; do not edit by hand.
 
 Both import sources feed one analysis pipeline; the `Source` field on a stored
-record is the only thing that remembers where a row came from. The SMS parser
+record remembers where a row came from (`statement` or `sms`), and an SMS
+record's `SimID`/`SimLabel` remember which SIM's wallet it is. The SMS parser
 is deliberately strict — only message shapes backed by real samples are
 accepted, and anything else is reported rather than guessed at. `CONTEXT.md` is
 the source of truth for the domain vocabulary.
@@ -111,11 +121,15 @@ or copy the APK onto the phone and open it.
 1. Open the app → in **SMS mode** the header shows **Import SMS**, or go
    to **Settings → SMS import details** (only visible on Android, where
    the bridge is present).
-2. Grant READ_SMS when prompted ("Allow SMS access and import").
+2. Grant READ_SMS when prompted ("Allow SMS access and import"). On a
+   dual-SIM phone Android also asks for READ_PHONE_STATE, which is what
+   identifies the SIM each message arrived on; decline it and the import
+   still works, just as one undifferentiated wallet.
 3. The dialog parses every M-Pesa message in the inbox and shows the audit:
    parsed/skipped counts, per-kind filters (unsupported / malformed /
-   invalid / non-transactional), free-text filter, and a detail view per
-   message (raw SMS next to everything the parser produced).
+   invalid / non-transactional), free-text filter (sender, SIM, receipt ID,
+   body), and a detail view per message (raw SMS plus its source SIM next to
+   everything the parser produced).
 4. **Copy audit report** puts a plain-text report of all skipped messages
    (with raw bodies and reasons) plus capped parsed messages on the
    clipboard — paste it back to the agent to extend parser coverage.
@@ -124,12 +138,16 @@ or copy the APK onto the phone and open it.
    written into the same store as PDF statements and the app switches
    into SMS mode, so the Dashboard shows the SMS dataset right away.
    Switch between Statements and SMS mode in Settings.
+6. On a dual-SIM phone a **SIM switcher** appears in the SMS-mode header.
+   Each SIM is its own wallet record, so switching re-runs the Dashboard,
+   Transactions and Insights over that SIM's transactions alone — balances
+   and cashflow are never mixed across wallets.
 
 ## Useful commands
 
     go test ./internal/sms/          # parser fixtures + classification tests
     wails3 task android:package      # rebuild after any Go or frontend change
-    adb logcat --pid=$(adb shell pidof com.wails.app)   # runtime logs
+    adb logcat --pid=$(adb shell pidof tron.tripwire.app)   # runtime logs
 
 # Notes from creator
 

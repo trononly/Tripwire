@@ -1,4 +1,4 @@
-# Continuous integration for Hesabu (Wails v3 + React/TypeScript).
+# Continuous integration for Tripwire (Wails v3 + React/TypeScript).
 #
 # Runs on:
 #   * every pull_request

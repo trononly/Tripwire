@@ -3,7 +3,7 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "hesabu"
+name: "tripwire"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.0.1"
@@ -11,7 +11,7 @@ section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Understand your mobile money"
-vendor: "Hesabu"
+vendor: "Tron"
 # Note: `wails3 task common:update:build-assets` regenerates this file from
 # build/config.yml and resets homepage to the Wails default; re-apply the
 # repo URL afterwards if you ever re-run it.
@@ -20,12 +20,12 @@ license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/hesabu"
-    dst: "/usr/local/bin/hesabu"
+  - src: "./bin/tripwire"
+    dst: "/usr/local/bin/tripwire"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/hesabu.png"
-  - src: "./build/linux/hesabu.desktop"
-    dst: "/usr/share/applications/hesabu.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/tripwire.png"
+  - src: "./build/linux/tripwire.desktop"
+    dst: "/usr/share/applications/tripwire.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:
