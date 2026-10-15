@@ -8,7 +8,7 @@
     !define INFO_PROJECTNAME "tripwire"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "Tron"
+    !define INFO_COMPANYNAME "Tripwire"
 !endif
 !ifndef INFO_PRODUCTNAME
     !define INFO_PRODUCTNAME "Tripwire"
@@ -17,7 +17,7 @@
     !define INFO_PRODUCTVERSION "0.0.1"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "(c) 2026, Tron"
+    !define INFO_COPYRIGHT "(c) 2026, Tripwire"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

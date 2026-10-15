@@ -1977,4 +1977,169 @@ public class WailsBridge {
     private void dialogCallback(int callbackID, int buttonIndex) {
         if (initialized) nativeDialogCallback(callbackID, buttonIndex);
     }
+
+    // MARK: - In-app updates (sideload releases from GitHub)
+
+    /**
+     * Installed app version as JSON
+     * {"versionName","versionCode","packageName"}. The frontend compares
+     * versionName against the latest GitHub Release tag.
+     */
+    public String getAppVersionJson() {
+        try {
+            PackageInfo pi = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0);
+            long code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? pi.getLongVersionCode()
+                    : pi.versionCode;
+            return new JSONObject()
+                    .put("versionName", pi.versionName != null ? pi.versionName : "")
+                    .put("versionCode", code)
+                    .put("packageName", activity.getPackageName())
+                    .toString();
+        } catch (Exception e) {
+            return "{\"versionName\":\"\",\"versionCode\":0,\"packageName\":\"\"}";
+        }
+    }
+
+    /**
+     * Whether the system will currently allow this app to trigger an APK
+     * install (the "Install unknown apps" toggle). Always true below API 26.
+     */
+    public boolean canInstallPackages() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                return activity.getPackageManager().canRequestPackageInstalls();
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Open the system's "Install unknown apps" page for this app so the user
+     * can grant the install permission, then return to the app and retry.
+     */
+    public void openInstallPermissionSettings() {
+        mainHandler.post(() -> {
+            try {
+                Intent intent;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + activity.getPackageName()));
+                } else {
+                    intent = new Intent(Settings.ACTION_SECURITY_SETTINGS);
+                }
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "openInstallPermissionSettings failed", e);
+            }
+        });
+    }
+
+    /**
+     * Download an APK from url into the app cache and hand it to the system
+     * package installer. Progress and completion arrive as "common:update"
+     * events: {state:"downloading",received,total}, {state:"ready"} and
+     * {state:"error",error}. Never blocks the caller.
+     */
+    public void downloadAndInstallApk(final String url, final String fileName) {
+        Thread worker = new Thread(() -> {
+            java.io.File out = null;
+            try {
+                java.net.URL u = new java.net.URL(url);
+                java.net.HttpURLConnection conn =
+                        (java.net.HttpURLConnection) u.openConnection();
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "Tripwire-Updater");
+                conn.setRequestProperty("Accept", "application/octet-stream");
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(20000);
+                conn.connect();
+                int status = conn.getResponseCode();
+                if (status < 200 || status >= 300) {
+                    emitUpdateError("download failed (HTTP " + status + ")");
+                    return;
+                }
+                long total = conn.getContentLengthLong();
+                java.io.File dir = new java.io.File(activity.getCacheDir(), "updates");
+                if (!dir.exists() && !dir.mkdirs()) {
+                    emitUpdateError("cannot create download directory");
+                    return;
+                }
+                String name = (fileName != null && !fileName.isEmpty())
+                        ? fileName : "Tripwire-update.apk";
+                // Strip any path the caller may have included.
+                out = new java.io.File(dir, new java.io.File(name).getName());
+                try (java.io.InputStream in = conn.getInputStream();
+                     java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    long received = 0;
+                    long lastEmit = 0;
+                    while ((n = in.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                        received += n;
+                        long now = System.currentTimeMillis();
+                        if (now - lastEmit > 250) {
+                            lastEmit = now;
+                            emitUpdateProgress(received, total);
+                        }
+                    }
+                } finally {
+                    conn.disconnect();
+                }
+                emitUpdateProgress(out.length(), total > 0 ? total : out.length());
+                launchApkInstall(out);
+            } catch (Exception e) {
+                Log.e(TAG, "downloadAndInstallApk failed", e);
+                if (out != null && out.exists()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    out.delete();
+                }
+                emitUpdateError("download failed");
+            }
+        }, "tripwire-update-download");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void emitUpdateProgress(long received, long total) {
+        try {
+            emitEvent("common:update", new JSONObject()
+                    .put("state", "downloading")
+                    .put("received", received)
+                    .put("total", total).toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void emitUpdateError(String msg) {
+        try {
+            emitEvent("common:update", new JSONObject()
+                    .put("state", "error").put("error", msg).toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Fire the system package installer for a downloaded APK via FileProvider. */
+    private void launchApkInstall(final java.io.File apk) {
+        mainHandler.post(() -> {
+            try {
+                Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                        activity, activity.getPackageName() + ".fileprovider", apk);
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(intent);
+                emitEvent("common:update", "{\"state\":\"ready\"}");
+            } catch (Exception e) {
+                Log.e(TAG, "launchApkInstall failed", e);
+                emitUpdateError("could not open installer");
+            }
+        });
+    }
 }

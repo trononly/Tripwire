@@ -11,11 +11,11 @@ section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Understand your mobile money"
-vendor: "Tron"
+vendor: "Tripwire"
 # Note: `wails3 task common:update:build-assets` regenerates this file from
 # build/config.yml and resets homepage to the Wails default; re-apply the
 # repo URL afterwards if you ever re-run it.
-homepage: "https://github.com/trononly/mpesa-analyzer"
+homepage: "https://github.com/trononly/Tripwire"
 license: "MIT"
 release: "1"
 

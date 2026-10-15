@@ -5,11 +5,11 @@ version: '3'
 
 # This information is used to generate the build assets.
 info:
-  companyName: "Tron"
+  companyName: "Tripwire"
   productName: "Tripwire"
-  productIdentifier: "tron.tripwire.app"
+  productIdentifier: "com.tripwire.app"
   description: "Understand your mobile money"
-  copyright: "(c) 2026, Tron" # Copyright text
+  copyright: "(c) 2026, Tripwire" # Copyright text
   comments: "Personal M-Pesa money analyzer" # Comments
   version: "0.0.1" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
