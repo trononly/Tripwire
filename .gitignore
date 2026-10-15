@@ -25,6 +25,10 @@ build/android/app/src/main/jniLibs/
 tripwire.exe
 *.exe~
 
+# Signing keys must never be committed (CI reads them from secrets)
+*.jks
+*.keystore
+
 # Windows findstr redirect artifact
 nul
 .pi
