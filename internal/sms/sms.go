@@ -78,6 +78,11 @@ var (
 	// "Total Fuliza M-PESA outstanding amount is Ksh Z" - the running debt
 	// after this advance, principal plus access fee included.
 	reFulizaOutstanding = regexp.MustCompile(`(?i)Total\s+Fuliza\s+M-?PESA\s+outstanding\s+amount\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
+	// Fuliza repayment wallet balance with the "Ksh" marker optional: real
+	// repayment SMS omit it ("Your M-PESA balance is 0.00."). Kept separate
+	// from reBalance so the normal path keeps its strict M-PESA/Ksh anchor
+	// and never mistakes a Fuliza limit line for the wallet balance.
+	reFulizaBalance = regexp.MustCompile(`(?i)M-?PESA\s+balance\s+is\s+(?:Ksh\.?\s*)?([\d,]+\.\d{2})`)
 )
 
 // Statement-style descriptions, matching the Details column of real
@@ -423,11 +428,21 @@ func parseFuliza(id, body string) (txs []parser.Transaction, ok bool, err error)
 	return nil, false, nil
 }
 
-// fulizaBalance extracts the wallet balance from a Fuliza message. Zero when
-// absent (disbursements carry no balance line) - the model has no unknown
-// marker, and inventing a value would corrupt balance charts.
+// fulizaBalance extracts the wallet balance from a Fuliza repayment message.
+// Accepts the "Ksh" marker or its absence ("M-PESA balance is Ksh303.25"
+// and "Your M-PESA balance is 0.00." both occur in real SMS). Zero when
+// absent - the model has no unknown marker, and inventing a value would
+// corrupt balance charts. The Fuliza limit line ("available Fuliza M-PESA
+// limit is Ksh X") never matches: it says "limit is", not "balance is".
 func fulizaBalance(body string) (int64, error) {
 	if m := reBalance.FindStringSubmatch(body); m != nil {
+		balance, err := parser.ParseMoney(m[1])
+		if err != nil {
+			return 0, fmt.Errorf("%w: bad balance: %v", ErrMalformed, err)
+		}
+		return balance, nil
+	}
+	if m := reFulizaBalance.FindStringSubmatch(body); m != nil {
 		balance, err := parser.ParseMoney(m[1])
 		if err != nil {
 			return 0, fmt.Errorf("%w: bad balance: %v", ErrMalformed, err)

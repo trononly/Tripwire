@@ -175,10 +175,20 @@ type DayGroup struct {
 // TransactionGroups prepares the frontend's transaction list in one call:
 // sorts newest-first, categorizes, and groups by calendar day. Sorting and
 // grouping run here (once per dataset) instead of in JS on every render.
+// Ties on the second-precision timestamp break by transaction ID
+// descending, so a paired Fuliza fee ("<receipt>-F") or charge
+// ("<receipt>-C") sorts before its base row: the fee/charge is the later
+// movement, and the day's end balance is the debt (-outstanding), not the
+// wallet zero the paired send left behind.
 func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 	sorted := make([]parser.Transaction, len(txs))
 	copy(sorted, txs)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date > sorted[j].Date })
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Date != sorted[j].Date {
+			return sorted[i].Date > sorted[j].Date
+		}
+		return sorted[i].ID > sorted[j].ID
+	})
 
 	out := make([]DayGroup, 0, 16)
 	for _, tx := range sorted {

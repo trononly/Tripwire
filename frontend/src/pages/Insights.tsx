@@ -91,12 +91,15 @@ function BillsTile({
 }
 
 /** Fee radar: what Safaricom took, straight from the Fees category and the
- * totals the analyzer already computes. */
+ * totals the analyzer already computes, split by fee kind so the Fuliza
+ * access-fee part is visible on its own row. */
 function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
   const fees = result?.categories?.find((c) => c.name === "Fees");
   const totalOut = result?.totals.totalOut ?? 0;
   const totalFees = result?.totals.totalFees ?? 0;
   const percent = totalOut > 0 ? ((totalFees / totalOut) * 100).toFixed(1) : null;
+  const byType = result?.feesByType ?? [];
+  const fulizaOwed = result?.fulizaOutstanding ?? 0;
 
   return (
     <Card>
@@ -116,6 +119,33 @@ function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
               {formatMoney(totalFees)}
             </span>
           </div>
+          {byType.length > 0 && (
+            <div className="space-y-1.5">
+              {byType.map((f) => (
+                <div
+                  key={f.key}
+                  className="flex items-baseline justify-between gap-2"
+                >
+                  <span className="text-sm text-muted-foreground">
+                    {f.label} · {f.count}
+                  </span>
+                  <span className="text-sm tabular-nums">
+                    {formatMoney(f.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {fulizaOwed > 0 && (
+            <div className="flex items-baseline justify-between gap-2 border-t pt-2">
+              <span className="text-sm text-muted-foreground">
+                Fuliza owed
+              </span>
+              <span className="text-sm font-medium tabular-nums">
+                {formatMoney(fulizaOwed)}
+              </span>
+            </div>
+          )}
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm text-muted-foreground">
               Share of money out
