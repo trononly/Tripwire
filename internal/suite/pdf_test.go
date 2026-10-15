@@ -1,6 +1,7 @@
-package pdf
+package suite
 
 import (
+	. "mpesa-analyzer/internal/pdf"
 	"os"
 	"testing"
 	"time"

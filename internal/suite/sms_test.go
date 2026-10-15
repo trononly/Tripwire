@@ -1,7 +1,8 @@
-package sms
+package suite
 
 import (
 	"errors"
+	. "mpesa-analyzer/internal/sms"
 	"os"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ import (
 // fixture reads one stored real SMS sample.
 func fixture(t *testing.T, name string) string {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/" + name)
+	raw, err := os.ReadFile("../sms/testdata/" + name)
 	if err != nil {
 		t.Fatalf("fixture %s: %v", name, err)
 	}
