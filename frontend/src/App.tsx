@@ -71,7 +71,7 @@ function PageFallback() {
 
 // Primary bottom-tab destinations vs. secondary pages. There is no native
 // back-press hook in this app (main.go is the desktop Wails entry,
-// build/android/main_android.go only registers it — no onBackPressed /
+// build/android/main_android.go only registers it - no onBackPressed /
 // goBack handling anywhere), so the Android system back button arrives as
 // a plain WebView history back, i.e. a router POP navigation. This
 // component reroutes exactly that: a POP landing on a secondary route is
@@ -110,8 +110,8 @@ type DataMode = "statements" | "sms";
 const MODE_KEY = "mpesa-analyzer.mode";
 
 function App() {
-  // Android defaults to SMS mode — that is the source a phone actually
-  // has — unless the user last picked Statements. Desktop is always
+  // Android defaults to SMS mode - that is the source a phone actually
+  // has - unless the user last picked Statements. Desktop is always
   // statements.
   const [mode, setModeState] = useState<DataMode>(() => {
     try {
@@ -151,7 +151,7 @@ function App() {
   // Direct import, no modal: the header/SMS/Dashboard buttons call
   // startSmsImport, the bridge asks for SMS access itself when missing, and
   // the pages show skeletons until the merged dataset lands. Denials
-  // surface as toasts — there is no dialog left to host them.
+  // surface as toasts - there is no dialog left to host them.
   const [smsImporting, setSmsImporting] = useState(false);
   const smsImportingRef = useRef(false);
   const [isAndroid, setIsAndroid] = useState(false);
@@ -324,7 +324,7 @@ function App() {
   }, []);
 
   // Realtime engine: drain the catcher queue every few seconds whether
-  // or not the page considers itself visible — visibility signals are
+  // or not the page considers itself visible - visibility signals are
   // unreliable in this WebView, and the drain is a local prefs read that
   // merges only when something actually queued.
   useEffect(() => {
@@ -560,7 +560,7 @@ function App() {
 
   // Carrier-name upgrade, run when Settings opens: resolve the phone's
   // current SIM list and heal wallets imported without phone-state
-  // access — renaming fallbacks and moving subscription-keyed records
+  // access - renaming fallbacks and moving subscription-keyed records
   // onto their slot key. Read-only unless access is already granted:
   // the only prompts are the import-time batch and the Settings opt-in.
   const SIM_NUMBERS_KEY = "mpesa-analyzer.sim-numbers";

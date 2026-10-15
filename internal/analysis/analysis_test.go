@@ -117,7 +117,7 @@ func TestTotalsOutIsPositive(t *testing.T) {
 
 // TestFulizaAccessFeeIsAFee locks in that the SMS-derived "Fuliza Access
 // Fee" (which carries no "Charge" word) is accounted as a fee: excluded
-// from totals/cashflow spend, included in TotalFees — exactly like the
+// from totals/cashflow spend, included in TotalFees - exactly like the
 // statement charge rows.
 func TestFulizaAccessFeeIsAFee(t *testing.T) {
 	txs := []parser.Transaction{

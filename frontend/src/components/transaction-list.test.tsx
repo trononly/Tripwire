@@ -1,5 +1,5 @@
 // Renders the transaction list against rows shaped exactly like the Wails
-// bindings (TransactionView): the UI must be dumb about semantics — icon,
+// bindings (TransactionView): the UI must be dumb about semantics - icon,
 // title and subtitle come straight from the pre-computed `type` and
 // `counterparty` fields, amounts stay signed integer cents.
 import { describe, expect, it } from "vitest";

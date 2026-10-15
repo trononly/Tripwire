@@ -28,7 +28,7 @@ const TABS: { id: LipaTab; label: string; icon: typeof ReceiptText }[] = [
   { id: "till", label: "Buy Goods", icon: ShoppingCart },
 ];
 
-/** Lipa na M-PESA — Paybill (paybill + account + amount) / Buy Goods (till + amount). */
+/** Lipa na M-PESA - Paybill (paybill + account + amount) / Buy Goods (till + amount). */
 export default function Lipa() {
   const [tab, setTab] = useState<LipaTab>("paybill");
   const [paybill, setPaybill] = useState("");
@@ -71,7 +71,7 @@ export default function Lipa() {
       return;
     }
     // From here on a dial happens, so this is the first point that may
-    // prompt for CALL_PHONE — nothing before it (FAB, form, panel) asks.
+    // prompt for CALL_PHONE - nothing before it (FAB, form, panel) asks.
     Events.Once("common:ussd", (ev) => {
       const data = ev.data as { ok: boolean; error?: string };
       if (!data?.ok) {

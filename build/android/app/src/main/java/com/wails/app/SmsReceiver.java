@@ -18,7 +18,7 @@ import org.json.JSONObject;
  * checked for an M-Pesa sender, and matches are appended to a small pending
  * queue the WebView drains (launch, resume, foreground interval) and merges
  * through the regular import pipeline. Nothing is parsed here, nothing is
- * notified — the queue is the whole job, so arrivals merge append-only and
+ * notified - the queue is the whole job, so arrivals merge append-only and
  * the inbox is never re-read wholesale once listening is possible.
  */
 public class SmsReceiver extends BroadcastReceiver {

@@ -352,7 +352,7 @@ func TestDetectRecurringPaymentsInactivityBreaks(t *testing.T) {
 		days    []int
 		wantGot bool
 	}{
-		// The known failure case: gaps [7, 7, 190] — median 7, MAD 0 — must
+		// The known failure case: gaps [7, 7, 190] - median 7, MAD 0 - must
 		// not qualify as weekly.
 		{"break in the middle", []int{1, 8, 15, 205}, false},
 		{"break in the tail: long-silent then one resumption payment", []int{0, 7, 14, 204}, false},

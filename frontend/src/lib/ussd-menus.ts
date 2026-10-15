@@ -1,4 +1,4 @@
-// M-PESA *334# menu map — owner-confirmed 2026-10-13 (English handset).
+// M-PESA *334# menu map - owner-confirmed 2026-10-13 (English handset).
 // The app dials plain *334# (Safaricom drops stacked suffixes) and the
 // Android automation service walks the live menus step by step, stopping at
 // the PIN screen. Hardcoded option numbers below are the MVP: if Safaricom
@@ -150,7 +150,7 @@ export function buildTillScript(
 /**
  * Same rule the service applies live: given a full USSD prompt, return the
  * option number before the matched label ("3. Pochi…" + ["pochi"] → "3").
- * Null when nothing matches — the service aborts instead of guessing.
+ * Null when nothing matches - the service aborts instead of guessing.
  */
 export function parseMenuOption(
   promptText: string,

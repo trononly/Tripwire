@@ -2,7 +2,7 @@ import { Banknote, CreditCard, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-/** Withdraw — TODO: agent / ATM / bank to M-PESA. Placeholder page. */
+/** Withdraw - TODO: agent / ATM / bank to M-PESA. Placeholder page. */
 export default function Withdraw() {
   const options = [
     {

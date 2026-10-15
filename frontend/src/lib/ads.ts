@@ -1,13 +1,13 @@
 import { setSetting } from "@/lib/motion-settings";
 
 /**
- * Sponsor-slot visibility. Always on — the Settings toggle was removed
+ * Sponsor-slot visibility. Always on - the Settings toggle was removed
  * so the sponsor tile can never be switched off. The stored key is inert.
  */
 
 export const ADS_ENABLED_KEY = "mpesa-analyzer.ads-enabled";
 
-/** Sponsor visibility defaults ON — Settings writes "0" to disable. */
+/** Sponsor visibility defaults ON - Settings writes "0" to disable. */
 export function getAdsEnabled(): boolean {
   try {
     return localStorage.getItem(ADS_ENABLED_KEY) !== "0";
