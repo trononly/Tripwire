@@ -4,7 +4,6 @@ import { ArrowDown, Loader2, Smartphone } from "lucide-react";
 import type { SmsImportResult } from "../../bindings/mpesa-analyzer/models";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SmsImportInspector } from "@/components/sms-import-inspector";
 

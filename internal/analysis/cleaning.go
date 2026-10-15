@@ -29,8 +29,11 @@ var toFromRE = regexp.MustCompile(`(?i)\b(?:to|from)\s*(?:([\d*]+)\s+)?-\s+(.+)$
 // bundle purchases use instead of the "to <till> - <name>" shape.
 var bundleByRE = regexp.MustCompile(`(?i)\bby\s*-\s*(?:[\d*]+\s+)?(.+)$`)
 
-// tillRE finds the till/paybill number in a "to <number>" fragment.
-var tillRE = regexp.MustCompile(`(?i)\bto\s+([\d]{3,})\b`)
+// tillRE finds the till/paybill number in a "to <number>" fragment. The
+// trailing boundary is intentionally absent: real bundle descriptions glue
+// the till to the merchant name ("to 826915Safaricom Offers"), and \b
+// between the digits and the name would fail to match.
+var tillRE = regexp.MustCompile(`(?i)\bto\s+([\d]{3,})`)
 
 // tailCutRE strips known boilerplate tails from extracted names, e.g.
 // " via API. Original conversation ID is FTC260330HEOX." or " Acc. 01450540651".
@@ -64,15 +67,17 @@ var boilerPrefixes = []string{
 	"transfer from bank ", "bank transfer to ", "bank transfer from ",
 }
 
-// truncate caps s at max characters, appending an ellipsis when cut.
+// truncate caps s at max characters (runes, not bytes, so multibyte text
+// is never split), appending an ellipsis when cut.
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
 	if max <= 1 {
-		return s[:1]
+		return string(r[:1])
 	}
-	return s[:max-1] + "…"
+	return string(r[:max-1]) + "…"
 }
 
 // cutTails strips known boilerplate tails plus the stray punctuation the
@@ -113,7 +118,14 @@ func stripBoiler(desc string) string {
 	lower := strings.ToLower(desc)
 	for _, prefix := range boilerPrefixes {
 		if strings.HasPrefix(lower, prefix) {
-			return truncate(strings.TrimSpace(desc[len(prefix):]), maxNameLen)
+			// Boilerplate can leave a dangling separator and tail behind
+			// ("Transfer from Bank - IM BANK LIMITED- APP to Customer via
+			// API" -> "- IM BANK LIMITED- APP to Customer via API"), so
+			// run the same tail cleanup as shaped payloads and drop a
+			// leading separator.
+			name := cutTails(strings.TrimSpace(desc[len(prefix):]))
+			name = strings.TrimLeft(name, "- ")
+			return truncate(name, maxNameLen)
 		}
 	}
 	return truncate(desc, maxNameLen)
