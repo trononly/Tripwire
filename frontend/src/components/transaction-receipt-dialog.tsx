@@ -14,7 +14,7 @@ import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/mode
 
 /**
  * Arrival receipt: the current transaction presented like an M-Pesa
- * confirmation slip — big amount, dashed tear-off separators, receipt
+ * confirmation slip - big amount, dashed tear-off separators, receipt
  * number. Opens automatically when a fresh confirmation merges (launch,
  * foreground-resume, or the debug replay); never from manual imports.
  */

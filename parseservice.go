@@ -27,7 +27,7 @@ type ParseService struct {
 
 // statements lazily creates the store the first time a history method
 // runs. The database lives in an app-private directory: getFilesDir() on
-// Android (via the Wails bridge — xdg has no Android support and $HOME is
+// Android (via the Wails bridge - xdg has no Android support and $HOME is
 // unset there, which resolves to a read-only /.local), the xdg data home
 // on desktop.
 func (p *ParseService) statements() (*store.Store, error) {
@@ -62,7 +62,7 @@ type SmsMessage struct {
 	// the carrier's display name for the SIM. Slot is -1 (and SubID -1)
 	// when the bridge could not resolve them (pre-API-22, missing
 	// READ_PHONE_STATE, or a non-Android source). They are never parsed out
-	// of the SMS body — an M-Pesa message is identical on every SIM.
+	// of the SMS body - an M-Pesa message is identical on every SIM.
 	SubID    int    `json:"subId,omitempty"`
 	Slot     int    `json:"slot,omitempty"`
 	SimLabel string `json:"simLabel,omitempty"`
@@ -115,7 +115,7 @@ const (
 
 // SmsParseResult is one message's outcome, keeping the original record so
 // every generated transaction stays auditable against the SMS that produced
-// it. SourceID echoes the Android provider row ID for UI correlation only —
+// it. SourceID echoes the Android provider row ID for UI correlation only -
 // it is never the transaction identity; that stays the parser's M-Pesa
 // receipt number.
 type SmsParseResult struct {
@@ -439,7 +439,7 @@ type SmsRefreshResult struct {
 }
 
 // RefreshSmsImport parses an inbox snapshot and merges each SIM's messages
-// into that SIM's latest SMS record — creating one when there is none —
+// into that SIM's latest SMS record - creating one when there is none -
 // keyed by the parser's M-Pesa receipt number. Re-running it over an
 // unchanged inbox adds nothing and writes nothing, so the launch-time
 // auto-import is safe to run on every start. Older SMS records are left
@@ -558,7 +558,7 @@ func latestSmsRecord(s *store.Store, metas []store.StatementMeta, simKey string)
 }
 
 // receiptWorthy reports whether any new transaction is a user-initiated
-// spend — till/buy-goods, paybill or send-money. Only those pop the
+// spend - till/buy-goods, paybill or send-money. Only those pop the
 // arrival receipt; inbound money, airtime, fees and the rest merge
 // silently into history.
 func receiptWorthy(txs []parser.Transaction) bool {
@@ -573,7 +573,7 @@ func receiptWorthy(txs []parser.Transaction) bool {
 
 // SimCard is one SIM as currently seen by the phone: the subscription id
 // and slot from the telephony layer plus the carrier's display name. It
-// carries no messages — it only re-resolves names for wallets imported
+// carries no messages - it only re-resolves names for wallets imported
 // while READ_PHONE_STATE was unavailable.
 type SimCard struct {
 	SubID    int    `json:"subId"`
@@ -583,7 +583,7 @@ type SimCard struct {
 
 // RefreshSimLabels upgrades stored SMS wallets' display names from the
 // phone's current SIM list, and moves subscription-keyed records onto
-// their slot key once the slot is known — without the move, imports after
+// their slot key once the slot is known - without the move, imports after
 // the phone-state grant would open a second record for the same physical
 // SIM. A card matches by slot key first, then subscription key; cards with
 // no carrier name and records that already carry the name are skipped for

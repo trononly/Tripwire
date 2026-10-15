@@ -15,8 +15,8 @@ import (
 // descriptions or truncate long IDs itself.
 
 const (
-	maxNameLen = 40
-	maxRefLen  = 24
+	MaxNameLen = 40
+	MaxRefLen  = 24
 )
 
 // toFromRE matches the standard shapes "to|from <till> - <payload>" and
@@ -125,10 +125,10 @@ func stripBoiler(desc string) string {
 			// leading separator.
 			name := cutTails(strings.TrimSpace(desc[len(prefix):]))
 			name = strings.TrimLeft(name, "- ")
-			return truncate(name, maxNameLen)
+			return truncate(name, MaxNameLen)
 		}
 	}
-	return truncate(desc, maxNameLen)
+	return truncate(desc, MaxNameLen)
 }
 
 // SplitTransaction cleans one transaction into the display name and
@@ -175,13 +175,13 @@ func SplitTransaction(tx parser.Transaction) (name, reference string) {
 		}
 	}
 	if name == "" {
-		name = truncate(desc, maxNameLen)
+		name = truncate(desc, MaxNameLen)
 	}
 
 	if ref == "" {
-		reference = truncate(tx.ID, maxRefLen)
+		reference = truncate(tx.ID, MaxRefLen)
 	} else {
-		reference = truncate(ref, maxRefLen)
+		reference = truncate(ref, MaxRefLen)
 	}
-	return truncate(name, maxNameLen), reference
+	return truncate(name, MaxNameLen), reference
 }

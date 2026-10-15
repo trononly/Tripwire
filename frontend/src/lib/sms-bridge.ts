@@ -1,6 +1,6 @@
 // Typed access to the Android SMS bridge injected by WailsJSBridge.java.
 // Desktop builds have no such interface, so everything here guards for its
-// absence — callers never reach into window.wails directly.
+// absence - callers never reach into window.wails directly.
 
 interface WailsAndroidBridge {
 	platform?(): string;
@@ -22,6 +22,7 @@ interface WailsAndroidBridge {
 	getAppVersion?(): string;
 	canInstallPackages?(): boolean;
 	openInstallPermissionSettings?(): void;
+	openAppSettings?(): void;
 	downloadAndInstallApk?(url: string, fileName: string): void;
 	openUrl?(url: string): void;
 	openURL?(url: string): void;
@@ -79,7 +80,7 @@ export function isAndroidBridge(): boolean {
 
 /**
  * The three runtime permissions the M-Pesa features rely on, each with a
- * distinct job — the whole point of keeping them apart:
+ * distinct job - the whole point of keeping them apart:
  *
  *   read    READ_SMS    read the historical inbox (manual/full import)
  *   receive RECEIVE_SMS the always-on catcher can queue new confirmations
@@ -167,7 +168,7 @@ export interface SimCard {
 
 /**
  * True when carrier names can be resolved right now. Read-only: the only
- * prompt for it is the Settings "Show SIM names" opt-in — import never asks.
+ * prompt for it is the Settings "Show SIM names" opt-in - import never asks.
  */
 export function hasPhoneStatePermission(): boolean {
 	if (!isAndroidBridge()) return false;
@@ -198,8 +199,21 @@ export function requestSimCards(): SimCard[] {
 /**
  * Ask for phone-state access (SIM names/numbers) on demand. The outcome
  * arrives as a "common:simstate" event {granted}. Call only from an
- * explicit tap — never at import, never at launch.
+ * explicit tap - never at import, never at launch.
  */
 export function requestPhoneStatePermission(): void {
 	window.wails?.requestPhoneStatePermission?.();
+}
+
+/**
+ * Open the system App info page for this app (Settings → Apps → Tripwire)
+ * so the user can allow restricted settings and grant SMS access, then
+ * come back and retry. No-op off-Android.
+ */
+export function openAppSettings(): void {
+	try {
+		window.wails?.openAppSettings?.();
+	} catch {
+		/* ignore */
+	}
 }

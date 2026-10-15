@@ -32,14 +32,14 @@ var (
 	ErrMalformed = errors.New("sms: malformed confirmation SMS")
 	// ErrNonTransactional means the SMS is an operational M-Pesa notice
 	// (wrong PIN, opted out of Fuliza, cancelled transaction, ...) with no
-	// financial transaction to represent. Not an error in the data — the
+	// financial transaction to represent. Not an error in the data - the
 	// message is simply not a transaction.
 	ErrNonTransactional = errors.New("sms: non-transactional M-Pesa message")
 )
 
 var (
 	// Every confirmation SMS opens with the receipt number immediately
-	// followed by "Confirmed." — with or without the space after it, and
+	// followed by "Confirmed." - with or without the space after it, and
 	// either case ("TIQAP5NXT1 confirmed."). The receipt class stays
 	// case-sensitive so a stray word before "confirmed" can never become
 	// a receipt ID.
@@ -71,11 +71,11 @@ var (
 
 	// Fuliza disbursements read "Fuliza M-PESA amount is Ksh X. Access Fee
 	// charged Ksh Y. ..." (any casing, "Ksh." variant). Only the access
-	// fee becomes a transaction — the principal is already covered by the
+	// fee becomes a transaction - the principal is already covered by the
 	// paired send-money SMS sharing the same receipt number.
 	reFulizaPrincipal = regexp.MustCompile(`(?i)Fuliza\s+M-?PESA\s+amount\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
 	reFulizaFee       = regexp.MustCompile(`(?i)Access\s+Fee\s+charged\s+Ksh\.?\s*([\d,]+\.\d{2})`)
-	// "Total Fuliza M-PESA outstanding amount is Ksh Z" — the running debt
+	// "Total Fuliza M-PESA outstanding amount is Ksh Z" - the running debt
 	// after this advance, principal plus access fee included.
 	reFulizaOutstanding = regexp.MustCompile(`(?i)Total\s+Fuliza\s+M-?PESA\s+outstanding\s+amount\s+is\s+Ksh\.?\s*([\d,]+\.\d{2})`)
 )
@@ -162,7 +162,7 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 			return fulizaTxs, err
 		}
 		// "Fuliza" mentioned but neither a disbursement nor a repayment
-		// shape — fall through to the normal path.
+		// shape - fall through to the normal path.
 	}
 
 	// Required: transaction amount (first Ksh value in the body).
@@ -190,7 +190,7 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 	// extraction stays anchored on the timestamp position.
 	fullLower := strings.ToLower(body)
 
-	// Optional: wallet balance. Zero when absent — the model has no
+	// Optional: wallet balance. Zero when absent - the model has no
 	// unknown marker, and inventing a value would corrupt balance charts.
 	var balance int64
 	if m := reBalance.FindStringSubmatch(body); m != nil {
@@ -256,7 +256,7 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 		chargeDesc = chargeWithdrawal
 
 	case strings.Contains(fullLower, "you have sent"):
-		// "You have sent Ksh31.38 to Hustler Fund on ..." — the inverted
+		// "You have sent Ksh31.38 to Hustler Fund on ..." - the inverted
 		// send wording (no "sent to").
 		recipient, ok := partyAfter(body, stampStart, " to ")
 		if !ok {
@@ -271,7 +271,7 @@ func ParseMessage(text string) ([]parser.Transaction, error) {
 		}
 		switch verb {
 		case "paid to":
-			// "Ksh599.00 paid to SHOP ONE TRM 24." — a till (Buy Goods).
+			// "Ksh599.00 paid to SHOP ONE TRM 24." - a till (Buy Goods).
 			desc = fmt.Sprintf(descMerchant, recipient)
 		case "sent to":
 			if strings.Contains(strings.ToLower(recipient), "bundle") ||
@@ -387,7 +387,7 @@ func parseFuliza(id, body string) (txs []parser.Transaction, ok bool, err error)
 	// Ksh Y. Total Fuliza M-PESA outstanding amount is Ksh Z. ..."
 	// One fee transaction for the access fee. Its balance is the NEGATED
 	// outstanding (-Z): using Fuliza puts the wallet in debt to M-Pesa,
-	// and the outstanding already includes the access fee — that is the
+	// and the outstanding already includes the access fee - that is the
 	// amount owed. (No wallet balance line exists on disbursements; the
 	// wallet sits at ~0 after the paired send.)
 	if strings.Contains(lower, "access fee") || reFulizaPrincipal.MatchString(body) {
@@ -424,7 +424,7 @@ func parseFuliza(id, body string) (txs []parser.Transaction, ok bool, err error)
 }
 
 // fulizaBalance extracts the wallet balance from a Fuliza message. Zero when
-// absent (disbursements carry no balance line) — the model has no unknown
+// absent (disbursements carry no balance line) - the model has no unknown
 // marker, and inventing a value would corrupt balance charts.
 func fulizaBalance(body string) (int64, error) {
 	if m := reBalance.FindStringSubmatch(body); m != nil {
@@ -509,7 +509,7 @@ func payee(body string, stampStart int) (recipient, account, verb string, ok boo
 
 // reversalReference extracts the original receipt number from "Reversal of
 // transaction <REF> has been ...". The reversal SMS carries its own receipt
-// number in the header; this is the transaction being undone — the two must
+// number in the header; this is the transaction being undone - the two must
 // never be confused.
 func reversalReference(body string) (string, bool) {
 	i := indexFold(body, "reversal of transaction ")

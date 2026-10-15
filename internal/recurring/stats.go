@@ -14,7 +14,7 @@ func sortedCopy(values []int64) []int64 {
 // With an odd number of values it is the middle value. With an even number
 // the two middle values are averaged, rounding halves up; the inputs here
 // are always non-negative (day counts and absolute cent amounts), so this
-// is unambiguous. Rounding keeps the result an exact int64 — no floating
+// is unambiguous. Rounding keeps the result an exact int64 - no floating
 // point is used anywhere near money or day counts.
 func medianOfSorted(sorted []int64) int64 {
 	n := len(sorted)

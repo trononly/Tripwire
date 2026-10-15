@@ -8,11 +8,11 @@
 # (go vet/test, frontend type-check/lint/test) lives in ci.yml.
 #
 # Artifacts produced (attached to a single GitHub Release):
-#   * `Tripwire-<version>.apk` — the sideload APK users install. Signed with
+#   * `Tripwire-<version>.apk` - the sideload APK users install. Signed with
 #     your upload key when the ANDROID_* secrets are configured, otherwise
 #     debug-signed (installable for testing, not for Play Store) and named
 #     `Tripwire-<version>-debug.apk` so it is never mistaken for a release.
-#   * `Tripwire-<version>.aab` — the Play Store bundle (same signing rule).
+#   * `Tripwire-<version>.aab` - the Play Store bundle (same signing rule).
 #
 # The release notes generated for the GitHub Release double as the in-app
 # "What's new" text: the Android updater shows the body of the latest
@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@v4
 
       # `go install` compiles the wails3 CLI for the host, and on Linux that
-      # links GTK/WebKit (internal/operatingsystem uses CGO) — the app
+      # links GTK/WebKit (internal/operatingsystem uses CGO) - the app
       # itself cross-compiles to Android via the NDK.
       - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
         run: |
@@ -70,8 +70,22 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # ubuntu-latest already ships the Android SDK ($ANDROID_SDK_ROOT).
+      # android-actions/setup-android@v3 is broken against current
+      # cmdline-tools (it tries to install the long-removed `tools`
+      # package and fails the job), so just wire the preinstalled
+      # sdkmanager onto PATH instead.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          for d in "$SDK_ROOT/cmdline-tools/latest/bin" "$SDK_ROOT"/cmdline-tools/*/bin; do
+            if [ -x "$d/sdkmanager" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+              export PATH="$d:$PATH"
+              break
+            fi
+          done
+          sdkmanager --version
 
       - name: Install Android SDK platform, build tools and NDK
         run: |
@@ -157,7 +171,7 @@ jobs:
         run: |
           mkdir -p release-assets
           # The in-app updater looks for an asset named Tripwire-<version>.apk,
-          # so the APK name is part of the update contract — keep it stable.
+          # so the APK name is part of the update contract - keep it stable.
           VERSION="${APP_VERSION:-untagged}"
           SUFFIX=""
           if [ "${HAS_KEYSTORE}" != "true" ]; then

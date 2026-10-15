@@ -23,7 +23,7 @@ import { maxDayOf } from "@/lib/date-window";
 import { cn } from "@/lib/utils";
 
 /**
- * Insights — the depth layer on top of the same analysis result the
+ * Insights - the depth layer on top of the same analysis result the
  * Dashboard uses. Every tile reads from AnalysisResult; a tile with no
  * underlying data yet shows an honest empty state, never invented numbers.
  */
@@ -61,7 +61,7 @@ function BillsTile({
     // Live bills only. Monthly bills show while last paid within two
     // months; other cadences show while their next round is due (or became
     // due within the last week), so a lapsed weekly pattern stays hidden.
-    // "Now" is the newest bill activity, not today — datasets are
+    // "Now" is the newest bill activity, not today - datasets are
     // historical.
     const latest = maxDayOf(all.map((p) => p.lastDate));
     const nowMs = Date.parse(`${latest}T00:00:00Z`);
@@ -121,7 +121,7 @@ function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
               Share of money out
             </span>
             <span className="text-sm tabular-nums">
-              {percent ? `${percent}%` : "—"}
+              {percent ? `${percent}%` : "-"}
             </span>
           </div>
           <div className="flex items-baseline justify-between gap-2">
@@ -137,7 +137,7 @@ function FeeRadarTile({ result }: { result: analysis.AnalysisResult | null }) {
 }
 
 /** vs last month: the last two monthly cashflow buckets compared. Two
- * months of coverage are required — with less, there is nothing honest to
+ * months of coverage are required - with less, there is nothing honest to
  * compare. When Insights is scoped to one month, the comparison reaches
  * back into full history for the preceding month instead of erroring. */
 function VsLastMonthTile({
@@ -225,7 +225,7 @@ function VsLastMonthTile({
   );
 }
 
-/** Reports & sharing: no implementation behind it yet — an honest empty
+/** Reports & sharing: no implementation behind it yet - an honest empty
  * state instead of a placeholder button. Hidden on phones until the
  * feature exists; a dead-end card earns no mobile screen space. */
 function ReportsTile() {
@@ -235,7 +235,7 @@ function ReportsTile() {
         <CardTitle>Reports &amp; sharing</CardTitle>
       </CardHeader>
       <TileEmpty>
-        Reports are not built yet. Nothing is lost — the tiles above are
+        Reports are not built yet. Nothing is lost - the tiles above are
         computed from your stored statements, so this will work once
         available.
       </TileEmpty>
@@ -338,7 +338,7 @@ export default function Insights({
   }, [filteredTxs, month]);
   const displayResult = month === "all" ? result : monthResult;
   const displayLoading = loading || (month !== "all" && !monthResult);
-  // Sponsor slot visibility — user opt-out lives in Settings.
+  // Sponsor slot visibility - user opt-out lives in Settings.
   const showSponsor = useAdsEnabled();
   if (transactions.length === 0) {
     return (
@@ -388,7 +388,7 @@ export default function Insights({
         </Button>
       </div>
       {/* Month window for every tile below: centered stepper (tap the
-          month itself for the calendar picker — handy when history is
+          month itself for the calendar picker - handy when history is
           long), arrows walk oldest ↔ newest. */}
       {months.length > 1 && (
         <div className="flex items-center justify-center gap-1">

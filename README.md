@@ -1,8 +1,8 @@
 # Tripwire
 
 Tripwire is a local-first personal M-Pesa money analyzer for Android.
-It imports your M-Pesa history — PDF statements, and the M-Pesa SMS in
-your phone's inbox — parses it all into one normalized transaction model,
+It imports your M-Pesa history - PDF statements, and the M-Pesa SMS in
+your phone's inbox - parses it all into one normalized transaction model,
 and helps you understand where your money goes: cashflow, categories,
 counterparties, the fees Safaricom took, and recurring bills and
 subscriptions.
@@ -19,12 +19,12 @@ day) and on demand from **Settings → App updates**. When a newer build
 exists, a dialog shows the version, the release notes as "What's new",
 and an Update button that downloads the APK and hands it to the Android
 installer. The first install of a new version asks you to allow
-"Install unknown apps" for Tripwire once — Android's rule for updates
+"Install unknown apps" for Tripwire once - Android's rule for updates
 outside the Play Store, not something the app can skip.
 
 Renaming note: the app was previously published as `com.hesabu.app`
 (Hesabu). The application ID is now `com.tripwire.app`, which Android
-treats as a different app — existing Hesabu installs do not upgrade in
+treats as a different app - existing Hesabu installs do not upgrade in
 place. Uninstall the old app (or keep it side by side) and install the
 Tripwire APK fresh. Your data does not migrate automatically.
 
@@ -34,9 +34,7 @@ There is no backend, no account, and no telemetry. Statements and SMS are
 parsed locally and persisted in a local database in the app's data directory;
 the parser password is used once, in the import dialog, and is never written to
 disk. The only thing that ever leaves the device is a report you explicitly
-export (image, PDF, or HTML). The reasoning is recorded in
-`docs/adr/0002-sqlite-transaction-store.md` (which supersedes
-`docs/adr/0001-local-first-json-transaction-store.md`).
+export (image, PDF, or HTML).
 
 ## Limitations
 
@@ -52,33 +50,32 @@ export (image, PDF, or HTML). The reasoning is recorded in
 A [Wails v3](https://v3.wails.io/) app: a Go backend with an embedded
 React/TypeScript frontend.
 
-- `main.go` — entry point. Creates the Wails app, embeds `frontend/dist`, opens
+- `main.go` - entry point. Creates the Wails app, embeds `frontend/dist`, opens
   the window.
-- `parseservice.go` — the Go service the frontend binds to: statement and SMS
+- `parseservice.go` - the Go service the frontend binds to: statement and SMS
   imports, the active dataset, history, and the analysis calls.
-- `internal/parser` — the normalized `Transaction` model shared by every import
+- `internal/parser` - the normalized `Transaction` model shared by every import
   source, plus the money parser.
-- `internal/pdf` — extracts the M-Pesa "DETAILED STATEMENT" table from PDF
+- `internal/pdf` - extracts the M-Pesa "DETAILED STATEMENT" table from PDF
   statements.
-- `internal/sms` — parses Android M-Pesa confirmation SMS into the same
+- `internal/sms` - parses Android M-Pesa confirmation SMS into the same
   `Transaction` shape as statements.
-- `internal/analysis` — totals, categorization, time windows, and insights.
-- `internal/recurring` — the deterministic recurring-bills detector (median-gap
+- `internal/analysis` - totals, categorization, time windows, and insights.
+- `internal/recurring` - the deterministic recurring-bills detector (median-gap
   cadence, MAD regularity).
-- `internal/store` — local persistence for imported datasets (pure-Go SQLite,
+- `internal/store` - local persistence for imported datasets (pure-Go SQLite,
   CGO disabled).
-- `internal/counterparty`, `internal/txtype` — shared helpers that extract the
+- `internal/counterparty`, `internal/txtype` - shared helpers that extract the
   counterparty and classify a transaction description, used by both analysis
   and the recurring detector.
-- `frontend/src` — the UI: `App.tsx` shell, `pages/`, `components/`, `lib/`.
-- `frontend/bindings` — generated Wails bindings; do not edit by hand.
+- `frontend/src` - the UI: `App.tsx` shell, `pages/`, `components/`, `lib/`.
+- `frontend/bindings` - generated Wails bindings; do not edit by hand.
 
 Both import sources feed one analysis pipeline; the `Source` field on a stored
 record remembers where a row came from (`statement` or `sms`), and an SMS
 record's `SimID`/`SimLabel` remember which SIM's wallet it is. The SMS parser
-is deliberately strict — only message shapes backed by real samples are
-accepted, and anything else is reported rather than guessed at. `CONTEXT.md` is
-the source of truth for the domain vocabulary.
+is deliberately strict - only message shapes backed by real samples are
+accepted, and anything else is reported rather than guessed at.
 
 ## Running it
 
@@ -101,13 +98,6 @@ in the **Android debug workflow (SMS import)** section below.
 To run one Go package, e.g. the SMS parser fixtures:
 `go test ./internal/sms/`.
 
-## Where to go next
-
-- `CONTEXT.md` — the domain model and vocabulary; read this first.
-- `FEATURES.md` — the demo/showcase script: what's built and how to exercise it.
-- `TODO.md` — the current UI and bug backlog.
-- `docs/` — ADRs and design plans.
-
 # Android debug workflow (SMS import)
 
 The SMS import feature only exists on Android (it reads the phone's M-Pesa
@@ -126,7 +116,7 @@ or downloadable platform + build-tools; the first run can take a while.
 - Output lands under `build/android/app/build/outputs/apk/…` (signed release
   APK in ...`release`, e.g. `app-release-signed.apk`).
 - If only `pnpm` exists but the task wants another package manager, the
-  root `Taskfile.yml` already defaults `PACKAGE_MANAGER` to pnpm — always
+  root `Taskfile.yml` already defaults `PACKAGE_MANAGER` to pnpm - always
   build via the root task (`android:package`), not the inner Taskfile.
 
 ## Install on a device
@@ -153,7 +143,7 @@ or copy the APK onto the phone and open it.
    everything the parser produced).
 4. **Copy audit report** puts a plain-text report of all skipped messages
    (with raw bodies and reasons) plus capped parsed messages on the
-   clipboard — paste it back to the agent to extend parser coverage.
+   clipboard - paste it back to the agent to extend parser coverage.
 5. After closing the dialog, the last audit stays available on the **SMS**
    page (session-only). Importing saves automatically: the batch is
    written into the same store as PDF statements and the app switches
@@ -161,7 +151,7 @@ or copy the APK onto the phone and open it.
    Switch between Statements and SMS mode in Settings.
 6. On a dual-SIM phone a **SIM switcher** appears in the SMS-mode header.
    Each SIM is its own wallet record, so switching re-runs the Dashboard,
-   Transactions and Insights over that SIM's transactions alone — balances
+   Transactions and Insights over that SIM's transactions alone - balances
    and cashflow are never mixed across wallets.
 
 ## Useful commands

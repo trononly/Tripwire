@@ -90,7 +90,7 @@ jobs:
 
       # The wails3 CLI itself links GTK/WebKit on Linux
       # (internal/operatingsystem uses CGO), so the system libraries must be
-      # installed before `go install` — same as the `go` job. Only the later
+      # installed before `go install` - same as the `go` job. Only the later
       # bindings step runs with CGO disabled.
       - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
         run: |

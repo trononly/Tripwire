@@ -73,7 +73,7 @@ export function TotalsCards({
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {["Total In", "Total Out", "Net Flow", "Current Balance"].map((l) => (
-          <KpiCard key={l} label={l} value="—" hint="No data yet" />
+          <KpiCard key={l} label={l} value="-" hint="No data yet" />
         ))}
       </div>
     );

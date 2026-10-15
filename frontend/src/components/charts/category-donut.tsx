@@ -20,7 +20,7 @@ import { isAndroidBridge } from "@/lib/sms-bridge";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 // Fixed color per category: adjacent slices never share a hue family, and
-// "Other" is always gray. A hand map beats palette cycling — cycling put
+// "Other" is always gray. A hand map beats palette cycling - cycling put
 // Airtime and Receive on neighboring greens.
 const CATEGORY_COLORS: Record<string, string> = {
   Receive: "oklch(0.65 0.18 150)",

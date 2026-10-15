@@ -22,8 +22,8 @@ import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
 import { FilterSheet, type FilterRangeKey } from "@/components/filter-sheet";
 
 /** Dashboard-wide time filter, anchored to the newest transaction (not
- * today — imported datasets are often historical). Everything below —
- * totals and every chart — analyzes the filtered subset. */
+ * today - imported datasets are often historical). Everything below -
+ * totals and every chart - analyzes the filtered subset. */
 
 function dayOf(dateTime: string) {
   return dateTime.slice(0, 10);
@@ -35,7 +35,7 @@ function maxDay(transactions: parser.Transaction[]) {
 }
 
 /**
- * Dashboard — the financial interpretation layer. Answers: how much came
+ * Dashboard - the financial interpretation layer. Answers: how much came
  * in, how much went out, and where money is going. Recurring outflows live
  * on Insights; individual rows live on Transactions.
  */
@@ -105,7 +105,7 @@ export default function Dashboard({
   }, [transactions]);
   const granularity = granularityOverride ?? autoGranularity;
   // Window persists across sessions; first run starts recent (30D), not
-  // All — dense histories are unreadable unscoped.
+  // All - dense histories are unreadable unscoped.
   const latestDay = maxDay(transactions);
   const {
     rangeKey: range,

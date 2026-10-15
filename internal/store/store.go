@@ -1,5 +1,5 @@
-// Package store persists imported datasets — parsed PDF statements and
-// confirmed Android SMS imports — in a single SQLite database in the app's
+// Package store persists imported datasets - parsed PDF statements and
+// confirmed Android SMS imports - in a single SQLite database in the app's
 // data directory. It holds parsed transactions, never PDFs or file paths: the
 // parser runs once at import time and the password is never written to disk.
 //
@@ -40,8 +40,8 @@ const (
 	SourceSms       = "sms"
 )
 
-// StatementRecord is one imported dataset — a parsed PDF statement or a
-// confirmed SMS import — and its transactions. Both kinds share the same
+// StatementRecord is one imported dataset - a parsed PDF statement or a
+// confirmed SMS import - and its transactions. Both kinds share the same
 // normalized transaction model and the same analysis pipeline; Source only
 // records where the rows came from.
 //

@@ -8,7 +8,7 @@
     <!-- Observe network connectivity / type for android:NetworkChanged events -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Historical M-Pesa SMS import: runtime permission, requested on first
-         use. No SEND_SMS/WRITE_SMS — this app never sends or alters messages. -->
+         use. No SEND_SMS/WRITE_SMS - this app never sends or alters messages. -->
     <!-- Direct USSD calls from the M-Pesa shortcut: runtime permission,
          requested on first use. The session UI stays in the system phone
          app; this app never sees keypresses or the PIN. -->
@@ -24,7 +24,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Identifies which SIM delivered each M-Pesa SMS (slot + carrier name)
          so dual-SIM phones keep one wallet record per SIM. Requested with
-         READ_SMS; optional — a denial still imports as a single wallet. -->
+         READ_SMS; optional - a denial still imports as a single wallet. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

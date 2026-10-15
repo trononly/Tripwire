@@ -210,7 +210,7 @@ public class WailsBridge {
         // Foreground drain trigger: the WebView's visibility signals are
         // unreliable across Activity pause/resume, so the native side pokes
         // the (always-registered) JS hook directly. The hook drains the SMS
-        // catcher queue and merges — the same path as pull-to-refresh,
+        // catcher queue and merges - the same path as pull-to-refresh,
         // which is why pull always worked while resume often did not.
         if (initialized && webView != null) {
             mainHandler.post(() -> {
@@ -793,7 +793,7 @@ public class WailsBridge {
     /**
      * Backing store for secure storage. Uses EncryptedSharedPreferences (AES via
      * the Android Keystore). Requires API 23+. Returns null if secure storage
-     * cannot be initialized — callers MUST check for null and report the error.
+     * cannot be initialized - callers MUST check for null and report the error.
      * The result is cached after the first call.
      */
     private SharedPreferences securePrefs() {
@@ -1039,7 +1039,7 @@ public class WailsBridge {
     }
 
     /**
-     * Ask for READ_PHONE_STATE (SIM names/numbers) on demand — the opt-in
+     * Ask for READ_PHONE_STATE (SIM names/numbers) on demand - the opt-in
      * behind the Settings "Show SIM names" button, for installs that
      * denied that half of the import prompt. The outcome arrives as a
      * "common:simstate" event {granted:true|false}. Never called without
@@ -1069,7 +1069,7 @@ public class WailsBridge {
      * {subId, slot, simLabel, number}. Name preference: the user's own SIM
      * name, then the mobile network (carrier) name. Number is "" when it
      * cannot be read (often blank on the SIM, or extra number permission
-     * missing) — callers show it as subtext only when set. Empty array
+     * missing) - callers show it as subtext only when set. Empty array
      * without phone-state access. Never prompts.
      * Called from JavaScript: wails.getSimCards()
      */
@@ -1372,12 +1372,12 @@ public class WailsBridge {
 
     /**
      * Read the M-Pesa SMS inbox and emit the raw messages as a "common:sms"
-     * event. Requests READ_SMS at runtime when missing — and nothing else,
+     * event. Requests READ_SMS at runtime when missing - and nothing else,
      * so import never shows a phone-calls prompt. Each row still carries
      * its subscription id (and the broadcasts carry slot), which need no
      * permission, so per-SIM separation and per-message SIM badges keep
      * working; carrier names resolve later via the Settings opt-in. The
-     * result is raw message data only — parsing happens in Go, never here.
+     * result is raw message data only - parsing happens in Go, never here.
      */
     public void getSms() {
         mainHandler.post(() -> {
@@ -2035,6 +2035,27 @@ public class WailsBridge {
                 activity.startActivity(intent);
             } catch (Exception e) {
                 Log.e(TAG, "openInstallPermissionSettings failed", e);
+            }
+        });
+    }
+
+    /**
+     * Open the system App info page for this app (Settings → Apps →
+     * Tripwire) so the user can allow restricted settings and grant SMS
+     * access, then return to the app and retry. Used by the restricted
+     * settings guide when a permission request comes back denied without
+     * a rationale - the sideloaded-install case.
+     */
+    public void openAppSettings() {
+        mainHandler.post(() -> {
+            try {
+                Intent intent = new Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + activity.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "openAppSettings failed", e);
             }
         });
     }

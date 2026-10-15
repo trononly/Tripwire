@@ -1,6 +1,7 @@
-package pdf
+package suite
 
 import (
+	. "mpesa-analyzer/internal/pdf"
 	"os"
 	"testing"
 	"time"
@@ -67,7 +68,7 @@ func TestGopdfBalanceChain(t *testing.T) {
 	// The statement lists transactions newest-first, so an older row's
 	// balance plus the newer row's amount equals the newer row's balance.
 	// M-Pesa prints paired "Pay Bill Charge" fee rows with a balance from
-	// elsewhere in the chain, which trips this heuristic — that quirk is
+	// elsewhere in the chain, which trips this heuristic - that quirk is
 	// present in the source data, so log it rather than fail.
 	breaks := 0
 	for i := 1; i < len(txs); i++ {
