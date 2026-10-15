@@ -42,7 +42,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
           <span className="text-lg font-bold tracking-tight">
-            Hesabu
+            Tripwire
           </span>
         </div>
       </SidebarHeader>

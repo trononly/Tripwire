@@ -1,4 +1,4 @@
-# Continuous integration for Hesabu (Wails v3 + React/TypeScript).
+# Continuous integration for Tripwire (Wails v3 + React/TypeScript).
 #
 # Runs on:
 #   * every pull_request
@@ -11,6 +11,9 @@
 #              tests the React app.
 #
 # This workflow produces no release artifacts; it only validates the code.
+# Releases are mobile-only (see release.yml): pushing a `tripwire-*` tag
+# builds the Tripwire-x.y.z APK/AAB and publishes the GitHub Release the
+# in-app updater checks.
 
 name: CI
 
