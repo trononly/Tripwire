@@ -1,6 +1,7 @@
-package analysis
+package suite
 
 import (
+	. "mpesa-analyzer/internal/analysis"
 	"testing"
 
 	"mpesa-analyzer/internal/txtype"

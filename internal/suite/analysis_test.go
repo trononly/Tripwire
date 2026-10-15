@@ -1,6 +1,7 @@
-package analysis
+package suite
 
 import (
+	. "mpesa-analyzer/internal/analysis"
 	"testing"
 
 	"mpesa-analyzer/internal/parser"
@@ -142,20 +143,20 @@ func TestFulizaAccessFeeIsAFee(t *testing.T) {
 
 func TestCategoryOf(t *testing.T) {
 	cases := map[string]string{
-		"Pay Bill Charge":                                   "Fees",
-		"Overdraft (Charge)":                                "Fees",
-		"Fuliza M-Pesa":                                     "Fees",
-		"Pay Bill Online to 888880 - KPLC":                  "Pay Bill",
-		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA":  "Buy Goods",
-		"Customer Transfer to - John":                       "Send Money",
-		"Funds received from - Calvin Kamara":               "Receive",
-		"Salary Payment from 504900 - NCBA":                 "Receive",
-		"Airtime Purchase":                                  "Airtime",
-		"Customer Bundle Purchase to 826915Safaricom":       "Bundles",
-		"BUNDLES by - 07******192":                          "Bundles",
-		"Agent Withdrawal":                                  "Withdraw",
-		"ZIIDI MMF by M-PESA\\UnitTrust":                    "Bank & Savings",
-		"Hello world":                                       "Other",
+		"Pay Bill Charge":                                  "Fees",
+		"Overdraft (Charge)":                               "Fees",
+		"Fuliza M-Pesa":                                    "Fees",
+		"Pay Bill Online to 888880 - KPLC":                 "Pay Bill",
+		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA": "Buy Goods",
+		"Customer Transfer to - John":                      "Send Money",
+		"Funds received from - Calvin Kamara":              "Receive",
+		"Salary Payment from 504900 - NCBA":                "Receive",
+		"Airtime Purchase":                                 "Airtime",
+		"Customer Bundle Purchase to 826915Safaricom":      "Bundles",
+		"BUNDLES by - 07******192":                         "Bundles",
+		"Agent Withdrawal":                                 "Withdraw",
+		"ZIIDI MMF by M-PESA\\UnitTrust":                   "Bank & Savings",
+		"Hello world":                                      "Other",
 	}
 	for desc, want := range cases {
 		if got := CategoryOf(desc); got != want {
@@ -166,12 +167,12 @@ func TestCategoryOf(t *testing.T) {
 
 func TestCounterpartyOf(t *testing.T) {
 	cases := map[string]string{
-		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA":   "FAITH NJOKI BACHIA",
-		"Funds received from - 07******752 Calvin Kamara":    "Calvin Kamara",
-		"Pay Bill Online to 888880 - KPLC":                   "KPLC",
+		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA":       "FAITH NJOKI BACHIA",
+		"Funds received from - 07******752 Calvin Kamara":        "Calvin Kamara",
+		"Pay Bill Online to 888880 - KPLC":                       "KPLC",
 		"Customer Transfer to - 2547******287 RICHARD NDAYIZEYE": "RICHARD NDAYIZEYE",
-		"Airtime Purchase":                                   "",
-		"Pay Bill Charge":                                    "",
+		"Airtime Purchase": "",
+		"Pay Bill Charge":  "",
 	}
 	for desc, want := range cases {
 		if got := CounterpartyOf(desc); got != want {
