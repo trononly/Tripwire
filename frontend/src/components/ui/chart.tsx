@@ -50,7 +50,7 @@ function ChartContainer({
   // Milliseconds to wait before re-measuring on container resize. Tuned to
   // sit just past the sidebar's 150ms width transition: nothing re-measures
   // while the sidebar animates, and the single re-measure lands the moment
-  // the toggle finishes — so charts never jank mid-animation but feel
+  // the toggle finishes - so charts never jank mid-animation but feel
   // immediate afterwards.
   debounce?: number;
 }) {

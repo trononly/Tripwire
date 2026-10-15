@@ -1,7 +1,8 @@
-package store
+package suite
 
 import (
 	"encoding/json"
+	. "mpesa-analyzer/internal/store"
 	"os"
 	"path/filepath"
 	"testing"

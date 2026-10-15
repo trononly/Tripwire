@@ -25,7 +25,7 @@ const TABS: { id: SendKind; label: string; icon: typeof SendIcon }[] = [
 ];
 
 /**
- * Send Money / Pochi La Biashara — number + amount. The automation service
+ * Send Money / Pochi La Biashara - number + amount. The automation service
  * fills the *334# menus step by step; the PIN stays in the phone dialog.
  */
 export default function Send() {
@@ -64,7 +64,7 @@ export default function Send() {
       return;
     }
     // From here on a dial happens, so this is the first point that may
-    // prompt for CALL_PHONE — nothing before it (FAB, form, panel) asks.
+    // prompt for CALL_PHONE - nothing before it (FAB, form, panel) asks.
     Events.Once("common:ussd", (ev) => {
       const data = ev.data as { ok: boolean; error?: string };
       if (!data?.ok) {

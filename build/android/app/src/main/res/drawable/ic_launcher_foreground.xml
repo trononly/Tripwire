@@ -2,7 +2,7 @@
 <!-- Launcher foreground: Tripwire mark on a FULL-BLEED card. The artwork
      fills the entire viewport corner-to-corner; the launcher masks it to
      circle/squircle/teardrop. The mark itself stays inside the safe zone,
-     so no mask shape clips it — only the plain card edges get clipped,
+     so no mask shape clips it - only the plain card edges get clipped,
      which is exactly what the mask is for. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"

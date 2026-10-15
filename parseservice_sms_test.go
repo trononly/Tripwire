@@ -100,7 +100,7 @@ func TestImportSmsTimezone(t *testing.T) {
 	if got := mk(&utc); got != "2026-09-12 11:53:00" {
 		t.Errorf("UTC: got %q, want 2026-09-12 11:53:00", got)
 	}
-	// nil falls back to the process local zone — compare against the same
+	// nil falls back to the process local zone - compare against the same
 	// conversion done here, so the test holds on any machine.
 	want := time.UnixMilli(ms).In(time.Local).Format("2006-01-02 15:04:05")
 	if got := mk(nil); got != want {
@@ -165,7 +165,7 @@ func TestImportSmsEmptyBatch(t *testing.T) {
 }
 
 // TestImportSmsResultRetention proves every result keeps its own original
-// SMS record: metadata, raw body, and generated transactions stay paired —
+// SMS record: metadata, raw body, and generated transactions stay paired -
 // including duplicate provider IDs, missing provider IDs, and every outcome
 // kind. The audit inspector depends on this pairing being exact.
 func TestImportSmsResultRetention(t *testing.T) {
@@ -509,7 +509,7 @@ func TestRefreshSimLabelsMigratesSubKeys(t *testing.T) {
 
 // TestRefreshSimLabelsKeepsClaimedSlotKeys ensures a subscription-keyed
 // record is renamed but never moved when its slot key is already taken by
-// another record — the older one stays as a snapshot.
+// another record - the older one stays as a snapshot.
 func TestRefreshSimLabelsKeepsClaimedSlotKeys(t *testing.T) {
 	tz := -180
 	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))

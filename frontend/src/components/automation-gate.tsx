@@ -9,7 +9,7 @@ import {
 
 /**
  * Live availability of the automation service. Rechecks when the page mounts
- * and whenever the app regains focus — e.g. the user returns from system
+ * and whenever the app regains focus - e.g. the user returns from system
  * Settings after enabling the service.
  */
 export function useAutomationAvailable() {

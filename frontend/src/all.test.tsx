@@ -1,0 +1,360 @@
+// The single home for every frontend test. One file on purpose: the suite
+// is small (pure lib functions plus one component render), and a single
+// file keeps the whole contract visible without hunting across folders.
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+
+import { Browser } from "@wailsio/runtime";
+import { TransactionList, formatAmount } from "@/components/transaction-list";
+import type { Group } from "@/components/transaction-list";
+import { typeStyle } from "@/lib/transaction-types";
+import type * as models from "../bindings/mpesa-analyzer/models";
+import { todayKey } from "@/lib/ads";
+import { SODA_URL, openExternalUrl } from "@/lib/external-url";
+import { parseHouseAds, pickHouseAd, type HouseAd } from "@/lib/house-ads";
+import {
+	compareVersions,
+	isNewerVersion,
+	normalizeVersion,
+	pickApkAsset,
+} from "@/lib/updater";
+import {
+	buildPaybillScript,
+	buildSendScript,
+	buildTillScript,
+	normalizePhone,
+} from "@/lib/ussd-menus";
+
+// Keep every other import of the Wails runtime intact; only the browser
+// opener is a spy so external-url stays testable off-device.
+vi.mock("@wailsio/runtime", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@wailsio/runtime")>()),
+	Browser: { OpenURL: vi.fn() },
+}));
+
+// --- ads ---
+
+const store = new Map<string, string>();
+vi.stubGlobal("localStorage", {
+	getItem: (k: string) => store.get(k) ?? null,
+	setItem: (k: string, v: string) => {
+		store.set(k, v);
+	},
+	removeItem: (k: string) => {
+		store.delete(k);
+	},
+	clear: () => store.clear(),
+});
+
+beforeEach(() => {
+	store.clear();
+});
+
+describe("ads", () => {
+	it("builds a local YYYY-MM-DD day key", () => {
+		expect(todayKey(new Date(2026, 9, 14))).toBe("2026-10-14");
+	});
+});
+
+// --- external-url ---
+
+describe("external-url", () => {
+	it("points the tip jar at buymesoda", () => {
+		expect(SODA_URL).toBe(
+			"https://buymesoda.com/cZxN2bSMZddvzVDzv4EXEgCdogo2",
+		);
+	});
+
+	it("opens the soda link without touching the app WebView", () => {
+		openExternalUrl(SODA_URL);
+		expect(Browser.OpenURL).toHaveBeenCalledWith(SODA_URL);
+	});
+});
+
+// --- house-ads ---
+
+const good = {
+	id: "acme",
+	title: "Acme",
+	text: "One line of sponsor copy.",
+	url: "https://acme.example/shop",
+};
+
+describe("house-ads", () => {
+	it("accepts a well-formed list", () => {
+		expect(parseHouseAds({ ads: [good] })).toEqual([good]);
+	});
+
+	it("rejects non-https, overlong, duplicate and malformed entries", () => {
+		const ads = parseHouseAds({
+			ads: [
+				good,
+				{ ...good, id: "http", url: "http://acme.example" },
+				{ ...good, id: "js", url: "javascript:alert(1)" },
+				{ ...good, id: "long", title: "x".repeat(61) },
+				{ ...good, id: "copycat" },
+				{ ...good, id: "acme" },
+				"nope",
+				null,
+			],
+		});
+		expect(ads).toEqual([good, { ...good, id: "copycat" }]);
+	});
+
+	it("returns [] for missing or malformed payloads", () => {
+		expect(parseHouseAds(null)).toEqual([]);
+		expect(parseHouseAds({})).toEqual([]);
+		expect(parseHouseAds({ ads: "nope" })).toEqual([]);
+	});
+
+	it("picks a stable card per day and null when empty", () => {
+		const list: HouseAd[] = [
+			good,
+			{ ...good, id: "b", title: "B" },
+			{ ...good, id: "c", title: "C" },
+		];
+		expect(pickHouseAd(list, "2026-10-13")).toEqual(
+			pickHouseAd(list, "2026-10-13"),
+		);
+		expect(pickHouseAd([], "2026-10-13")).toBeNull();
+	});
+});
+
+// --- updater ---
+
+describe("normalizeVersion", () => {
+	it("strips the tripwire- tag prefix", () => {
+		expect(normalizeVersion("tripwire-1.2.3")).toBe("1.2.3");
+	});
+
+	it("strips a v prefix", () => {
+		expect(normalizeVersion("v1.2.3")).toBe("1.2.3");
+	});
+
+	it("leaves bare versions alone", () => {
+		expect(normalizeVersion("1.2.3")).toBe("1.2.3");
+	});
+});
+
+describe("compareVersions", () => {
+	it("orders numerically, not lexicographically", () => {
+		expect(compareVersions("1.2.3", "1.2.10")).toBeLessThan(0);
+		expect(compareVersions("1.10.0", "1.2.0")).toBeGreaterThan(0);
+		expect(compareVersions("2.0.0", "1.9.9")).toBeGreaterThan(0);
+	});
+
+	it("treats missing segments as zero", () => {
+		expect(compareVersions("1.2", "1.2.0")).toBe(0);
+	});
+
+	it("sorts suffixed builds below the bare release", () => {
+		expect(compareVersions("1.2.3-debug", "1.2.3")).toBeLessThan(0);
+		expect(compareVersions("1.2.3", "1.2.3-debug")).toBeGreaterThan(0);
+	});
+});
+
+describe("isNewerVersion", () => {
+	it("detects a newer tripwire tag", () => {
+		expect(isNewerVersion("tripwire-1.2.3", "1.2.2")).toBe(true);
+	});
+
+	it("is false for the same or older versions", () => {
+		expect(isNewerVersion("tripwire-1.2.3", "1.2.3")).toBe(false);
+		expect(isNewerVersion("tripwire-1.2.3", "1.2.4")).toBe(false);
+	});
+
+	it("is false when either side is unknown", () => {
+		expect(isNewerVersion("", "1.2.3")).toBe(false);
+		expect(isNewerVersion("tripwire-1.2.4", "")).toBe(false);
+	});
+});
+
+describe("pickApkAsset", () => {
+	it("prefers the official Tripwire APK over other apks", () => {
+		const assets = [
+			{ name: "other.apk", browser_download_url: "u1", size: 1 },
+			{ name: "Tripwire-1.2.3.apk", browser_download_url: "u2", size: 2 },
+		];
+		expect(pickApkAsset(assets)?.browser_download_url).toBe("u2");
+	});
+
+	it("skips debug-signed builds when a release build exists", () => {
+		const assets = [
+			{ name: "Tripwire-1.2.3-debug.apk", browser_download_url: "u1", size: 1 },
+			{ name: "Tripwire-1.2.3.apk", browser_download_url: "u2", size: 2 },
+		];
+		expect(pickApkAsset(assets)?.browser_download_url).toBe("u2");
+	});
+
+	it("falls back to any apk when nothing official matches", () => {
+		const assets = [
+			{ name: "app-release.apk", browser_download_url: "u1", size: 1 },
+		];
+		expect(pickApkAsset(assets)?.browser_download_url).toBe("u1");
+	});
+
+	it("returns null when there is no apk", () => {
+		expect(
+			pickApkAsset([{ name: "Tripwire-1.2.3.aab", browser_download_url: "u", size: 1 }]),
+		).toBeNull();
+		expect(pickApkAsset([])).toBeNull();
+	});
+});
+
+// --- ussd-menus ---
+
+describe("ussd-menus", () => {
+	it("builds a send script ending in PIN-stop + confirm", () => {
+		const s = buildSendScript("send", "0722123456", "500");
+		expect(s?.kind).toBe("send");
+		expect(s?.version).toBe(1);
+		expect(s?.steps.map((st) => st.input)).toEqual([
+			"1",
+			"1",
+			"0722123456",
+			"500",
+			"1",
+		]);
+	});
+
+	it("builds a pochi script selecting option 3", () => {
+		const s = buildSendScript("pochi", "0722123456", "500");
+		expect(s?.kind).toBe("pochi");
+		expect(s?.steps[1]).toMatchObject({ input: "3" });
+	});
+
+	it("normalizes 254-prefixed numbers", () => {
+		expect(normalizePhone("254722123456")).toBe("0722123456");
+		expect(normalizePhone("+254722123456")).toBe("0722123456");
+		expect(normalizePhone("12345")).toBe("");
+	});
+
+	it("rejects invalid send input", () => {
+		expect(buildSendScript("send", "12345", "500")).toBeNull();
+		expect(buildSendScript("send", "0722123456", "0")).toBeNull();
+		expect(buildSendScript("send", "0722123456", "5000001")).toBeNull();
+	});
+
+	it("builds paybill and till scripts", () => {
+		const p = buildPaybillScript("123456", "rent", "1000");
+		expect(p?.steps.map((st) => st.input)).toEqual([
+			"6",
+			"1",
+			"123456",
+			"rent",
+			"1000",
+			"1",
+		]);
+		const t = buildTillScript("543210", "250");
+		expect(t?.steps.map((st) => st.input)).toEqual([
+			"6",
+			"2",
+			"543210",
+			"250",
+			"1",
+		]);
+		expect(buildPaybillScript("12", "rent", "1000")).toBeNull();
+		expect(buildTillScript("12", "250")).toBeNull();
+	});
+
+	it("rejects USSD control chars in account names", () => {
+		expect(buildPaybillScript("123456", "a*b#c", "100")).toBeNull();
+	});
+});
+
+// --- TransactionList ---
+
+// Rows shaped exactly like the Wails bindings (TransactionView): the UI
+// stays dumb about semantics - icon, title and subtitle come straight from
+// the pre-computed `type` and `counterparty` fields, amounts stay signed
+// integer cents.
+type Row = NonNullable<
+	NonNullable<models.DayGroup>["txs"]
+>[number];
+
+function row(overrides: Partial<Row>): Row {
+	return {
+		id: "R1",
+		date: "2026-04-28 14:22:05",
+		description: "Merchant Payment to 7408526 - FAITH NJOKI BACHIA",
+		status: "Completed",
+		amount: -245000,
+		balance: 1000000,
+		category: "Buy Goods",
+		type: "till",
+		counterparty: "FAITH NJOKI BACHIA",
+		...overrides,
+	};
+}
+
+const groups: Group[] = [
+	{
+		dayKey: "2026-04-28",
+		endBalance: 1000000,
+		txs: [
+			row({ id: "R1", amount: -245000, type: "till", counterparty: "FAITH NJOKI BACHIA" }),
+			row({
+				id: "R2",
+				description: "Customer Transfer to - JOHN DOE",
+				amount: -50000,
+				type: "send_money",
+				counterparty: "JOHN DOE",
+				category: "Send Money",
+			}),
+			row({
+				id: "R3",
+				description: "Airtime Purchase",
+				amount: -50000,
+				type: "airtime",
+				counterparty: "",
+				category: "Airtime",
+			}),
+			row({
+				id: "R4",
+				description: "Send Money Reversal via API from - HARDEEP SINGH",
+				amount: 50000,
+				type: "reversal",
+				counterparty: "HARDEEP SINGH",
+				category: "Other",
+			}),
+		],
+	},
+];
+
+describe("TransactionList", () => {
+	it("renders the counterparty as the primary line", () => {
+		render(<TransactionList groups={groups} showPagination={false} />);
+		expect(screen.getByText("FAITH NJOKI BACHIA")).toBeInTheDocument();
+		expect(screen.getByText("JOHN DOE")).toBeInTheDocument();
+		expect(screen.getByText("HARDEEP SINGH")).toBeInTheDocument();
+	});
+
+	it("falls back to the type label when no counterparty exists", () => {
+		render(<TransactionList groups={groups} showPagination={false} />);
+		// "Airtime Purchase" names no counterparty: primary is the type label,
+		// and the type label is not duplicated in the subtitle.
+		expect(screen.getByText("Airtime")).toBeInTheDocument();
+		expect(screen.queryByText("Airtime · 14:22")).not.toBeInTheDocument();
+	});
+
+	it("shows the type label with time as the subtitle", () => {
+		render(<TransactionList groups={groups} showPagination={false} />);
+		expect(screen.getByText("Buy Goods · 14:22")).toBeInTheDocument();
+		expect(screen.getByText("Send Money · 14:22")).toBeInTheDocument();
+	});
+
+	it("maps types to distinct icons via plain lookup", () => {
+		expect(typeStyle("till").icon).not.toBe(typeStyle("send_money").icon);
+		expect(typeStyle("paybill").label).toBe("Pay Bill");
+		expect(typeStyle("fuliza").label).toBe("Fuliza");
+		expect(typeStyle("reversal").label).toBe("Reversal");
+		// Unknown future types degrade gracefully instead of crashing.
+		expect(typeStyle("something_new").label).toBe("Other");
+	});
+
+	it("renders signed amounts from integer cents without floats", () => {
+		expect(formatAmount(-245000)).toBe("-KES 2,450.00");
+		expect(formatAmount(50000)).toBe("+KES 500.00");
+	});
+});

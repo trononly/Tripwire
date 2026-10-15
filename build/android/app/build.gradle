@@ -16,8 +16,14 @@ android {
         targetSdk 35
         // Release CI overrides these from the git tag
         // (ANDROID_VERSION_CODE / ANDROID_VERSION_NAME); local builds keep
-        // the defaults below.
-        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        // the defaults below. Assign via a def first: in
+        // `versionCode (getenv(...) ?: "1").toInteger()` the .toInteger()
+        // binds only to the "1" fallback (operator precedence), so a set
+        // env var arrives as a raw String, matches no setter, and fails
+        // evaluation with "Value is null" - exactly the CI case, while
+        // local builds (vars unset) silently take the int fallback and work.
+        def ciVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").trim()
+        versionCode ciVersionCode.toInteger()
         versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
 
         // Configure supported ABIs

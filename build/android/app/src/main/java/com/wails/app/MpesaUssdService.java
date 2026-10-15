@@ -16,15 +16,15 @@ import org.json.JSONObject;
  * <p>How it works: the app dials plain {@code *334#}; this service watches
  * the system phone dialog, matches each prompt against the armed
  * {@link UssdSession} (one step at a time, in order), types the value and
- * taps Send — phone number, amounts, paybill details, and the final
+ * taps Send - phone number, amounts, paybill details, and the final
  * "1 = Yes" confirmation. The receipt still arrives via the SMS catcher.
  *
  * <p>Hard rules (non-negotiable):
  * <ul>
  *   <li>PIN is never touched: a PIN/secret prompt stops the service (no
  *       setText, no scraping). It stays armed and silent until the next
- *       non-PIN prompt — the user types the PIN manually in the phone
- *       dialog — or the session times out.</li>
+ *       non-PIN prompt - the user types the PIN manually in the phone
+ *       dialog - or the session times out.</li>
  *   <li>User-initiated only: acts solely while a session is armed by an
  *       in-app tap, and disarms on completion, abort, or timeout (~90s).</li>
  *   <li>Least privilege: only touches phone/dialer windows; every other
@@ -36,7 +36,7 @@ import org.json.JSONObject;
  *
  * <p>Progress is reported to the frontend as {@code common:ussd-auto}
  * events: {state:"step"|"awaiting-pin"|"complete"|"aborted",
- * step?, steps?, reason?}. "complete" means every value was entered — the
+ * step?, steps?, reason?}. "complete" means every value was entered - the
  * payment itself is only confirmed by the SMS receipt, never by us.
  *
  * <p>Note on filtering: the service config intentionally lists no packages
@@ -240,7 +240,7 @@ public class MpesaUssdService extends AccessibilityService {
 
             // Dialog still loading (spinner / "please wait", common on weak
             // networks): wait for the real prompt. Not an error, and not an
-            // unknown prompt — leave the streak alone.
+            // unknown prompt - leave the streak alone.
             if (isLoading(norm, root)) return;
 
             // PIN screen: stop. Stay armed for the post-PIN confirmation

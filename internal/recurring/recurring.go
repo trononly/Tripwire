@@ -2,7 +2,7 @@
 // statements: bills, subscriptions, rent, loan instalments, standing
 // transfers and similar periodic outflows.
 //
-// The detector is deterministic and explainable — no ML, no hidden state.
+// The detector is deterministic and explainable - no ML, no hidden state.
 // It groups eligible outgoing payments by counterparty, measures the gaps
 // between consecutive payment dates, and qualifies a group only when:
 //
@@ -12,12 +12,12 @@
 //  3. the gaps are regular enough for that cadence (measured with the
 //     median absolute deviation, MAD), and
 //  4. no single gap is an inactivity break (more than gapOutlierFactor
-//     times the median gap) — the one failure mode median/MAD statistics
+//     times the median gap) - the one failure mode median/MAD statistics
 //     are structurally blind to.
 //
 // Amounts are summarized (median/min/max) but deliberately do not gate
-// qualification, because many genuine recurring bills — utilities, school
-// fees, variable loan instalments — change amount from cycle to cycle.
+// qualification, because many genuine recurring bills - utilities, school
+// fees, variable loan instalments - change amount from cycle to cycle.
 package recurring
 
 import (
@@ -40,9 +40,9 @@ const minOccurrences = 3
 
 // gapOutlierFactor is how many times the median gap a single gap may span
 // before it is treated as an inactivity break rather than a late payment.
-// Three tolerates common real-world lapses — a weekly payment skipped once
+// Three tolerates common real-world lapses - a weekly payment skipped once
 // (14 days against a 21-day ceiling), a monthly bill skipped one cycle
-// (60 against 90) — while rejecting the "weekly for a while, then silent
+// (60 against 90) - while rejecting the "weekly for a while, then silent
 // for months" pattern that median/MAD statistics alone accept.
 const gapOutlierFactor = 3
 
@@ -76,7 +76,7 @@ type timedTx struct {
 // deterministic output.
 //
 // The function never returns an error because it has no failure path: it
-// is total over its input space, and every input — including nil — maps to
+// is total over its input space, and every input - including nil - maps to
 // a well-defined deterministic result. That is not the same as claiming it
 // "cannot fail" in a broader sense: it silently filters ineligible
 // transactions (non-outgoing, counterparty-less, unparseable-date rows)
@@ -134,7 +134,7 @@ func groupByCounterparty(transactions []parser.Transaction) map[string][]timedTx
 // A group qualifies when (a) it has enough payments for the cadence,
 // (b) its median gap matches a cadence window, (c) its gaps are regular
 // enough for that cadence (MAD), and (d) no single gap is an inactivity
-// break — a gap more than gapOutlierFactor times the median gap. The
+// break - a gap more than gapOutlierFactor times the median gap. The
 // last check exists because median/MAD are structurally blind to a lone
 // outlier gap: gaps [7, 7, 190] yield median 7 and MAD 0, yet the
 // payments are two coincidentally similar periods around a six-month
@@ -147,7 +147,7 @@ func groupByCounterparty(transactions []parser.Transaction) map[string][]timedTx
 // trimming, already done by analysis.CounterpartyOf. Case-folding or
 // stripping punctuation would merge names like "JOHN DOE" and "John Doe",
 // which is usually the same person but occasionally two different tills or
-// accounts that happen to share a display name — the risk of merging
+// accounts that happen to share a display name - the risk of merging
 // genuinely distinct counterparties outweighs the recall gain.
 func analyzeGroup(txs []timedTx) (RecurringPayment, bool) {
 	if len(txs) < minOccurrences {
@@ -197,7 +197,7 @@ func analyzeGroup(txs []timedTx) (RecurringPayment, bool) {
 // almost always one kind; the vote just resolves the rare mixed group
 // (e.g. a payee paid both by Pay Bill and by merchant payment). Ties are
 // broken alphabetically so the result stays deterministic. Never guesses
-// from the counterparty string — only from the statement descriptions.
+// from the counterparty string - only from the statement descriptions.
 func majorityType(txs []timedTx) string {
 	counts := make(map[txtype.TransactionType]int)
 	for _, t := range txs {

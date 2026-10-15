@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SmsImportInspector } from "@/components/sms-import-inspector";
 
 /**
- * SMS — the source-data view, mobile only: import M-Pesa texts, see the
+ * SMS - the source-data view, mobile only: import M-Pesa texts, see the
  * parsed/skipped breakdown, and audit what the parser made of each message.
  * Importing saves straight into the regular store and switches the app
  * into SMS mode; the financial views stay on Dashboard and Transactions.

@@ -22,7 +22,7 @@ export interface ReleaseInfo {
 	version: string;
 	/** Release title, e.g. "Tripwire 1.2.3". */
 	title: string;
-	/** Release body — shown verbatim as "What's new". */
+	/** Release body - shown verbatim as "What's new". */
 	notes: string;
 	/** Direct download URL of the Tripwire-*.apk asset. */
 	apkUrl: string;

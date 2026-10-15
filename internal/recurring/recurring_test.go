@@ -352,7 +352,7 @@ func TestDetectRecurringPaymentsInactivityBreaks(t *testing.T) {
 		days    []int
 		wantGot bool
 	}{
-		// The known failure case: gaps [7, 7, 190] — median 7, MAD 0 — must
+		// The known failure case: gaps [7, 7, 190] - median 7, MAD 0 - must
 		// not qualify as weekly.
 		{"break in the middle", []int{1, 8, 15, 205}, false},
 		{"break in the tail: long-silent then one resumption payment", []int{0, 7, 14, 204}, false},
@@ -442,5 +442,129 @@ func TestRecurringPaymentsCarryType(t *testing.T) {
 	}
 	if found[0].Type != "paybill" {
 		t.Errorf("type = %q, want %q", found[0].Type, "paybill")
+	}
+}
+
+func TestClassifyCadence(t *testing.T) {
+	cases := []struct {
+		medianGap int64
+		want      string
+		wantOK    bool
+	}{
+		{0, "", false},
+		{4, "", false},
+		{5, "weekly", true},
+		{7, "weekly", true},
+		{9, "weekly", true},
+		{10, "", false}, // dead zone: 10-day pattern is not "close enough" to weekly
+		{11, "bi-weekly", true},
+		{14, "bi-weekly", true},
+		{17, "bi-weekly", true},
+		{18, "", false},
+		{23, "monthly", true},
+		{30, "monthly", true},
+		{37, "monthly", true},
+		{38, "", false},
+		{76, "quarterly", true},
+		{90, "quarterly", true},
+		{104, "quarterly", true},
+		{105, "", false},
+		{365, "", false},
+	}
+	for _, tc := range cases {
+		rule, ok := classifyCadence(tc.medianGap)
+		if ok != tc.wantOK || (ok && rule.name != tc.want) {
+			t.Errorf("classifyCadence(%d) = %q, %v; want %q, %v", tc.medianGap, rule.name, ok, tc.want, tc.wantOK)
+		}
+	}
+}
+
+func TestCadenceToleranceGrowsWithCadence(t *testing.T) {
+	// The same absolute deviation is less significant for longer cycles,
+	// so the MAD allowance must be non-decreasing across the table.
+	for i := 1; i < len(cadenceRules); i++ {
+		if cadenceRules[i].maxMAD < cadenceRules[i-1].maxMAD {
+			t.Errorf("cadence %q maxMAD %d < %q maxMAD %d",
+				cadenceRules[i].name, cadenceRules[i].maxMAD,
+				cadenceRules[i-1].name, cadenceRules[i-1].maxMAD)
+		}
+		if cadenceRules[i].minGap <= cadenceRules[i-1].maxGap {
+			t.Errorf("cadence windows overlap: %q and %q", cadenceRules[i-1].name, cadenceRules[i].name)
+		}
+	}
+	for _, r := range cadenceRules {
+		if r.minCount < minOccurrences {
+			t.Errorf("cadence %q minCount %d below absolute floor %d", r.name, r.minCount, minOccurrences)
+		}
+	}
+}
+
+func TestMedianOdd(t *testing.T) {
+	got, ok := median([]int64{9, 1, 5})
+	if !ok || got != 5 {
+		t.Errorf("median([9,1,5]) = %d, %v; want 5, true", got, ok)
+	}
+}
+
+func TestMedianEvenRoundsHalfUp(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []int64
+		want int64
+	}{
+		{"two values exact", []int64{1, 3}, 2},
+		{"two values .5 rounds up", []int64{2, 3}, 3},
+		{"four values .5 rounds up", []int64{1, 2, 3, 4}, 3},
+		{"four values exact", []int64{10, 20, 30, 40}, 25},
+		{"duplicates", []int64{7, 7, 7, 7}, 7},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := median(tc.in)
+			if !ok || got != tc.want {
+				t.Errorf("median(%v) = %d, %v; want %d, true", tc.in, got, ok, tc.want)
+			}
+		})
+	}
+}
+
+func TestMedianEmpty(t *testing.T) {
+	if _, ok := median(nil); ok {
+		t.Error("median(nil) should report !ok")
+	}
+}
+
+func TestMedianDoesNotMutateInput(t *testing.T) {
+	in := []int64{3, 1, 2}
+	median(in)
+	if in[0] != 3 || in[1] != 1 || in[2] != 2 {
+		t.Errorf("median mutated its input: %v", in)
+	}
+}
+
+func TestMedianAbsoluteDeviation(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []int64
+		want int64
+	}{
+		{"one outlier among equals", []int64{0, 7, 7, 7}, 0},
+		{"symmetric spread", []int64{4, 7, 10}, 3},
+		{"tight", []int64{6, 8, 6, 8}, 1},
+		{"single value", []int64{42}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := medianAbsoluteDeviation(tc.in)
+			if !ok || got != tc.want {
+				t.Errorf("MAD(%v) = %d, %v; want %d, true", tc.in, got, ok, tc.want)
+			}
+		})
+	}
+}
+
+func TestMedianAbsoluteDeviationEmpty(t *testing.T) {
+	if _, ok := medianAbsoluteDeviation(nil); ok {
+		t.Error("MAD(nil) should report !ok")
 	}
 }

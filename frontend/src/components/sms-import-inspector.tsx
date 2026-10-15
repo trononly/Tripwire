@@ -66,7 +66,7 @@ function kindIcon(kind: string) {
 }
 
 /** Plain-text audit report of exactly the rows on screen: counts plus
- * every message with its outcome, raw body and generated transactions —
+ * every message with its outcome, raw body and generated transactions -
  * sized for pasting into another agent/tool for investigation. Parsed
  * messages are capped to keep the report pasteable. */
 function buildReport(
@@ -288,7 +288,7 @@ export function SmsImportInspector({
       </Drawer>
 
       {/* One-line rows, windowed; tap to expand inline like the
-          Transactions list — no fullscreen takeover. */}
+          Transactions list - no fullscreen takeover. */}
       <div className="overflow-hidden rounded-md border">
         {filtered.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted-foreground">

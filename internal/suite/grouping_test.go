@@ -1,6 +1,7 @@
-package analysis
+package suite
 
 import (
+	. "mpesa-analyzer/internal/analysis"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestSplitTransactionFallbacks(t *testing.T) {
 		Status:      "Completed", Amount: -500, Balance: 44679,
 	}
 	name, ref = SplitTransaction(long)
-	if len([]rune(name)) > maxNameLen || !strings.HasSuffix(name, "…") {
+	if len([]rune(name)) > MaxNameLen || !strings.HasSuffix(name, "…") {
 		t.Errorf("long name not truncated: %q (%d runes)", name, len([]rune(name)))
 	}
 	if ref != "123456" {
@@ -86,7 +87,7 @@ func TestSplitTransactionFallbacks(t *testing.T) {
 		Status: "Completed", Amount: -500, Balance: 44679,
 	}
 	_, ref = SplitTransaction(longID)
-	if len([]rune(ref)) > maxRefLen || !strings.HasSuffix(ref, "…") {
+	if len([]rune(ref)) > MaxRefLen || !strings.HasSuffix(ref, "…") {
 		t.Errorf("long ref not truncated: %q (%d runes)", ref, len([]rune(ref)))
 	}
 }

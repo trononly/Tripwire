@@ -182,7 +182,7 @@ export default function Settings({
   const smsRecords = statements.filter((s) => s.source === "sms");
   const statementRecords = statements.filter((s) => s.source !== "sms");
   // Opening Settings re-resolves carrier names for wallets imported
-  // without phone-state access — but only when that access is already
+  // without phone-state access - but only when that access is already
   // granted. Read-only: never prompts.
   useEffect(() => {
     onRefreshSimNames();
@@ -220,47 +220,6 @@ export default function Settings({
                 <ArrowRight />
               </Link>
             </Button>
-          </CardContent>
-        </Card>
-      )}
-      {isAndroid && (
-        <Card>
-          <CardHeader>
-            <CardTitle>App updates</CardTitle>
-            <CardDescription>
-              {updater.current
-                ? `Tripwire ${updater.current} installed`
-                : "Tripwire"}
-              {updater.status === "checking"
-                ? " — checking…"
-                : updater.status === "available" && updater.release
-                  ? ` — ${updater.release.version} ready`
-                  : updater.status === "up-to-date"
-                    ? " — you're up to date"
-                    : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {updater.status === "error" && updater.error && (
-              <p className="text-sm text-destructive">{updater.error}</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => updater.check(true)}
-                disabled={updater.status === "checking"}
-              >
-                {updater.status === "checking"
-                  ? "Checking…"
-                  : "Check for updates"}
-              </Button>
-              {updater.status === "available" && updater.release && (
-                <Button size="sm" onClick={updater.reopen}>
-                  View update
-                </Button>
-              )}
-            </div>
           </CardContent>
         </Card>
       )}
@@ -405,6 +364,47 @@ export default function Settings({
                 Test arrival announcement
               </Button>
             )}
+          </CardContent>
+        </Card>
+      )}
+      {isAndroid && (
+        <Card>
+          <CardHeader>
+            <CardTitle>App updates</CardTitle>
+            <CardDescription>
+              {updater.current
+                ? `Tripwire ${updater.current} installed`
+                : "Tripwire"}
+              {updater.status === "checking"
+                ? " - checking…"
+                : updater.status === "available" && updater.release
+                  ? ` - ${updater.release.version} ready`
+                  : updater.status === "up-to-date"
+                    ? " - you're up to date"
+                    : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {updater.status === "error" && updater.error && (
+              <p className="text-sm text-destructive">{updater.error}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updater.check(true)}
+                disabled={updater.status === "checking"}
+              >
+                {updater.status === "checking"
+                  ? "Checking…"
+                  : "Check for updates"}
+              </Button>
+              {updater.status === "available" && updater.release && (
+                <Button size="sm" onClick={updater.reopen}>
+                  View update
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

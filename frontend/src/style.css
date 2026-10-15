@@ -88,7 +88,7 @@
     --sidebar-ring: oklch(0.723 0.014 214.4);
     /* App palette (single source: zinc surfaces, rose brand, semantic money
        in/out). Usage: bg-surface, bg-brand, text-money-in, text-money-out.
-       Green is data-status only (inflow, surplus) — never a control. */
+       Green is data-status only (inflow, surplus) - never a control. */
     --surface: oklch(1 0 0);
     --brand: #F04A48;
     --money-in: #10b981;
@@ -169,7 +169,7 @@ button {
 
 @layer components {
     /* Sleek square toggle tile: the single active-state language app-wide.
-       Inactive is a quiet bordered tile; active is a subtle rose tint —
+       Inactive is a quiet bordered tile; active is a subtle rose tint -
        clear without blinding. Green stays reserved for data status
        (inflow amounts, bars, surplus badges), never controls. */
     .tile {

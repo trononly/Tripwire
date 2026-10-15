@@ -1,12 +1,8 @@
-// M-PESA *334# menu map — owner-confirmed 2026-10-13 (English handset).
+// M-PESA *334# menu map - owner-confirmed 2026-10-13 (English handset).
 // The app dials plain *334# (Safaricom drops stacked suffixes) and the
 // Android automation service walks the live menus step by step, stopping at
 // the PIN screen. Hardcoded option numbers below are the MVP: if Safaricom
-// renumbers, the service's step matcher + parseMenuOption() resolve the
-// number before the matched text instead. Editing data here must never
-// require service changes.
-
-export const USSD_MENU_VERSION = 1;
+// renumbers, update them here - no service changes needed.
 
 export const USSD_MENUS = {
   root: "*334#",
@@ -150,25 +146,5 @@ export function buildTillScript(
 /**
  * Same rule the service applies live: given a full USSD prompt, return the
  * option number before the matched label ("3. Pochi…" + ["pochi"] → "3").
- * Null when nothing matches — the service aborts instead of guessing.
+ * Null when nothing matches - the service aborts instead of guessing.
  */
-export function parseMenuOption(
-  promptText: string,
-  keywords: string[],
-): string | null {
-  const lines = promptText.split(/\r?\n/);
-  const keys = keywords.map((k) => k.toLowerCase());
-  for (const line of lines) {
-    const m = line.match(/^\s*(\d+)\s*[.)\-:]\s*(.+)$/);
-    if (!m) continue;
-    const label = m[2].toLowerCase();
-    if (keys.some((k) => label.includes(k))) return m[1];
-  }
-  // Fallback: number directly before the keyword anywhere ("1 FOR Yes").
-  const flat = promptText.toLowerCase();
-  for (const k of keys) {
-    const m = flat.match(new RegExp(`(\\d+)\\s*(?:for|\\.|\\-)\\s*${k}`));
-    if (m) return m[1];
-  }
-  return null;
-}

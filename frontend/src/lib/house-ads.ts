@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { todayKey } from "@/lib/ads";
 
 /**
- * House ads — sponsor cards curated by you, no ad SDK involved.
+ * House ads - sponsor cards curated by you, no ad SDK involved.
  *
  * To add a sponsor, append to docs/sponsors.json (published to main):
  *
@@ -17,7 +17,7 @@ import { todayKey } from "@/lib/ads";
  * cards. The app fetches the file at most once per day, caches the last
  * good copy in localStorage (offline-safe), and rotates one card per day.
  * Empty list (or offline with nothing cached) renders the "Advertise here"
- * fallback instead — never a blank hole.
+ * fallback instead - never a blank hole.
  */
 
 export interface HouseAd {
@@ -66,7 +66,7 @@ function hashStr(s: string): number {
   return h;
 }
 
-/** Deterministic daily rotation — stable all day, no blank days. */
+/** Deterministic daily rotation - stable all day, no blank days. */
 export function pickHouseAd(
   ads: HouseAd[],
   dateStr: string,

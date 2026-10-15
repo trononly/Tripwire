@@ -1,7 +1,8 @@
-package sms
+package suite
 
 import (
 	"errors"
+	. "mpesa-analyzer/internal/sms"
 	"os"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ import (
 // fixture reads one stored real SMS sample.
 func fixture(t *testing.T, name string) string {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/" + name)
+	raw, err := os.ReadFile("../sms/testdata/" + name)
 	if err != nil {
 		t.Fatalf("fixture %s: %v", name, err)
 	}
@@ -24,7 +25,7 @@ func fixture(t *testing.T, name string) string {
 // full transaction contract (ID, Date, Amount, Balance, Status,
 // Description, charge rows) plus the integration contract: the generated
 // description must classify correctly under the EXISTING txtype
-// classifier — no SMS-specific classification exists.
+// classifier - no SMS-specific classification exists.
 func TestRealSamples(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -471,7 +472,7 @@ func TestRealFormatExpansion(t *testing.T) {
 }
 
 // TestFuliza covers the three sample-backed Fuliza shapes. Fuliza SMS carry
-// no d/m/yy transaction timestamp, so Date is left empty here — ImportSms
+// no d/m/yy transaction timestamp, so Date is left empty here - ImportSms
 // overwrites it with the SMS received time. Each generated description must
 // classify correctly under the existing txtype classifier.
 func TestFuliza(t *testing.T) {
@@ -541,7 +542,7 @@ func TestFuliza(t *testing.T) {
 }
 
 // TestFulizaPairedReceipts documents the paired-message case: one M-Pesa
-// send produces two SMS under one receipt number — the send-money SMS and
+// send produces two SMS under one receipt number - the send-money SMS and
 // the Fuliza disbursement SMS. The "-F" suffix keeps their transaction IDs
 // distinct so the import dedup (keyed by tx.ID) keeps both.
 func TestFulizaPairedReceipts(t *testing.T) {
