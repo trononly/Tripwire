@@ -141,6 +141,58 @@ func TestFulizaAccessFeeIsAFee(t *testing.T) {
 	}
 }
 
+// TestFeesByTypeFuliza locks in the Insights fee-radar split: the Fuliza
+// access fee gets its own row rather than dissolving into the total.
+func TestFeesByTypeFuliza(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-10-15 09:50:00", "Fuliza Access Fee", -90, -22938),
+		tx("2026-10-15 14:40:00", "Fuliza Access Fee", -62, -29200),
+		tx("2026-10-15 14:40:00", "Pay Bill Charge", -500, 0),
+		tx("2026-10-15 14:40:00", "Merchant Payment to - SHOP", -6200, 0),
+	}
+	got := FeesByType(txs)
+	byKey := map[string]FeeTotal{}
+	for _, f := range got {
+		byKey[f.Key] = f
+	}
+	fuliza, ok := byKey["fuliza"]
+	if !ok || fuliza.Amount != 152 || fuliza.Count != 2 {
+		t.Errorf("fuliza breakdown wrong: %+v", byKey)
+	}
+	if paybill, ok := byKey["paybill"]; !ok || paybill.Amount != 500 || paybill.Count != 1 {
+		t.Errorf("paybill breakdown wrong: %+v", byKey)
+	}
+	if len(got) != 2 || got[0].Key != "paybill" {
+		t.Errorf("breakdown should sort largest first, got %+v", got)
+	}
+}
+
+// TestFulizaOutstanding locks in the debt estimate: the latest stated
+// outstanding (fee already folded in by Safaricom) minus repayments after
+// it. The October thread ends owing 292.00 with no later repayment.
+func TestFulizaOutstanding(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-10-15 07:34:00", "Funds received from - SIMON", 20000, 20000),
+		tx("2026-10-15 08:00:00", "Fuliza Repayment - Partially Paid", -20000, 0),
+		tx("2026-10-15 09:50:00", "Fuliza Access Fee", -90, -22938),
+		tx("2026-10-15 14:40:00", "Fuliza Access Fee", -62, -29200),
+	}
+	if got := FulizaOutstanding(txs); got != 29200 {
+		t.Errorf("FulizaOutstanding = %d, want 29200", got)
+	}
+
+	// A repayment after the latest disbursement reduces the estimate.
+	later := append(append([]parser.Transaction{}, txs...),
+		tx("2026-10-16 08:00:00", "Fuliza Repayment - Partially Paid", -10000, 0))
+	if got := FulizaOutstanding(later); got != 19200 {
+		t.Errorf("FulizaOutstanding after repay = %d, want 19200", got)
+	}
+
+	if got := FulizaOutstanding(nil); got != 0 {
+		t.Errorf("FulizaOutstanding with no disbursement = %d, want 0", got)
+	}
+}
+
 func TestCategoryOf(t *testing.T) {
 	cases := map[string]string{
 		"Pay Bill Charge":                                  "Fees",

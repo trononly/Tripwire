@@ -42,6 +42,11 @@ type AnalysisResult struct {
 	Categories        []CategoryTotal              `json:"categories"`
 	TopCounterparties []Counterparty               `json:"topCounterparties"`
 	RecurringPayments []recurring.RecurringPayment `json:"recurringPayments"`
+	FeesByType        []FeeTotal                   `json:"feesByType"`
+	// FulizaOutstanding is the estimated current Fuliza debt in positive
+	// cents (0 when no disbursement exists). See FulizaOutstanding: the
+	// latest stated outstanding minus later repayments.
+	FulizaOutstanding int64 `json:"fulizaOutstanding"`
 }
 
 // Analyze computes the full analysis for a set of transactions.
@@ -72,5 +77,7 @@ func Analyze(transactions []parser.Transaction) (*AnalysisResult, error) {
 		Categories:        Categorize(transactions),
 		TopCounterparties: TopCounterparties(transactions, 8),
 		RecurringPayments: recurring.DetectRecurringPayments(transactions),
+		FeesByType:        FeesByType(transactions),
+		FulizaOutstanding: FulizaOutstanding(transactions),
 	}, nil
 }

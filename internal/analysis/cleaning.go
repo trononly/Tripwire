@@ -52,6 +52,10 @@ var shortNames = map[string]string{
 	"atm deposit":                        "Deposit",
 	"fuliza m-pesa":                      "Fuliza",
 	"fuliza remittance to mobile wallet": "Fuliza",
+	"fuliza access fee":                  "Fuliza fee",
+	"fuliza repayment - fully paid":      "Fuliza repaid",
+	"fuliza repayment - partially paid":  "Fuliza partial",
+	"fuliza repayment":                   "Fuliza",
 }
 
 // boilerPrefixes are leading phrases dropped when no counterparty shape
