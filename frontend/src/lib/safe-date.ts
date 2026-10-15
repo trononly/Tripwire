@@ -15,18 +15,6 @@ function toDate(time: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/** Safely format a "YYYY-MM-DD" (or backend datetime) string to a short date label.
- * Returns "-" for invalid input. */
-export function safeFormatDay(time: string | undefined | null): string {
-  if (!time) return "-";
-  const d = toDate(time);
-  if (!d) return "-";
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
 /** Safely format a date with year for tooltips. */
 export function safeFormatFull(time: string | undefined | null): string {
   if (!time) return "-";
@@ -48,12 +36,4 @@ export function safeFormatTick(time: string | undefined | null): string {
     day: "numeric",
     month: "short",
   });
-}
-
-/** Extract "YYYY-MM-DD" from any date string safely. */
-export function safeDayOf(dateTime: string | undefined | null): string {
-  if (!dateTime) return "";
-  const d = toDate(dateTime);
-  if (!d) return "";
-  return dateTime.slice(0, 10);
 }
