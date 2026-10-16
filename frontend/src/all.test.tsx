@@ -2,18 +2,20 @@
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
+import { filterGroups } from "@/lib/transaction-filter";
 import {
   counterpartyDisplayName,
-  counterpartyLabelLines,
-} from "@/components/charts/counterparty-chart";
+  CounterpartyCard,
+} from "@/components/counterparty-card";
 import type * as models from "../bindings/mpesa-analyzer/models";
+import type * as analysis from "../bindings/mpesa-analyzer/internal/analysis/models";
 import { todayKey } from "@/lib/ads";
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import { parseHouseAds, pickHouseAd, type HouseAd } from "@/lib/house-ads";
@@ -371,7 +373,7 @@ describe("TransactionList", () => {
 	});
 });
 
-describe("counterparty axis labels", () => {
+describe("counterparty display names", () => {
 	it("drops numeric tokens but keeps the full name for filtering", () => {
 		expect(counterpartyDisplayName("TERESIA WAKERA MUNENE")).toBe(
 			"TERESIA WAKERA MUNENE",
@@ -385,18 +387,120 @@ describe("counterparty axis labels", () => {
 		expect(counterpartyDisplayName("RICHARD 2547***287")).toBe("RICHARD");
 		// A name that is only a number has nothing to strip to.
 		expect(counterpartyDisplayName("0712***752")).toBe("0712***752");
+		// A dropped reference must not leave its separator behind.
+		expect(counterpartyDisplayName("517819 - IM BANK LIMITED")).toBe(
+			"IM BANK LIMITED",
+		);
+	});
+});
+
+describe("transactions search", () => {
+	const g = (): Group[] => [
+		{
+			dayKey: "2026-04-28",
+			endBalance: 0,
+			endOwed: 0,
+			txs: [
+				row({
+					description:
+						"Business Payment from 303031 - Absa Bank Kenya PLC. via API. Original conversation ID is 66922406.",
+					category: "Receive",
+					type: "receive",
+					counterparty: "Absa Bank Kenya PLC",
+				}),
+			],
+		},
+	];
+
+	it("matches every search word, not the query as one substring", () => {
+		// The words are non-adjacent in the source, so a substring match fails.
+		expect(filterGroups(g(), "Absa PLC", "all", "all", "", "")).toHaveLength(
+			1,
+		);
+		expect(
+			filterGroups(g(), "absa bank", "all", "all", "", ""),
+		).toHaveLength(1);
+		expect(
+			filterGroups(g(), "Absa Equity", "all", "all", "", ""),
+		).toHaveLength(0);
+	});
+});
+
+describe("CounterpartyCard", () => {
+	const cps: analysis.Counterparty[] = [
+		{
+			name: "Alice Wanjiru 0712000001",
+			number: "0712000001",
+			count: 3,
+			amount: -50000,
+			in: 0,
+			out: 50000,
+		},
+		{
+			name: "Bob Otieno",
+			number: "888880",
+			count: 2,
+			amount: 200000,
+			in: 200000,
+			out: 0,
+		},
+		{
+			name: "Calvin Kamara",
+			number: "07******752",
+			count: 1,
+			amount: -10000,
+			in: 0,
+			out: 10000,
+		},
+	];
+
+	const rows = () =>
+		screen
+			.getAllByTestId("counterparty-row")
+			.map((r) => r.textContent ?? "");
+
+	it("defaults to money out, ranked, with the number beside the name", () => {
+		render(<CounterpartyCard counterparties={cps} />);
+		const texts = rows();
+		// Bob has only inflow, so the default Out view leaves him out.
+		expect(texts).toHaveLength(2);
+		expect(texts[0]).toContain("Alice Wanjiru");
+		expect(texts[0]).toContain("0712000001");
+		expect(texts[0]).not.toContain("Alice Wanjiru 0712000001");
+		expect(texts[1]).toContain("Calvin Kamara");
+		// Masked numbers still surface as the number line.
+		expect(texts[1]).toContain("07******752");
 	});
 
-	it("wraps long display names into at most two balanced lines", () => {
-		expect(counterpartyLabelLines("KPLC PREPAID")).toEqual(["KPLC PREPAID"]);
-		expect(counterpartyLabelLines("TERESIA WAKERA MUNENE")).toEqual([
-			"TERESIA",
-			"WAKERA MUNENE",
-		]);
-		expect(counterpartyLabelLines("NAIROBI BUDGET BUTCHERY 2")).toEqual([
-			"NAIROBI BUDGET",
-			"BUTCHERY",
-		]);
+	it("re-ranks by money in when toggled", () => {
+		render(<CounterpartyCard counterparties={cps} />);
+		fireEvent.click(screen.getByRole("button", { name: "Money in" }));
+		const texts = rows();
+		expect(texts).toHaveLength(1);
+		expect(texts[0]).toContain("Bob Otieno");
+		expect(texts[0]).toContain("888880");
+	});
+
+	it("hands the display name to the search filter on tap", () => {
+		const onSelect = vi.fn();
+		render(
+			<CounterpartyCard counterparties={cps} onSelectCounterparty={onSelect} />,
+		);
+		fireEvent.click(screen.getAllByTestId("counterparty-row")[0]);
+		expect(onSelect).toHaveBeenCalledWith("Alice Wanjiru");
+	});
+
+	it("caps the leaderboard at five names", () => {
+		const many: analysis.Counterparty[] = Array.from({ length: 8 }, (_, i) => ({
+			name: `Person ${i + 1}`,
+			number: "",
+			count: 1,
+			amount: -(i + 1) * 1000,
+			in: 0,
+			out: (i + 1) * 1000,
+		}));
+		render(<CounterpartyCard counterparties={many} />);
+		expect(rows()).toHaveLength(5);
 	});
 });
 
