@@ -85,29 +85,23 @@ type BalancePoint struct {
 	Balance int64  `json:"balance"` // cents
 }
 
-// BalanceTrajectory returns the balance over time in chronological
-// ascending order. The input order is not trusted (statements arrive
-// newest-first, SMS imports oldest-first), so points are sorted by
-// timestamp instead of assuming any direction.
+// BalanceTrajectory returns the net M-Pesa position (wallet cash minus
+// Fuliza debt) over time in chronological ascending order. The input order
+// is not trusted (statements arrive newest-first, SMS imports oldest-first),
+// so points are sorted by timestamp instead of assuming any direction;
+// same-second ties break by transaction ID so paired rows order
+// deterministically. Without Fuliza rows the debt ledger stays zero and
+// every point equals its raw balance exactly as before.
 func BalanceTrajectory(transactions []parser.Transaction) ([]BalancePoint, error) {
-	type stamped struct {
-		when time.Time
-		tx   parser.Transaction
-	}
-	stampedTxs := make([]stamped, 0, len(transactions))
 	for _, tx := range transactions {
-		when, err := txTime(tx)
-		if err != nil {
+		if _, err := txTime(tx); err != nil {
 			return nil, err
 		}
-		stampedTxs = append(stampedTxs, stamped{when: when, tx: tx})
 	}
-	sort.SliceStable(stampedTxs, func(i, j int) bool {
-		return stampedTxs[i].when.Before(stampedTxs[j].when)
-	})
-	points := make([]BalancePoint, 0, len(stampedTxs))
-	for _, s := range stampedTxs {
-		points = append(points, BalancePoint{Time: s.tx.Date, Balance: s.tx.Balance})
+	pts := Ledger(transactions)
+	points := make([]BalancePoint, 0, len(pts))
+	for _, p := range pts {
+		points = append(points, BalancePoint{Time: p.Date, Balance: p.Net})
 	}
 	return points, nil
 }

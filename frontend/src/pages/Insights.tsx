@@ -505,7 +505,11 @@ export default function Insights({
             fullMonths={result?.cashflowMonthly ?? []}
             selectedMonth={month}
           />
-          <ReportsTile />
+          {/* Full-width closer: otherwise the last row leaves an orphan
+              hole in the second column on desktop. */}
+          <div className="lg:col-span-2">
+            <ReportsTile />
+          </div>
         </div>
       )}
     </div>

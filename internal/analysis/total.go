@@ -51,7 +51,9 @@ func OpeningClosingBalance(transactions []parser.Transaction) (openingBalance, c
 	if len(transactions) == 0 {
 		return 0, 0
 	}
-	openingBalance = transactions[0].Balance
-	closingBalance = transactions[len(transactions)-1].Balance
-	return openingBalance, closingBalance
+	// Net M-Pesa position (wallet cash minus Fuliza debt): without Fuliza
+	// rows the debt ledger stays zero and this equals the first/last raw
+	// balances exactly as before.
+	pts := Ledger(transactions)
+	return pts[0].Net, pts[len(pts)-1].Net
 }

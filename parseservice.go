@@ -164,11 +164,14 @@ type TransactionView struct {
 }
 
 // DayGroup is one calendar day of transactions, newest first. EndBalance is
-// the running balance after the day's latest transaction (true end-of-day
-// value, independent of any frontend filtering).
+// the net M-Pesa position (wallet cash minus Fuliza debt) after the day's
+// latest transaction, and EndOwed is the Fuliza debt owed at that point
+// (positive cents, zero when debt-free) - true end-of-day values,
+// independent of any frontend filtering.
 type DayGroup struct {
 	DayKey     string            `json:"dayKey"` // "2006-01-02"
 	EndBalance int64             `json:"endBalance"`
+	EndOwed    int64             `json:"endOwed"`
 	Txs        []TransactionView `json:"txs"`
 }
 
@@ -177,9 +180,10 @@ type DayGroup struct {
 // grouping run here (once per dataset) instead of in JS on every render.
 // Ties on the second-precision timestamp break by transaction ID
 // descending, so a paired Fuliza fee ("<receipt>-F") or charge
-// ("<receipt>-C") sorts before its base row: the fee/charge is the later
-// movement, and the day's end balance is the debt (-outstanding), not the
-// wallet zero the paired send left behind.
+// ("<receipt>-C") sorts before its base row. Day headers come from the
+// net-position ledger (wallet minus debt, computed in ascending order),
+// never from a single row's Balance: fee rows carry debt while every other
+// row carries wallet cash, so the latest row alone flip-flops ledgers.
 func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 	sorted := make([]parser.Transaction, len(txs))
 	copy(sorted, txs)
@@ -189,6 +193,7 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 		}
 		return sorted[i].ID > sorted[j].ID
 	})
+	dayNet, dayOwed := analysis.DayLedger(txs)
 
 	out := make([]DayGroup, 0, 16)
 	for _, tx := range sorted {
@@ -199,7 +204,8 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 		if len(out) == 0 || out[len(out)-1].DayKey != day {
 			out = append(out, DayGroup{
 				DayKey:     day,
-				EndBalance: tx.Balance, // first row in desc order = day's latest tx
+				EndBalance: dayNet[day], // net position after the day's latest tx
+				EndOwed:    dayOwed[day],
 				Txs:        []TransactionView{},
 			})
 		}
