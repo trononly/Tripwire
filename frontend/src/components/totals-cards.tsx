@@ -8,6 +8,8 @@ import {
 import { formatMoney } from "@/lib/format";
 import { useCountUp } from "@/hooks/use-count-up";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
+import { useReveal } from "@/lib/privacy-mode";
+import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 
@@ -32,14 +34,37 @@ function KpiCard({
         ? "text-rose-600 dark:text-rose-400"
         : "text-foreground";
   const isPrimary = emphasis !== "secondary";
+  // Privacy Mode: the whole card is the tap target, but only the figure is
+  // blurred - labels stay readable.
+  const { blurred, reveal } = useReveal();
   return (
-    <Card className="@container gap-2 min-w-0">
+    <Card
+      className={cn("@container gap-2 min-w-0", blurred && "cursor-pointer")}
+      onClick={reveal}
+      role={blurred ? "button" : undefined}
+      tabIndex={blurred ? 0 : undefined}
+      aria-label={blurred ? `Reveal ${label}` : undefined}
+      onKeyDown={(e) => {
+        if (blurred && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          reveal();
+        }
+      }}
+    >
       <CardHeader className="min-w-0">
         <CardDescription className="truncate font-medium text-neutral-500 dark:text-neutral-400">{label}</CardDescription>
         <CardTitle
           className={`whitespace-nowrap tabular-nums ${isPrimary ? "text-2xl font-bold tracking-tight text-neutral-900 dark:text-white" : "text-lg font-semibold"} ${isPrimary ? "" : toneClass}`}
         >
-          {value}
+          <span
+            aria-hidden={blurred || undefined}
+            className={cn(
+              "inline-block transition-[filter,opacity] duration-200",
+              blurred && "blur-[7px] select-none opacity-80",
+            )}
+          >
+            {value}
+          </span>
         </CardTitle>
       </CardHeader>
       {hint && (

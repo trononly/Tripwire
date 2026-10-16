@@ -297,7 +297,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
             size="icon"
             aria-label="Filters"
             onClick={() => setFiltersOpen(true)}
-            className="relative size-10 shrink-0"
+            className="relative size-8 shrink-0"
           >
             <SlidersHorizontal className="size-4" />
             {activeFilters > 0 && (

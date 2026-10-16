@@ -26,20 +26,13 @@ import type {
   SmsParseResult,
 } from "../../bindings/mpesa-analyzer/models";
 import { formatMoney } from "@/lib/format";
+import { filterSmsResults, type KindFilter } from "@/lib/sms-filter";
 import { cn } from "@/lib/utils";
 
 /** List page size; "Show more" extends by PAGE_STEP. Keeps 2,400+ results
  * renderable: only a window of one-line rows is ever mounted. */
 const PAGE = 50;
 const PAGE_STEP = 100;
-
-type KindFilter =
-  | "all"
-  | "imported"
-  | "unsupported"
-  | "malformed"
-  | "invalid"
-  | "non_transactional";
 
 const KINDS: { value: KindFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -138,10 +131,12 @@ export function SmsImportInspector({
   result: SmsImportResult;
   bridgeCount: number | null;
 }) {
-  const results = result.results ?? [];
+  const results = useMemo(() => result.results ?? [], [result.results]);
 
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [query, setQuery] = useState("");
+  const [fromDay, setFromDay] = useState("");
+  const [toDay, setToDay] = useState("");
   const [visible, setVisible] = useState(PAGE);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -152,32 +147,37 @@ export function SmsImportInspector({
     return c;
   }, [results]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return results.filter((r) => {
-      if (kindFilter !== "all" && r.kind !== kindFilter) return false;
-      if (q === "") return true;
-      return (
-        (r.address ?? "").toLowerCase().includes(q) ||
-        r.sourceId.toLowerCase().includes(q) ||
-        (r.body ?? "").toLowerCase().includes(q) ||
-        (r.txs ?? []).some(
-          (t) =>
-            t.id.toLowerCase().includes(q) ||
-            t.description.toLowerCase().includes(q),
-        )
-      );
-    });
-  }, [results, kindFilter, query]);
+  const filtered = useMemo(
+    () =>
+      filterSmsResults(results, {
+        kind: kindFilter,
+        query,
+        from: fromDay,
+        to: toDay,
+      }),
+    [results, kindFilter, query, fromDay, toDay],
+  );
 
   const keys = useMemo(() => resultKeys(filtered), [filtered]);
+
+  const activeFilterCount =
+    (kindFilter === "all" ? 0 : 1) + (fromDay ? 1 : 0) + (toDay ? 1 : 0);
+
+  const clearFilters = () => {
+    setKindFilter("all");
+    setFromDay("");
+    setToDay("");
+    setVisible(PAGE);
+  };
 
   // What the copy button copies: exactly the rows on screen.
   const scopeLabel = useMemo(() => {
     const kind = KINDS.find((k) => k.value === kindFilter)?.label ?? "All";
+    const dates =
+      fromDay || toDay ? `${fromDay || "…"}–${toDay || "…"}` : null;
     const q = query.trim().slice(0, 24);
-    return [kind, q ? `“${q}”` : null].filter(Boolean).join(" · ");
-  }, [kindFilter, query]);
+    return [kind, dates, q ? `“${q}”` : null].filter(Boolean).join(" · ");
+  }, [kindFilter, query, fromDay, toDay]);
 
   return (
     <div className="space-y-3">
@@ -230,12 +230,12 @@ export function SmsImportInspector({
           size="icon"
           aria-label="Filters"
           onClick={() => setFiltersOpen(true)}
-          className="relative size-10 shrink-0"
+          className="relative size-8 shrink-0"
         >
           <SlidersHorizontal className="size-4" />
-          {kindFilter !== "all" && (
+          {activeFilterCount > 0 && (
             <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
-              1
+              {activeFilterCount}
             </span>
           )}
         </Button>
@@ -271,17 +271,47 @@ export function SmsImportInspector({
                 </span>
               </button>
             ))}
+            {/* Received-date window: newest messages surface first, so the
+                To date is the common anchor. */}
+            <div className="space-y-2 pt-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Received date
+              </p>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 space-y-1">
+                  <span className="text-xs text-muted-foreground">From</span>
+                  <Input
+                    type="date"
+                    value={fromDay}
+                    max={toDay || undefined}
+                    onChange={(e) => {
+                      setFromDay(e.target.value);
+                      setVisible(PAGE);
+                    }}
+                  />
+                </label>
+                <label className="flex-1 space-y-1">
+                  <span className="text-xs text-muted-foreground">To</span>
+                  <Input
+                    type="date"
+                    value={toDay}
+                    min={fromDay || undefined}
+                    onChange={(e) => {
+                      setToDay(e.target.value);
+                      setVisible(PAGE);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
           </div>
           <DrawerFooter>
             <Button
               variant="outline"
-              onClick={() => {
-                setKindFilter("all");
-                setVisible(PAGE);
-              }}
-              disabled={kindFilter === "all"}
+              onClick={clearFilters}
+              disabled={activeFilterCount === 0}
             >
-              Clear filter
+              Clear filters
             </Button>
           </DrawerFooter>
         </DrawerContent>

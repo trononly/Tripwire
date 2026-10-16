@@ -19,6 +19,7 @@ import {
   useHapticsEnabled,
   useReduceMotionEnabled,
 } from "@/lib/motion-settings";
+import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
 import { cn } from "@/lib/utils";
 import { simName } from "@/components/sim-switcher";
 import { useKonamiCode } from "@/hooks/use-konami-code";
@@ -127,6 +128,29 @@ function MotionSettings() {
     <div className="space-y-2">
       {toggle(reduceMotion, REDUCE_MOTION_KEY, "Reduce motion")}
       {toggle(haptics, HAPTICS_KEY, "Haptics")}
+    </div>
+  );
+}
+
+/** Privacy Mode: blurs every balance figure behind a tap-to-reveal veil. */
+function PrivacySetting() {
+  const on = usePrivacyMode();
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm">Privacy Mode</span>
+        <Button
+          variant={on ? "default" : "outline"}
+          size="sm"
+          aria-pressed={on}
+          onClick={() => setPrivacyMode(!on)}
+        >
+          {on ? "On" : "Off"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Blurs balances and chart figures. Tap a card or figure to reveal it.
+      </p>
     </div>
   );
 }
@@ -307,6 +331,7 @@ export default function Settings({
         <CardContent className="space-y-4">
           <ThemeSelector />
           <MotionSettings />
+          <PrivacySetting />
         </CardContent>
       </Card>
       {debug.unlocked && (
