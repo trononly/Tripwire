@@ -14,9 +14,10 @@ subscriptions.
 
 The app checks that releases page for updates: on launch (at most once a
 day) and on demand from **Settings → App updates**. When a newer build
-exists, a dialog shows the version, the release notes as "What's new",
+exists, a dialog shows the version, the release notes as the Changelog,
 and an Update button that downloads the APK and hands it to the Android
-installer. The first install of a new version asks you to allow
+installer. The same **Changelog** button in Settings shows the notes for the
+build you have installed, cached for offline viewing. The first install of a new version asks you to allow
 "Install unknown apps" for Tripwire once - Android's rule for updates
 outside the Play Store, not something the app can skip.
 
@@ -180,5 +181,5 @@ Before opening a PR:
 
 - Onboarding should have the user setup their own icons for categories. For every section have an icon showing how we categorize them
 - TODO: Streamline customization, inspiration: https://www.youtube.com/watch?v=MccJdr61xnc - Geoffrey Litt
-- DONE: "What's new" for the installed release, cached and shown in Settings
+- DONE: Changelog button in Settings → App updates, cached for the installed release
 - DONE: Reduce motion option in Settings (stops the Pay icons pulsing)

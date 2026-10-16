@@ -92,6 +92,8 @@ export function useUpdater(): Updater {
 
 	useEffect(() => {
 		setLastChecked(readLastCheck() || null);
+		// Show the installed version immediately, before any check runs.
+		setCurrent(getInstalledVersion()?.versionName ?? "");
 		return () => {
 			unsubscribe.current?.();
 			unsubscribe.current = null;

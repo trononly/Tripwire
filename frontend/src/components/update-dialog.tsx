@@ -38,8 +38,8 @@ function ProgressBar({ received, total }: { received: number; total: number }) {
 }
 
 /**
- * The update prompt: what version is available, the release notes as
- * "What's new", and the update / later / skip actions. Downloading shows
+ * The update prompt: what version is available, the new release's notes as
+ * the Changelog, and the update / later / skip actions. Downloading shows
  * progress; once the APK is handed to the system installer the user
  * finishes in the Android install sheet.
  */
@@ -82,7 +82,7 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 				{release.notes.trim() !== "" && (
 					<div>
 						<p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-							What&apos;s new
+							Changelog
 						</p>
 						<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed">
 							<ReleaseNotes notes={release.notes} />

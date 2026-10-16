@@ -26,14 +26,14 @@ import {
 	isNewerVersion,
 	normalizeVersion,
 	pickApkAsset,
-	whatsNewTag,
+	releaseTag,
 } from "@/lib/updater";
 import {
-	WHATS_NEW_CACHE_KEY,
-	cachedNotesFor,
-	readWhatsNewCache,
-	writeWhatsNewCache,
-} from "@/lib/whats-new";
+	CHANGELOG_CACHE_KEY,
+	cachedChangelogFor,
+	readChangelogCache,
+	writeChangelogCache,
+} from "@/lib/changelog";
 import {
 	buildPaybillScript,
 	buildSendScript,
@@ -224,21 +224,21 @@ describe("pickApkAsset", () => {
 	});
 });
 
-describe("whatsNewTag", () => {
+describe("releaseTag", () => {
 	it("maps a version to its tripwire- release tag", () => {
-		expect(whatsNewTag("1.2.3")).toBe("tripwire-1.2.3");
-		expect(whatsNewTag("tripwire-1.2.3")).toBe("tripwire-1.2.3");
-		expect(whatsNewTag("v1.2.3")).toBe("tripwire-1.2.3");
+		expect(releaseTag("1.2.3")).toBe("tripwire-1.2.3");
+		expect(releaseTag("tripwire-1.2.3")).toBe("tripwire-1.2.3");
+		expect(releaseTag("v1.2.3")).toBe("tripwire-1.2.3");
 	});
 
 	it("returns empty for an unknown version", () => {
-		expect(whatsNewTag("")).toBe("");
+		expect(releaseTag("")).toBe("");
 	});
 });
 
-// --- whats-new cache ---
+// --- changelog cache ---
 
-describe("whats-new cache", () => {
+describe("changelog cache", () => {
 	const entry = {
 		version: "1.2.3",
 		title: "Tripwire 1.2.3",
@@ -248,26 +248,26 @@ describe("whats-new cache", () => {
 	};
 
 	it("round-trips notes through the cache", () => {
-		expect(readWhatsNewCache()).toBeNull();
-		writeWhatsNewCache(entry);
-		expect(readWhatsNewCache()).toEqual(entry);
-		expect(store.get(WHATS_NEW_CACHE_KEY)).toBeTruthy();
+		expect(readChangelogCache()).toBeNull();
+		writeChangelogCache(entry);
+		expect(readChangelogCache()).toEqual(entry);
+		expect(store.get(CHANGELOG_CACHE_KEY)).toBeTruthy();
 	});
 
 	it("only returns notes for the installed version", () => {
-		writeWhatsNewCache(entry);
-		expect(cachedNotesFor("1.2.3")).toMatchObject({ notes: entry.notes });
-		expect(cachedNotesFor("9.9.9")).toBeNull();
-		expect(cachedNotesFor("")).toBeNull();
+		writeChangelogCache(entry);
+		expect(cachedChangelogFor("1.2.3")).toMatchObject({ notes: entry.notes });
+		expect(cachedChangelogFor("9.9.9")).toBeNull();
+		expect(cachedChangelogFor("")).toBeNull();
 	});
 
 	it("rejects malformed or empty cache payloads", () => {
-		store.set(WHATS_NEW_CACHE_KEY, "{not json");
-		expect(readWhatsNewCache()).toBeNull();
-		store.set(WHATS_NEW_CACHE_KEY, JSON.stringify({ version: "", notes: "x" }));
-		expect(readWhatsNewCache()).toBeNull();
-		store.set(WHATS_NEW_CACHE_KEY, JSON.stringify({ version: "1.2.3" }));
-		expect(readWhatsNewCache()).toBeNull();
+		store.set(CHANGELOG_CACHE_KEY, "{not json");
+		expect(readChangelogCache()).toBeNull();
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ version: "", notes: "x" }));
+		expect(readChangelogCache()).toBeNull();
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ version: "1.2.3" }));
+		expect(readChangelogCache()).toBeNull();
 	});
 });
 
