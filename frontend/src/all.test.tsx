@@ -10,6 +10,8 @@ import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
 import { filterGroups } from "@/lib/transaction-filter";
+import { ReleaseNotes } from "@/components/release-notes";
+import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
   counterpartyDisplayName,
   CounterpartyCard,
@@ -215,8 +217,98 @@ describe("pickApkAsset", () => {
 	});
 });
 
-// --- ussd-menus ---
+// --- release notes ---
 
+const RELEASE_BODY = `## What's Changed
+* Add **dark mode** by @alice in https://github.com/trononly/Tripwire/pull/12
+* Fix a \`nil\` panic by @bob in https://github.com/trononly/Tripwire/pull/13
+<!-- contributor hint -->
+
+## New Contributors
+* @alice made their first contribution in https://github.com/trononly/Tripwire/pull/12
+
+**Full Changelog**: https://github.com/trononly/Tripwire/compare/tripwire-1.0.0...tripwire-1.1.0`;
+
+describe("release notes markdown", () => {
+	it("parses headings, bullets and the changelog footer into blocks", () => {
+		const blocks = parseReleaseNotes(RELEASE_BODY);
+		expect(blocks[0]).toMatchObject({ kind: "heading", level: 2 });
+		expect(blocks[1]).toMatchObject({ kind: "list", ordered: false });
+		const list = blocks.find((b) => b.kind === "list");
+		expect(list && list.kind === "list" ? list.items.length : 0).toBe(2);
+		// The footer is a paragraph mixing bold and a link.
+		const footer = blocks[blocks.length - 1];
+		expect(footer.kind).toBe("paragraph");
+		if (footer.kind === "paragraph") {
+			expect(footer.content[0]).toEqual({ kind: "bold", value: "Full Changelog" });
+			expect(footer.content.at(-1)).toMatchObject({ kind: "link" });
+		}
+	});
+
+	it("links bare URLs and keeps inline code literal", () => {
+		const items = parseReleaseNotes(RELEASE_BODY).find(
+			(b) => b.kind === "list",
+		);
+		if (items?.kind !== "list") throw new Error("expected a list");
+		expect(items.items[0]).toEqual([
+			{ kind: "text", value: "Add " },
+			{ kind: "bold", value: "dark mode" },
+			{ kind: "text", value: " by @alice in " },
+			{
+				kind: "link",
+				text: "https://github.com/trononly/Tripwire/pull/12",
+				href: "https://github.com/trononly/Tripwire/pull/12",
+			},
+		]);
+		expect(items.items[1][1]).toEqual({ kind: "code", value: "nil" });
+	});
+
+	it("drops HTML comments and supports ordered lists", () => {
+		expect(parseReleaseNotes("text\n<!-- hidden -->")).toEqual([
+			{ kind: "paragraph", content: [{ kind: "text", value: "text" }] },
+		]);
+		expect(parseReleaseNotes("1. one\n2. two")[0]).toMatchObject({
+			kind: "list",
+			ordered: true,
+		});
+	});
+
+	it("parses [label](url) links and leaves underscores literal", () => {
+		expect(parseInline("[docs](https://x.example) send_money")).toEqual([
+			{ kind: "link", text: "docs", href: "https://x.example" },
+			{ kind: "text", value: " send_money" },
+		]);
+	});
+
+	it("renders styled notes rather than raw markdown", () => {
+		render(<ReleaseNotes notes={RELEASE_BODY} />);
+		expect(screen.getByText("What's Changed")).toBeInTheDocument();
+		const links = screen.getAllByRole("link", {
+			name: "https://github.com/trononly/Tripwire/pull/12",
+		});
+		expect(links[0]).toHaveAttribute(
+			"href",
+			"https://github.com/trononly/Tripwire/pull/12",
+		);
+		// Markers must not leak into the visible text.
+		expect(screen.queryByText(/##/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
+	it("opens note links in the system browser", () => {
+		render(<ReleaseNotes notes={RELEASE_BODY} />);
+		fireEvent.click(
+			screen.getByRole("link", {
+				name: "https://github.com/trononly/Tripwire/pull/13",
+			}),
+		);
+		expect(Browser.OpenURL).toHaveBeenCalledWith(
+			"https://github.com/trononly/Tripwire/pull/13",
+		);
+	});
+});
+
+// --- ussd-menus ---
 describe("ussd-menus", () => {
 	it("builds a send script ending in PIN-stop + confirm", () => {
 		const s = buildSendScript("send", "0722123456", "500");
