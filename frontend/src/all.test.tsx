@@ -26,7 +26,14 @@ import {
 	isNewerVersion,
 	normalizeVersion,
 	pickApkAsset,
+	whatsNewTag,
 } from "@/lib/updater";
+import {
+	WHATS_NEW_CACHE_KEY,
+	cachedNotesFor,
+	readWhatsNewCache,
+	writeWhatsNewCache,
+} from "@/lib/whats-new";
 import {
 	buildPaybillScript,
 	buildSendScript,
@@ -214,6 +221,53 @@ describe("pickApkAsset", () => {
 			pickApkAsset([{ name: "Tripwire-1.2.3.aab", browser_download_url: "u", size: 1 }]),
 		).toBeNull();
 		expect(pickApkAsset([])).toBeNull();
+	});
+});
+
+describe("whatsNewTag", () => {
+	it("maps a version to its tripwire- release tag", () => {
+		expect(whatsNewTag("1.2.3")).toBe("tripwire-1.2.3");
+		expect(whatsNewTag("tripwire-1.2.3")).toBe("tripwire-1.2.3");
+		expect(whatsNewTag("v1.2.3")).toBe("tripwire-1.2.3");
+	});
+
+	it("returns empty for an unknown version", () => {
+		expect(whatsNewTag("")).toBe("");
+	});
+});
+
+// --- whats-new cache ---
+
+describe("whats-new cache", () => {
+	const entry = {
+		version: "1.2.3",
+		title: "Tripwire 1.2.3",
+		notes: "## What's Changed\n* stuff",
+		htmlUrl: "https://github.com/trononly/Tripwire/releases/tag/tripwire-1.2.3",
+		fetchedAt: 123,
+	};
+
+	it("round-trips notes through the cache", () => {
+		expect(readWhatsNewCache()).toBeNull();
+		writeWhatsNewCache(entry);
+		expect(readWhatsNewCache()).toEqual(entry);
+		expect(store.get(WHATS_NEW_CACHE_KEY)).toBeTruthy();
+	});
+
+	it("only returns notes for the installed version", () => {
+		writeWhatsNewCache(entry);
+		expect(cachedNotesFor("1.2.3")).toMatchObject({ notes: entry.notes });
+		expect(cachedNotesFor("9.9.9")).toBeNull();
+		expect(cachedNotesFor("")).toBeNull();
+	});
+
+	it("rejects malformed or empty cache payloads", () => {
+		store.set(WHATS_NEW_CACHE_KEY, "{not json");
+		expect(readWhatsNewCache()).toBeNull();
+		store.set(WHATS_NEW_CACHE_KEY, JSON.stringify({ version: "", notes: "x" }));
+		expect(readWhatsNewCache()).toBeNull();
+		store.set(WHATS_NEW_CACHE_KEY, JSON.stringify({ version: "1.2.3" }));
+		expect(readWhatsNewCache()).toBeNull();
 	});
 });
 
@@ -571,6 +625,20 @@ describe("CounterpartyCard", () => {
 		expect(texts).toHaveLength(1);
 		expect(texts[0]).toContain("Bob Otieno");
 		expect(texts[0]).toContain("888880");
+	});
+
+	it("remembers the last direction across remounts", () => {
+		const first = render(<CounterpartyCard counterparties={cps} />);
+		fireEvent.click(screen.getByRole("button", { name: "Money in" }));
+		first.unmount();
+		// A fresh mount reads the persisted direction instead of the
+		// default Out ranking.
+		render(<CounterpartyCard counterparties={cps} />);
+		expect(screen.getByRole("button", { name: "Money in" })).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(rows()[0]).toContain("Bob Otieno");
 	});
 
 	it("hands the display name to the search filter on tap", () => {

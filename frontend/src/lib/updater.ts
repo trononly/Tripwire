@@ -34,6 +34,18 @@ export interface ReleaseInfo {
 	htmlUrl: string;
 }
 
+/** Release notes for one specific (installed) version, for "What's new". */
+export interface ReleaseNotesInfo {
+	/** Normalized version, e.g. "1.2.3". */
+	version: string;
+	/** Release title, e.g. "Tripwire 1.2.3". */
+	title: string;
+	/** Release body - the "What's new" text. */
+	notes: string;
+	/** Human URL of that release. */
+	htmlUrl: string;
+}
+
 /** "tripwire-1.2.3" -> "1.2.3"; "v1.2.3" -> "1.2.3"; "" stays "". */
 export function normalizeVersion(tag: string): string {
 	const t = tag.trim();
@@ -162,4 +174,68 @@ export async function fetchLatestRelease(
 	const release = toReleaseInfo(api);
 	if (!release) return { ok: false, error: "latest release has no APK" };
 	return { ok: true, release };
+}
+
+/**
+ * Map an installed version to its release tag. Releases are published from
+ * `tripwire-<version>` tags (see release.yml), so "1.2.3" -> "tripwire-1.2.3".
+ * Empty in, empty out.
+ */
+export function whatsNewTag(version: string): string {
+	const v = normalizeVersion(version);
+	return v ? `tripwire-${v}` : "";
+}
+
+export type ReleaseNotesResult =
+	| { ok: true; release: ReleaseNotesInfo | null }
+	| { ok: false; error: string };
+
+function toReleaseNotesInfo(api: GithubReleaseApi): ReleaseNotesInfo | null {
+	if (!api || typeof api.tag_name !== "string" || api.tag_name === "") {
+		return null;
+	}
+	const version = normalizeVersion(api.tag_name);
+	return {
+		version,
+		title:
+			typeof api.name === "string" && api.name !== ""
+				? api.name
+				: `Tripwire ${version}`,
+		notes: typeof api.body === "string" ? api.body : "",
+		htmlUrl: api.html_url ?? `${RELEASES_URL}/tag/${api.tag_name}`,
+	};
+}
+
+/**
+ * Fetch the release notes for one specific version, for the in-app
+ * "What's new". Resolves `{release: null}` when that version has no release
+ * (e.g. an unpublishable debug build) and `{error}` on network failures.
+ * Unlike fetchLatestRelease this does not require an APK asset.
+ */
+export async function fetchReleaseNotes(
+	version: string,
+	signal?: AbortSignal,
+): Promise<ReleaseNotesResult> {
+	const tag = whatsNewTag(version);
+	if (!tag) return { ok: true, release: null };
+	let res: Response;
+	try {
+		res = await fetch(
+			`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${encodeURIComponent(tag)}`,
+			{ signal, headers: { Accept: "application/vnd.github+json" } },
+		);
+	} catch (e) {
+		if (e instanceof DOMException && e.name === "AbortError")
+			return { ok: false, error: "cancelled" };
+		return { ok: false, error: "no connection" };
+	}
+	if (res.status === 404) return { ok: true, release: null };
+	if (!res.ok) return { ok: false, error: `release notes check failed (${res.status})` };
+	let api: GithubReleaseApi;
+	try {
+		api = (await res.json()) as GithubReleaseApi;
+	} catch {
+		return { ok: false, error: "bad release response" };
+	}
+	return { ok: true, release: toReleaseNotesInfo(api) };
 }
