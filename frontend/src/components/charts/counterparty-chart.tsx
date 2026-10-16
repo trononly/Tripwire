@@ -15,11 +15,73 @@ import {
 } from "@/components/ui/chart";
 import { formatMoney } from "@/lib/format";
 import { isAndroidBridge } from "@/lib/sms-bridge";
+import { useReduceMotionEnabled } from "@/lib/motion-settings";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
   volume: { label: "Volume", color: "var(--brand)" },
 } satisfies ChartConfig;
+
+/** Axis display name: tills, accounts, phone masks and trailing counters
+ *  crowd a 12px axis, so numeric tokens go. The full name still drives
+ *  filtering, tooltips and navigation.
+ */
+export function counterpartyDisplayName(name: string): string {
+  const kept = name
+    .split(/\s+/)
+    .filter(
+      (tok) => tok !== "" && !/[\d]/.test(tok) && !/^acc\.?$/i.test(tok),
+    );
+  return kept.length > 0 ? kept.join(" ") : name;
+}
+
+/** Split a display name into at most two balanced lines for the axis tick. */
+export function counterpartyLabelLines(name: string): string[] {
+  const display = counterpartyDisplayName(name);
+  const words = display.split(" ").filter(Boolean);
+  if (words.length < 2 || display.length <= 16) return [display];
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const diff = Math.abs(
+      display.length / 2 - words.slice(0, i).join(" ").length,
+    );
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
+  }
+  return [words.slice(0, best).join(" "), words.slice(best).join(" ")].map(
+    (line) => (line.length > 20 ? `${line.slice(0, 19)}…` : line),
+  );
+}
+
+/** Right-aligned axis tick rendering the wrapped display name. Recharts'
+ *  default single-line tick clips long names against the chart edge; an
+ *  explicit two-line tick never overflows the reserved width.
+ */
+function CounterpartyAxisTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string | number };
+}) {
+  const lines = counterpartyLabelLines(String(props.payload?.value ?? ""));
+  return (
+    <g transform={`translate(${props.x ?? 0},${props.y ?? 0})`}>
+      <text textAnchor="end" fill="var(--muted-foreground)" fontSize={12}>
+        {lines.map((line, i) => (
+          <tspan
+            key={i}
+            x={0}
+            dy={i === 0 ? -(lines.length - 1) * 7.5 + 4 : 15}
+          >
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
 
 export function CounterpartyChart({
   counterparties,
@@ -48,10 +110,23 @@ export function CounterpartyChart({
   const intensity = (volume: number) =>
     0.3 + 0.7 * (volume / maxVolume);
 
-  // Reserve just enough axis room for the longest name instead of
-  // truncating long labels with a fixed width.
-  const maxNameLen = Math.max(10, ...data.map((d) => d.name.length));
-  const axisWidth = Math.min(200, Math.max(80, maxNameLen * 6 + 8));
+  // Reserve just enough axis room for the longest display line instead of
+  // truncating long labels with a fixed width. Display names drop numeric
+  // tokens, so they measure much shorter than the full names.
+  const longestLine = Math.max(
+    10,
+    ...data.flatMap((d) =>
+      counterpartyLabelLines(d.name).map((line) => line.length),
+    ),
+  );
+  const axisWidth = Math.min(200, Math.max(80, longestLine * 7 + 12));
+  // Draw-in animation, replayed whenever the leaderboard changes (the key
+  // remounts the chart). Reduced motion disables it entirely and keeps the
+  // key stable so nothing replays.
+  const animate = !useReduceMotionEnabled();
+  const animationKey = animate
+    ? data.map((d) => `${d.name}:${d.volume}`).join("|")
+    : "static";
 
   return (
     <Card>
@@ -64,6 +139,7 @@ export function CounterpartyChart({
       <CardContent>
         <ChartContainer config={chartConfig} className="h-75 w-full">
           <BarChart
+            key={animationKey}
             data={data}
             layout="vertical"
             margin={{ left: 0, right: 24, top: 8 }}
@@ -89,7 +165,7 @@ export function CounterpartyChart({
               axisLine={false}
               width={axisWidth}
               tickMargin={4}
-              tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+              tick={<CounterpartyAxisTick />}
             />
             {/* No hover tooltip on touch devices: it spawns at the tap
                 point and slides off-screen, and the tap itself already
@@ -132,7 +208,9 @@ export function CounterpartyChart({
               dataKey="volume"
               fill="var(--color-volume)"
               radius={[0, 4, 4, 0]}
-              isAnimationActive={false}
+              isAnimationActive={animate}
+              animationDuration={700}
+              animationEasing="ease-out"
               barSize={16}
               className={
                 onSelectCounterparty

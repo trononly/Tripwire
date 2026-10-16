@@ -193,6 +193,63 @@ func TestFulizaOutstanding(t *testing.T) {
 	}
 }
 
+// TestLedgerNetPosition walks the October Fuliza thread: wallet cash and
+// debt stay on separate ledgers and each point nets them. The 50.00 evening
+// repayment leaves wallet 0 with 343.00 owed (393.00 stated minus 50.00),
+// never a clean zero.
+func TestLedgerNetPosition(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-10-15 07:34:00", "Funds received from - SIMON", 20000, 20000),
+		tx("2026-10-15 08:00:00", "Fuliza Repayment - Partially Paid", -20000, 0),
+		tx("2026-10-15 09:50:00", "Merchant Payment to - TERESIA", -9000, 0),
+		tx("2026-10-15 09:50:01", "Fuliza Access Fee", -90, -22938),
+		tx("2026-10-15 23:12:00", "Funds received from - RAY", 5000, 5000),
+		tx("2026-10-15 23:13:00", "Fuliza Repayment - Partially Paid", -5000, 0),
+	}
+	pts := Ledger(txs)
+	if len(pts) != len(txs) {
+		t.Fatalf("want %d points, got %d", len(txs), len(pts))
+	}
+	last := pts[len(pts)-1]
+	if last.Wallet != 0 || last.Debt != 17938 || last.Net != -17938 {
+		t.Errorf("end state wrong: %+v, want wallet 0 debt 17938 net -17938", last)
+	}
+	net, owed := DayLedger(txs)
+	if net["2026-10-15"] != -17938 || owed["2026-10-15"] != 17938 {
+		t.Errorf("day ledger wrong: net=%d owed=%d", net["2026-10-15"], owed["2026-10-15"])
+	}
+}
+
+// TestLedgerFullRepayZeroes locks in that a full repayment clears the debt
+// ledger even when the paid amount trails accrued charges.
+func TestLedgerFullRepayZeroes(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-10-15 09:50:01", "Fuliza Access Fee", -90, -22938),
+		tx("2026-10-15 10:00:00", "Fuliza Repayment - Fully Paid", -22900, 100),
+	}
+	pts := Ledger(txs)
+	last := pts[len(pts)-1]
+	if last.Debt != 0 || last.Wallet != 100 || last.Net != 100 {
+		t.Errorf("full repay must zero debt: %+v", last)
+	}
+}
+
+// TestLedgerNoFulizaUnchanged locks in that datasets without Fuliza rows
+// behave exactly as before: net equals each row's balance.
+func TestLedgerNoFulizaUnchanged(t *testing.T) {
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:29:02", "Funds received from - Calvin", 3000, 76079),
+		tx("2026-04-28 19:55:42", "Airtime Purchase", -500, 44679),
+	}
+	pts := Ledger(txs)
+	if pts[0].Net != 76079 || pts[1].Net != 44679 {
+		t.Errorf("nets wrong: %+v", pts)
+	}
+	if open, close := OpeningClosingBalance(txs); open != 76079 || close != 44679 {
+		t.Errorf("open/close = (%d, %d), want (76079, 44679)", open, close)
+	}
+}
+
 func TestCategoryOf(t *testing.T) {
 	cases := map[string]string{
 		"Pay Bill Charge":                                  "Fees",

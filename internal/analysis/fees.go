@@ -74,42 +74,17 @@ func FeesByType(txs []parser.Transaction) []FeeTotal {
 }
 
 // FulizaOutstanding estimates the current Fuliza debt (positive cents) from
-// SMS-derived rows. The latest disbursement's negated balance is the last
-// stated outstanding (principal plus access fees included - Safaricom
-// already adds the fee, so the fee row's Amount is never added on top);
-// repayments dated after it reduce the estimate. Clamped at zero: without
-// a fresh outstanding statement the debt can only be an estimate, and daily
-// charges may add on top. Returns 0 when no disbursement exists.
+// SMS-derived rows: the debt ledger's end state after walking the dataset
+// chronologically. The latest stated outstanding overwrites (principal plus
+// access fees included - Safaricom already adds the fee, so the fee row's
+// Amount is never added on top); later repayments reduce it and a full
+// repayment zeroes it. Clamped at zero: without a fresh outstanding
+// statement the debt can only be an estimate, and daily charges may add on
+// top. Returns 0 when no disbursement exists.
 func FulizaOutstanding(txs []parser.Transaction) int64 {
-	latestIdx := -1
-	for i, tx := range txs {
-		if !strings.HasPrefix(strings.ToLower(tx.Description), "fuliza access fee") {
-			continue
-		}
-		if tx.Balance >= 0 {
-			continue
-		}
-		if latestIdx == -1 || tx.Date > txs[latestIdx].Date ||
-			(tx.Date == txs[latestIdx].Date && tx.ID > txs[latestIdx].ID) {
-			latestIdx = i
-		}
-	}
-	if latestIdx == -1 {
+	pts := Ledger(txs)
+	if len(pts) == 0 {
 		return 0
 	}
-	outstanding := -txs[latestIdx].Balance
-	asOf := txs[latestIdx].Date
-	for _, tx := range txs {
-		d := strings.ToLower(tx.Description)
-		if !strings.HasPrefix(d, "fuliza repayment") {
-			continue
-		}
-		if tx.Date > asOf || (tx.Date == asOf && tx.ID > txs[latestIdx].ID) {
-			outstanding += tx.Amount // Amount is negative: repays reduce debt
-		}
-	}
-	if outstanding < 0 {
-		outstanding = 0
-	}
-	return outstanding
+	return pts[len(pts)-1].Debt
 }

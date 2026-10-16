@@ -9,6 +9,10 @@ import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
+import {
+  counterpartyDisplayName,
+  counterpartyLabelLines,
+} from "@/components/charts/counterparty-chart";
 import type * as models from "../bindings/mpesa-analyzer/models";
 import { todayKey } from "@/lib/ads";
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
@@ -292,6 +296,7 @@ const groups: Group[] = [
 	{
 		dayKey: "2026-04-28",
 		endBalance: 1000000,
+		endOwed: 0,
 		txs: [
 			row({ id: "R1", amount: -245000, type: "till", counterparty: "FAITH NJOKI BACHIA" }),
 			row({
@@ -356,5 +361,34 @@ describe("TransactionList", () => {
 	it("renders signed amounts from integer cents without floats", () => {
 		expect(formatAmount(-245000)).toBe("-KES 2,450.00");
 		expect(formatAmount(50000)).toBe("+KES 500.00");
+	});
+});
+
+describe("counterparty axis labels", () => {
+	it("drops numeric tokens but keeps the full name for filtering", () => {
+		expect(counterpartyDisplayName("TERESIA WAKERA MUNENE")).toBe(
+			"TERESIA WAKERA MUNENE",
+		);
+		expect(counterpartyDisplayName("KPLC PREPAID Acc. 01450540651")).toBe(
+			"KPLC PREPAID",
+		);
+		expect(counterpartyDisplayName("NAIROBI BUDGET BUTCHERY 2")).toBe(
+			"NAIROBI BUDGET BUTCHERY",
+		);
+		expect(counterpartyDisplayName("RICHARD 2547***287")).toBe("RICHARD");
+		// A name that is only a number has nothing to strip to.
+		expect(counterpartyDisplayName("0712***752")).toBe("0712***752");
+	});
+
+	it("wraps long display names into at most two balanced lines", () => {
+		expect(counterpartyLabelLines("KPLC PREPAID")).toEqual(["KPLC PREPAID"]);
+		expect(counterpartyLabelLines("TERESIA WAKERA MUNENE")).toEqual([
+			"TERESIA",
+			"WAKERA MUNENE",
+		]);
+		expect(counterpartyLabelLines("NAIROBI BUDGET BUTCHERY 2")).toEqual([
+			"NAIROBI BUDGET",
+			"BUTCHERY",
+		]);
 	});
 });

@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_receipt
 	ON transactions (id);
 `
 
-// Store wraps the SQLite database. All methods are safe for concurrent use.
+// Store wraps the SQLite database.
 type Store struct {
 	mu sync.Mutex
 	db *sql.DB

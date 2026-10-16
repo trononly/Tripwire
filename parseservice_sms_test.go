@@ -13,8 +13,9 @@ import (
 
 // TestTransactionGroupsFulizaTiebreak locks in that a paired send and its
 // Fuliza fee sharing one second-precision timestamp still end the day in
-// debt: the "-F" fee row sorts first (newest) so the day header shows the
-// outstanding (-292.00), not the wallet zero the send left behind.
+// debt: the "-F" fee row sorts first (newest) and the day header shows the
+// net position (-292.00) with the owed amount split out, not the wallet
+// zero the send left behind.
 func TestTransactionGroupsFulizaTiebreak(t *testing.T) {
 	txs := []parser.Transaction{
 		{ID: "UJFPC9YWQQ", Date: "2026-10-15 14:40:00", Description: "Merchant Payment to - TERESIA WAKERA MUNENE", Status: "Completed", Amount: -6200, Balance: 0},
@@ -25,10 +26,45 @@ func TestTransactionGroupsFulizaTiebreak(t *testing.T) {
 		t.Fatalf("want 1 day group, got %+v", groups)
 	}
 	if groups[0].EndBalance != -29200 {
-		t.Errorf("EndBalance = %d, want -29200 (outstanding owed)", groups[0].EndBalance)
+		t.Errorf("EndBalance = %d, want -29200 (net position owed)", groups[0].EndBalance)
+	}
+	if groups[0].EndOwed != 29200 {
+		t.Errorf("EndOwed = %d, want 29200", groups[0].EndOwed)
 	}
 	if len(groups[0].Txs) != 2 || groups[0].Txs[0].ID != "UJFPC9YWQQ-F" {
 		t.Errorf("fee row should sort first, got %+v", groups[0].Txs)
+	}
+}
+
+// TestTransactionGroupsFulizaRepayDay locks in the reported bug: a day
+// ending with a Fuliza repayment (wallet balance 0.00) after a disbursement
+// must still head the day with the remaining debt. 15 Oct ends with wallet
+// 0 and 343.00 owed (393.00 stated minus the 50.00 evening repayment), so
+// the header reads Bal -343.00 with Owes 343.00 - never a clean 0.00.
+func TestTransactionGroupsFulizaRepayDay(t *testing.T) {
+	txs := []parser.Transaction{
+		{ID: "UJFBOA99JS", Date: "2026-10-15 07:34:00", Description: "Funds received from - SIMON KANYOI", Status: "Completed", Amount: 20000, Balance: 20000},
+		{ID: "UJFPC9XD0T", Date: "2026-10-15 08:00:00", Description: "Fuliza Repayment - Partially Paid", Status: "Completed", Amount: -20000, Balance: 0},
+		{ID: "UJFPC9XRKY", Date: "2026-10-15 09:50:00", Description: "Merchant Payment to - TERESIA WAKERA MUNENE", Status: "Completed", Amount: -9000, Balance: 0},
+		{ID: "UJFPC9XRKY-F", Date: "2026-10-15 09:50:01", Description: "Fuliza Access Fee", Status: "Completed", Amount: -90, Balance: -22938},
+		{ID: "UJFPC9YWQQ", Date: "2026-10-15 14:40:00", Description: "Merchant Payment to - TERESIA WAKERA MUNENE", Status: "Completed", Amount: -6200, Balance: 0},
+		{ID: "UJFPC9YWQQ-F", Date: "2026-10-15 14:40:01", Description: "Fuliza Access Fee", Status: "Completed", Amount: -62, Balance: -29200},
+		{ID: "UJFPCA1C8X", Date: "2026-10-15 22:14:00", Description: "Pay Bill Online to KPLC PREPAID Acc. 01450540651", Status: "Completed", Amount: -10000, Balance: 0},
+		{ID: "UJFPCA1C8X-F", Date: "2026-10-15 22:14:01", Description: "Fuliza Access Fee", Status: "Completed", Amount: -100, Balance: -39300},
+		{ID: "UJF85AOSE4", Date: "2026-10-15 23:12:00", Description: "Funds received from - RAY MULAMA", Status: "Completed", Amount: 5000, Balance: 5000},
+		{ID: "UJFPCA1DYD", Date: "2026-10-15 23:13:00", Description: "Fuliza Repayment - Partially Paid", Status: "Completed", Amount: -5000, Balance: 0},
+		{ID: "UJGPCA1WZ6", Date: "2026-10-16 08:45:00", Description: "Customer Transfer to - Erastus Mukula", Status: "Completed", Amount: -4500, Balance: 0},
+		{ID: "UJGPCA1WZ6-F", Date: "2026-10-16 08:45:01", Description: "Fuliza Access Fee", Status: "Completed", Amount: -45, Balance: -38845},
+	}
+	groups := (&ParseService{}).TransactionGroups(txs)
+	if len(groups) != 2 {
+		t.Fatalf("want 2 day groups, got %+v", groups)
+	}
+	if groups[0].DayKey != "2026-10-16" || groups[0].EndBalance != -38845 || groups[0].EndOwed != 38845 {
+		t.Errorf("16 Oct header wrong: %+v", groups[0])
+	}
+	if groups[1].DayKey != "2026-10-15" || groups[1].EndBalance != -34300 || groups[1].EndOwed != 34300 {
+		t.Errorf("15 Oct header wrong: %+v", groups[1])
 	}
 }
 
