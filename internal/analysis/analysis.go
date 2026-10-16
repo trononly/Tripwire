@@ -75,7 +75,7 @@ func Analyze(transactions []parser.Transaction) (*AnalysisResult, error) {
 		CashflowMonthly:   monthly,
 		BalanceSeries:     balance,
 		Categories:        Categorize(transactions),
-		TopCounterparties: TopCounterparties(transactions, 8),
+		TopCounterparties: TopCounterparties(transactions, 5),
 		RecurringPayments: recurring.DetectRecurringPayments(transactions),
 		FeesByType:        FeesByType(transactions),
 		FulizaOutstanding: FulizaOutstanding(transactions),

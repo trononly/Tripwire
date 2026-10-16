@@ -82,3 +82,17 @@ func isPhoneToken(s string) bool {
 	}
 	return digits > 0
 }
+
+// SplitTrailingNumber separates a trailing phone number from a counterparty
+// name: "Calvin Kamara 0712544752" -> ("Calvin Kamara", "0712544752"),
+// keeping masked forms as-is. number is "" when the name ends in no phone
+// token (or is a bare number, which is kept whole as the display name). It
+// shares isPhoneToken with GroupKey, so the token dropped for grouping and
+// the token surfaced as the number are always the same one.
+func SplitTrailingNumber(name string) (display, number string) {
+	fields := strings.Fields(name)
+	if len(fields) < 2 || !isPhoneToken(fields[len(fields)-1]) {
+		return name, ""
+	}
+	return strings.Join(fields[:len(fields)-1], " "), fields[len(fields)-1]
+}

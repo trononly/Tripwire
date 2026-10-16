@@ -290,6 +290,65 @@ func TestCounterpartyOf(t *testing.T) {
 	}
 }
 
+func TestCounterpartyName(t *testing.T) {
+	// The display name shared by the list rows, the search index and the
+	// dashboard aggregations: statement tails and bank boilerplate are
+	// trimmed, and rows that name no counterparty stay empty.
+	cases := map[string]string{
+		"Salary Payment from 504900 - NCBA BANK via API. Original conversation ID is FTC260330HEOX.":  "NCBA BANK",
+		"Bank Transfer to Co-operative Bank Money Transfer Acc. 0180291641400":                        "Co-operative Bank",
+		"Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust":                               "ZIIDI MMF",
+		"Merchant Payment to 8526277 - JUMIA . Acc. zAWQDz":                                           "JUMIA",
+		"Bank Transfer to Absa Bank Kenya PLC. via API. Original conversation ID is FTC260330HEOY.":   "Absa Bank Kenya PLC",
+		"Transfer from Bank - IM BANK LIMITED- APP to Customer via API":                               "IM BANK LIMITED",
+		"Transfer from Bank 517819 - IM BANK LIMITED- APP to Customer via API":                        "IM BANK LIMITED",
+		"Business Payment from 303031 - Absa Bank Kenya PLC. via API. Original conversation ID is X.": "Absa Bank Kenya PLC",
+		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA":                                            "FAITH NJOKI BACHIA",
+		"Funds received from - 07******752 Calvin Kamara":                                             "Calvin Kamara",
+		"Airtime Purchase":                  "",
+		"Pay Bill Charge":                   "",
+		"Customer Transfer of Funds Charge": "",
+	}
+	for desc, want := range cases {
+		if got := CounterpartyName(desc); got != want {
+			t.Errorf("CounterpartyName(%q) = %q, want %q", desc, got, want)
+		}
+	}
+}
+
+func TestCounterpartyLabel(t *testing.T) {
+	// The label applies person formatting on top of the cleaned name:
+	// individuals are title-cased and reduced to first + last, while
+	// businesses keep the casing the statement used.
+	cases := map[string]string{
+		"Merchant Payment to 8526277 - JUMIA . Acc. zAWQDz":                                          "JUMIA",
+		"Bank Transfer to Co-operative Bank Money Transfer Acc. 0180291641400":                       "Co-operative Bank",
+		"Salary Payment from 504900 - NCBA BANK via API. Original conversation ID is FTC260330HEOX.": "NCBA BANK",
+		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA":                                           "FAITH NJOKI BACHIA",
+		"Merchant Payment to 123 - QUICK MONEY TRANSFER SERVICES":                                    "QUICK MONEY TRANSFER SERVICES",
+		"Funds received from - 07******752 Calvin Kamara":                                            "Calvin Kamara",
+		"Customer Transfer to - FAITH NJOKI BACHIA 0712***341":                                       "Faith Bachia",
+		"Customer Transfer to - 2547******287 RICHARD NDAYIZEYE":                                     "Richard Ndayizeye",
+		"Customer Transfer to - MARY-JANE WANJIRU":                                                   "Mary-Jane Wanjiru",
+		// An apostrophe does not start a new capitalised word, so the
+		// common Kenyan spelling is preserved.
+		"Customer Transfer to - nancy mung'ara":            "Nancy Mung'ara",
+		"Customer Transfer to - NANCY MUNG'ARA":            "Nancy Mung'ara",
+		"Customer Transfer to - KCB DOE":                   "KCB Doe",
+		"Send Money Reversal via API from - HARDEEP SINGH": "Hardeep Singh",
+		// Business payments share the "receive" type with personal ones,
+		// but a bank is not a person.
+		"Business Payment from 303031 - Absa Bank Kenya PLC. via API. Original conversation ID is X.": "Absa Bank Kenya PLC",
+		"Transfer from Bank 517819 - IM BANK LIMITED- APP to Customer via API":                        "IM BANK LIMITED",
+		"Airtime Purchase": "",
+	}
+	for desc, want := range cases {
+		if got := CounterpartyLabel(desc); got != want {
+			t.Errorf("CounterpartyLabel(%q) = %q, want %q", desc, got, want)
+		}
+	}
+}
+
 func TestTopCounterparties(t *testing.T) {
 	txs := []parser.Transaction{
 		tx("2026-04-21 18:29:02", "Funds received from - Calvin Kamara", 3000, 76079),
@@ -298,15 +357,21 @@ func TestTopCounterparties(t *testing.T) {
 		tx("2026-04-21 17:25:13", "Merchant Payment to 7408526 - FAITH NJOKI BACHIA", -10000, 77479),
 		tx("2026-04-21 17:06:40", "Funds received from - Calvin Kamara", 10000, 87479),
 	}
+	// n=1 keeps the single largest receiver AND the single largest sender:
+	// the card's In/Out toggle re-ranks this set, so both ends are needed.
 	top := TopCounterparties(txs, 1)
-	if len(top) != 1 || top[0].Name != "Calvin Kamara" || top[0].Count != 3 {
+	if len(top) != 2 || top[0].Name != "Calvin Kamara" || top[0].Count != 3 {
 		t.Errorf("unexpected top: %+v", top)
+	}
+	if top[1].Name != "FAITH NJOKI BACHIA" || top[1].Out != 24400 {
+		t.Errorf("sender end missing or wrong: %+v", top[1])
 	}
 }
 
 func TestTopCounterpartiesMergesCaseAndMasking(t *testing.T) {
 	// Same person, three spellings: casing plus masked/unmasked numbers
-	// must aggregate under the most common original form.
+	// must aggregate into one entry, presented as a person (title-cased,
+	// first + last) rather than the most common raw form.
 	txs := []parser.Transaction{
 		tx("2026-04-21 18:29:02", "Customer Transfer to - Calvin Kamara 0712544752", -6500, 1),
 		tx("2026-04-21 18:28:22", "Customer Transfer to - Calvin Kamara 0712***752", -6500, 1),
@@ -318,7 +383,7 @@ func TestTopCounterpartiesMergesCaseAndMasking(t *testing.T) {
 	if len(top) != 2 {
 		t.Fatalf("want 2 counterparties, got %+v", top)
 	}
-	if top[0].Name != "Calvin Kamara 0712544752" || top[0].Count != 4 {
+	if top[0].Name != "Calvin Kamara" || top[0].Count != 4 {
 		t.Errorf("merged entry wrong: %+v", top[0])
 	}
 }
@@ -337,5 +402,59 @@ func TestTopCounterpartiesExcludesSafaricomSystem(t *testing.T) {
 	top := TopCounterparties(txs, 8)
 	if len(top) != 1 || top[0].Name != "Calvin Kamara" || top[0].Count != 1 {
 		t.Errorf("system counterparties should be excluded, got %+v", top)
+	}
+}
+
+func TestTopCounterpartiesNumber(t *testing.T) {
+	// The dashboard card shows the till/paybill/payer number beside the
+	// name: it comes from the description's reference, or a trailing phone
+	// number left on the extracted name.
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:08:45", "Merchant Payment to 7408526 - FAITH NJOKI BACHIA", -14400, 1),
+		tx("2026-04-21 17:06:40", "Customer Transfer to - John Doe 0712544752", -6500, 1),
+		tx("2026-04-21 16:06:40", "Airtime Purchase", -500, 1), // no counterparty
+	}
+	top := TopCounterparties(txs, 8)
+	byName := map[string]string{}
+	for _, c := range top {
+		byName[c.Name] = c.Number
+	}
+	if byName["FAITH NJOKI BACHIA"] != "7408526" {
+		t.Errorf("till number wrong: %+v", top)
+	}
+	if byName["John Doe"] != "0712544752" {
+		t.Errorf("trailing phone wrong: %+v", top)
+	}
+}
+
+func TestTopCounterpartiesNumberPrefersUnmasked(t *testing.T) {
+	// Receiving masks the sender's number; sending records the full one.
+	// Both group under one identity, and the card should surface the fuller
+	// number because it was recorded at least once.
+	txs := []parser.Transaction{
+		tx("2026-04-21 18:29:02", "Funds received from - 07******752 Calvin Kamara", 3000, 1),
+		tx("2026-04-21 17:06:40", "Customer Transfer to - Calvin Kamara 0712544752", -1000, 1),
+	}
+	top := TopCounterparties(txs, 8)
+	if len(top) != 1 {
+		t.Fatalf("want one merged counterparty, got %+v", top)
+	}
+	if top[0].Number != "0712544752" {
+		t.Errorf("want unmasked number, got %q", top[0].Number)
+	}
+}
+
+func TestReferenceNumberNeverFallsBackToReceipt(t *testing.T) {
+	// Aggregation callers need "no number in the description" to be "",
+	// unlike SplitTransaction's receipt-number fallback.
+	cases := map[string]string{
+		"Merchant Payment to 7408526 - FAITH NJOKI BACHIA": "7408526",
+		"Funds received from - 07******752 Calvin Kamara":  "07******752",
+		"Airtime Purchase": "",
+	}
+	for desc, want := range cases {
+		if got := ReferenceNumber(tx("2026-04-21 18:08:45", desc, -100, 1)); got != want {
+			t.Errorf("ReferenceNumber(%q) = %q, want %q", desc, got, want)
+		}
 	}
 }

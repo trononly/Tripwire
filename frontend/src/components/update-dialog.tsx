@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import type { Updater } from "@/hooks/use-updater";
+import { ReleaseNotes } from "@/components/release-notes";
 
 function formatBytes(n: number): string {
 	if (!Number.isFinite(n) || n <= 0) return "";
@@ -83,8 +84,8 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 						<p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
 							What&apos;s new
 						</p>
-						<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed whitespace-pre-wrap">
-							{release.notes.trim()}
+						<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed">
+							<ReleaseNotes notes={release.notes} />
 						</div>
 					</div>
 				)}
