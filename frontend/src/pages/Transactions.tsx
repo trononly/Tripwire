@@ -5,7 +5,6 @@ import {
   TransactionList,
   useTransactionGroups,
 } from "@/components/transaction-list";
-import type { Group } from "@/components/transaction-list";
 import {
   Drawer,
   DrawerContent,
@@ -17,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { filterGroups } from "@/lib/transaction-filter";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
@@ -71,39 +71,6 @@ function inferPreset(from: string, to: string): DatePreset {
   if (from === startOfWeekStr() && to === today) return "week";
   if (from === startOfMonthStr() && to === today) return "month";
   return "custom";
-}
-
-/** Applies the page toolbar's filters to the prepared day groups. */
-function filterGroups(
-  groups: Group[],
-  search: string,
-  categoryFilter: string,
-  directionFilter: "all" | "in" | "out",
-  fromDate: string,
-  toDate: string,
-): Group[] {
-  const q = search.trim().toLowerCase();
-  const out: Group[] = [];
-  for (const g of groups) {
-    const txs = g.txs.filter((t) => {
-      if (categoryFilter !== "all" && t.category !== categoryFilter)
-        return false;
-      if (directionFilter === "in" && t.amount < 0) return false;
-      if (directionFilter === "out" && t.amount >= 0) return false;
-      const day = t.date.slice(0, 10);
-      if (fromDate && day < fromDate) return false;
-      if (toDate && day > toDate) return false;
-      if (
-        q &&
-        !t.description.toLowerCase().includes(q) &&
-        !t.category.toLowerCase().includes(q)
-      )
-        return false;
-      return true;
-    });
-    if (txs.length > 0) out.push({ ...g, txs });
-  }
-  return out;
 }
 
 function TxDataTable({ txs }: { txs: parser.Transaction[] }) {

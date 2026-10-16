@@ -14,7 +14,7 @@ import {
 } from "@/components/charts/cashflow-chart";
 import { BalanceChart } from "@/components/charts/balance-chart";
 import { CategoryDonut } from "@/components/charts/category-donut";
-import { CounterpartyChart } from "@/components/charts/counterparty-chart";
+import { CounterpartyCard } from "@/components/counterparty-card";
 import { TotalsCards } from "@/components/totals-cards";
 import { Private } from "@/components/privacy";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
@@ -393,7 +393,7 @@ export default function Dashboard({
                   className="w-full"
                   label="Tap to reveal the top counterparties"
                 >
-                  <CounterpartyChart
+                  <CounterpartyCard
                     counterparties={visible.topCounterparties ?? []}
                     onSelectCounterparty={(name) =>
                       navigate(`/transactions?q=${encodeURIComponent(name)}`)

@@ -36,6 +36,7 @@ func TestSplitTransaction(t *testing.T) {
 		{"Customer Payment to Small Business to - 07******642 VICTOR MUSYOKI", "VICTOR MUSYOKI", "07******642"},
 		{"Unit Trust Invest To 4145555 - ZIIDI MMF by M-PESA\\UnitTrust", "ZIIDI MMF", "4145555"},
 		{"Transfer from Bank - IM BANK LIMITED- APP to Customer via API", "IM BANK LIMITED", "TEST123"},
+		{"Transfer from Bank 517819 - IM BANK LIMITED- APP to Customer via API", "IM BANK LIMITED", "517819"},
 		{"Send Money Reversal via API from - HARDEEP SINGH", "HARDEEP SINGH", "TEST123"},
 		{"Customer Bundle Purchase to 826915Safaricom Offers by - 07******192 PHILIP ATEMA", "PHILIP ATEMA", "826915"},
 		{"Customer Bundle Purchase to 4093441SAFARICOM DATA BUNDLES by - 07******192 PHILIP ATEMA", "PHILIP ATEMA", "4093441"},
@@ -214,6 +215,26 @@ func TestGroupedTransactionsFiltered(t *testing.T) {
 	empty := GroupedTransactions([]parser.Transaction{}, allFilter())
 	if len(empty) != 0 {
 		t.Errorf("expected no groups for empty input, got %d", len(empty))
+	}
+}
+
+func TestGroupedTransactionsSearchMatchesAllWords(t *testing.T) {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	txs := []parser.Transaction{
+		mktx(today+" 08:00:00", "Business Payment from 303031 - Absa Bank Kenya PLC. via API. Original conversation ID is 66922406.", 12000, 100),
+		mktx(today+" 07:00:00", "Merchant Payment to 5525368 - SAMOSA WORLD KENYA LIMITED", -100, 200),
+	}
+	// The two words are not adjacent in the source, so a whole-query
+	// substring match would find nothing.
+	got := GroupedTransactions(txs, TransactionFilter{Search: "Absa PLC", Category: "all", Direction: "all", FromDate: "", ToDate: ""})
+	if len(got) != 1 || len(got[0].Transactions) != 1 || got[0].Transactions[0].Description != "Absa Bank Kenya PLC" {
+		t.Errorf("multi-word search failed: %+v", got)
+	}
+	// Every word must match, so a missing one still filters the row out.
+	missing := GroupedTransactions(txs, TransactionFilter{Search: "Absa Equity", Category: "all", Direction: "all", FromDate: "", ToDate: ""})
+	if len(missing) != 0 {
+		t.Errorf("non-matching word should filter out: %+v", missing)
 	}
 }
 

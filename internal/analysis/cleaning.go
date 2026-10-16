@@ -36,8 +36,12 @@ var bundleByRE = regexp.MustCompile(`(?i)\bby\s*-\s*(?:[\d*]+\s+)?(.+)$`)
 var tillRE = regexp.MustCompile(`(?i)\bto\s+([\d]{3,})`)
 
 // tailCutRE strips known boilerplate tails from extracted names, e.g.
-// " via API. Original conversation ID is FTC260330HEOX." or " Acc. 01450540651".
-var tailCutRE = regexp.MustCompile(`(?i)\s*(?:via api|app to customer|by m-|acc\.).*$`)
+// " via API. Original conversation ID is FTC260330HEOX.", " Acc. 01450540651"
+// or " Money Transfer Acc. 0180291641400". "money transfer acc." is matched
+// before the bare "acc." so a bank's "…Money Transfer Acc. 0180…" collapses
+// to the bank name, while a merchant merely called "Quick Money Transfer" is
+// left intact.
+var tailCutRE = regexp.MustCompile(`(?i)\s*(?:via api|app to customer|money transfer acc\.|by m-|acc\.).*$`)
 
 // shortNames maps whole boilerplate-only descriptions to a short label.
 var shortNames = map[string]string{
@@ -117,22 +121,111 @@ func stripMaskedLead(name string) (rest, masked string) {
 	return name, masked
 }
 
-// stripBoiler drops a leading boilerplate phrase and returns the remainder.
-func stripBoiler(desc string) string {
+// leadingRefRE matches a bare reference number directly after a boilerplate
+// prefix, e.g. "Transfer from Bank 517819 - IM BANK LIMITED" -> ref 517819.
+var leadingRefRE = regexp.MustCompile(`^([\d*]+)\s+-\s+(.+)$`)
+
+// boilerPayload splits a description that opens with one of the known
+// counterparty-bearing phrases but carries no "to <num> - <name>" shape:
+// "Transfer from Bank 517819 - IM BANK LIMITED- APP to Customer via API"
+// yields the reference "517819" and the raw payload "IM BANK LIMITED- APP
+// to Customer via API". ok is false when no prefix matches.
+func boilerPayload(desc string) (ref, payload string, ok bool) {
 	lower := strings.ToLower(desc)
 	for _, prefix := range boilerPrefixes {
-		if strings.HasPrefix(lower, prefix) {
-			// Boilerplate can leave a dangling separator and tail behind
-			// ("Transfer from Bank - IM BANK LIMITED- APP to Customer via
-			// API" -> "- IM BANK LIMITED- APP to Customer via API"), so
-			// run the same tail cleanup as shaped payloads and drop a
-			// leading separator.
-			name := cutTails(strings.TrimSpace(desc[len(prefix):]))
-			name = strings.TrimLeft(name, "- ")
-			return truncate(name, MaxNameLen)
+		if !strings.HasPrefix(lower, prefix) {
+			continue
 		}
+		rest := strings.TrimSpace(desc[len(prefix):])
+		if m := leadingRefRE.FindStringSubmatch(rest); m != nil {
+			return strings.TrimSpace(m[1]), strings.TrimSpace(m[2]), true
+		}
+		return "", rest, true
+	}
+	return "", "", false
+}
+
+// stripBoiler drops a leading boilerplate phrase and returns the remainder.
+func stripBoiler(desc string) string {
+	if _, payload, ok := boilerPayload(desc); ok {
+		return counterpartyTail(payload)
 	}
 	return truncate(desc, MaxNameLen)
+}
+
+// counterpartyTail cleans a raw counterparty payload: trims boilerplate
+// tails, a dangling separator and stray punctuation.
+func counterpartyTail(payload string) string {
+	name := cutTails(strings.TrimSpace(payload))
+	name = strings.TrimLeft(name, "- ")
+	return truncate(strings.TrimSpace(name), MaxNameLen)
+}
+
+// CounterpartyName is the cleaned display name of the counterparty behind a
+// description, or "" when the row names none (charges, airtime, Fuliza).
+// Unlike CounterpartyOf it also copes with the tail-heavy descriptions and
+// the bank shapes that carry no "to <num> - <name>" separator:
+//
+//	"Salary Payment from 504900 - NCBA BANK via API. ..."      -> "NCBA BANK"
+//	"Bank Transfer to Co-operative Bank Money Transfer Acc. …" -> "Co-operative Bank"
+//	"Transfer from Bank 517819 - IM BANK LIMITED- APP ..."     -> "IM BANK LIMITED"
+//	"Merchant Payment to 8526277 - JUMIA . Acc. zAWQDz"        -> "JUMIA"
+//
+// Statement boilerplate ("via API", "Acc.", "by M-PESA", "Money Transfer")
+// is trimmed here, so the same bank or merchant reads the same in the list
+// rows, in the search index and in the dashboard aggregations.
+func CounterpartyName(description string) string {
+	desc := strings.TrimSpace(description)
+	if _, payload := shapedPayload(desc); payload != "" {
+		return counterpartyTail(payload)
+	}
+	if _, payload, ok := boilerPayload(desc); ok {
+		return counterpartyTail(payload)
+	}
+	return ""
+}
+
+// shapedPayload splits a description into its till/paybill/payer number and
+// the payload after the separator, for the shapes "to|from <till> - <payload>"
+// and "to|from - <masked> <name>". The masked number of the second shape is
+// peeled off the payload and returned as the reference instead. Both return
+// values are "" when the description matches no counterparty shape.
+func shapedPayload(desc string) (ref, payload string) {
+	if m := toFromRE.FindStringSubmatch(desc); m != nil {
+		ref = strings.TrimSpace(m[1])
+		payload = strings.TrimSpace(m[2])
+		cleaned, lead := stripMaskedLead(payload)
+		payload = cleaned
+		if ref == "" {
+			ref = lead
+		}
+		return ref, payload
+	}
+	if m := bundleByRE.FindStringSubmatch(desc); m != nil {
+		cleaned, lead := stripMaskedLead(strings.TrimSpace(m[1]))
+		payload = cleaned
+		if lead != "" {
+			ref = lead
+		} else if t := tillRE.FindStringSubmatch(desc); t != nil {
+			ref = t[1]
+		}
+	}
+	return ref, payload
+}
+
+// ReferenceNumber returns the till/paybill/payer number carried by a
+// description, or "" when it names none. Unlike SplitTransaction's reference
+// it never falls back to the receipt number, so aggregation callers can tell
+// "no number in the description" from "no transaction at all".
+func ReferenceNumber(tx parser.Transaction) string {
+	desc := strings.TrimSpace(tx.Description)
+	if ref, _ := shapedPayload(desc); ref != "" {
+		return ref
+	}
+	if ref, _, ok := boilerPayload(desc); ok {
+		return ref
+	}
+	return ""
 }
 
 // SplitTransaction cleans one transaction into the display name and
@@ -141,51 +234,23 @@ func stripBoiler(desc string) string {
 // to the transaction's receipt number.
 func SplitTransaction(tx parser.Transaction) (name, reference string) {
 	desc := strings.TrimSpace(tx.Description)
-	ref, payload := "", ""
 
-	m := toFromRE.FindStringSubmatch(desc)
-	if m != nil {
-		ref = strings.TrimSpace(m[1])
-		payload = strings.TrimSpace(m[2])
-		cleaned, lead := stripMaskedLead(payload)
-		payload = cleaned
-		if ref == "" {
-			ref = lead
-		}
-	} else {
-		m = bundleByRE.FindStringSubmatch(desc)
-		if m != nil {
-			cleaned, lead := stripMaskedLead(strings.TrimSpace(m[1]))
-			payload = cleaned
-			if lead != "" {
-				ref = lead
-			} else {
-				t := tillRE.FindStringSubmatch(desc)
-				if t != nil {
-					ref = t[1]
-				}
-			}
-		}
-	}
-
-	if payload != "" {
-		name = cutTails(payload)
-	} else {
+	if _, payload := shapedPayload(desc); payload != "" {
+		name = counterpartyTail(payload)
+	} else if short, ok := shortNames[strings.ToLower(desc)]; ok {
 		// No counterparty shape: known short labels, else stripped boilerplate.
-		if short, ok := shortNames[strings.ToLower(desc)]; ok {
-			name = short
-		} else {
-			name = stripBoiler(desc)
-		}
+		name = short
+	} else {
+		name = stripBoiler(desc)
 	}
 	if name == "" {
 		name = truncate(desc, MaxNameLen)
 	}
 
-	if ref == "" {
-		reference = truncate(tx.ID, MaxRefLen)
-	} else {
+	if ref := ReferenceNumber(tx); ref != "" {
 		reference = truncate(ref, MaxRefLen)
+	} else {
+		reference = truncate(tx.ID, MaxRefLen)
 	}
 	return truncate(name, MaxNameLen), reference
 }

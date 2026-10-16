@@ -119,9 +119,20 @@ func matchesFilter(tx parser.Transaction, name, ref, direction, key string, f Tr
 		return false
 	}
 	if f.Search != "" {
-		q := strings.ToLower(f.Search)
 		hay := strings.ToLower(name + " " + ref + " " + tx.Description + " " + key)
-		if !strings.Contains(hay, q) {
+		if !containsAllTokens(hay, f.Search) {
+			return false
+		}
+	}
+	return true
+}
+
+// containsAllTokens reports whether every whitespace-separated token of query
+// appears in hay. Matching all tokens (rather than the whole query as one
+// substring) lets "absa plc" find "Absa Bank Kenya PLC".
+func containsAllTokens(hay, query string) bool {
+	for _, tok := range strings.Fields(strings.ToLower(query)) {
+		if !strings.Contains(hay, tok) {
 			return false
 		}
 	}
