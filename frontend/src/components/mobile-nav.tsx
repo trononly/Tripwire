@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { vibrateIfEnabled } from "@/lib/motion-settings";
+import {
+  useReduceMotionEnabled,
+  vibrateIfEnabled,
+} from "@/lib/motion-settings";
 
 // Bottom nav destinations. Pay is not a route: the center button opens
 // the M-Pesa pay overlay. The other four are real tabs.
@@ -54,6 +57,9 @@ export function MobileNav() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  // In-app Reduce motion (or the OS preference) stops the satellite
+  // spring-in and the pulsating halo, so the menu appears statically.
+  const reduceMotion = useReduceMotionEnabled();
 
   // Close the overlay on any route change: system back, satellite tap, or
   // a navbar tap while the Pay menu is open.
@@ -87,10 +93,15 @@ export function MobileNav() {
               >
                 <div
                   className="relative"
-                  style={{
-                    animation: "pay-satellite-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
-                    animationDelay: `${i * 60}ms`,
-                  }}
+                  style={
+                    reduceMotion
+                      ? undefined
+                      : {
+                          animation:
+                            "pay-satellite-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
+                          animationDelay: `${i * 60}ms`,
+                        }
+                  }
                 >
                   <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-none border border-border bg-surface/90 px-2 py-0.5 text-[11px] font-medium text-foreground shadow-md pointer-events-none">
                     {label}
@@ -110,7 +121,8 @@ export function MobileNav() {
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "absolute inset-0 rounded-full animate-ping opacity-25 motion-reduce:animate-none",
+                        "absolute inset-0 rounded-full opacity-25 motion-reduce:animate-none",
+                        !reduceMotion && "animate-ping",
                         color,
                       )}
                     />

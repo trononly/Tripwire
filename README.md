@@ -14,9 +14,11 @@ subscriptions.
 
 The app checks that releases page for updates: on launch (at most once a
 day) and on demand from **Settings → App updates**. When a newer build
-exists, a dialog shows the version, the release notes as "What's new",
+exists, a dialog shows the version, the release notes as the Changelog,
 and an Update button that downloads the APK and hands it to the Android
-installer. The first install of a new version asks you to allow
+installer. The same **Changelog** button in Settings shows the notes for the
+build you have installed; they are fetched at launch and cached, so the
+dialog opens instantly and works offline. The first install of a new version asks you to allow
 "Install unknown apps" for Tripwire once - Android's rule for updates
 outside the Play Store, not something the app can skip.
 
@@ -161,9 +163,24 @@ or copy the APK onto the phone and open it.
     wails3 task android:package      # rebuild after any Go or frontend change
     adb logcat --pid=$(adb shell pidof com.tripwire.app)   # runtime logs
 
+# Contributing
+
+Open a PR against `main`. Give the PR a user-facing **title** and include a
+`## What's new` section in the description (see
+`.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). Releases are built from
+`tripwire-*` tags with GitHub's auto-generated notes, and those notes are
+assembled from merged PR **titles** - exactly what the in-app **What's new**
+card shows users - so the title is the line people read after an update. The
+section below it restates the title for reviewers.
+
+Before opening a PR:
+
+    go test ./...
+    cd frontend && pnpm exec tsc --noEmit && pnpm test
+
 # Notes from creator
 
 - Onboarding should have the user setup their own icons for categories. For every section have an icon showing how we categorize them
 - TODO: Streamline customization, inspiration: https://www.youtube.com/watch?v=MccJdr61xnc - Geoffrey Litt
-- The app should have a "what's new" modal on first launch after an update. Can be disabled in the settings
-- Make animations disable them in the settings with a "reduce motion" option
+- DONE: Changelog button in Settings → App updates, cached for the installed release
+- DONE: Reduce motion option in Settings (stops the Pay icons pulsing)

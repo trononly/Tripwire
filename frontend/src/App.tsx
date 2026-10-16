@@ -18,6 +18,7 @@ import type * as store from "../bindings/mpesa-analyzer/internal/store/models";
 import { AnalyzeTransactions } from "../bindings/mpesa-analyzer/parseservice";
 import { useSmsPermissions } from "@/hooks/use-sms-permissions";
 import { useUpdater } from "@/hooks/use-updater";
+import { useChangelogPrefetch } from "@/hooks/use-changelog";
 import { UpdateDialog } from "@/components/update-dialog";
 import { RestrictedSettingsGuide } from "@/components/restricted-settings-guide";
 import { MobileNav } from "@/components/mobile-nav";
@@ -55,6 +56,9 @@ function App() {
   // In-app updates (Android only): auto-checks the GitHub Releases page and
   // prompts with the release notes when a newer Tripwire-x.y.z build exists.
   const updater = useUpdater();
+  // Warm the Changelog cache on launch so Settings -> App updates has the
+  // installed build's notes ready (and offline-capable) from the first open.
+  useChangelogPrefetch();
 
   const txs = mode === "sms" ? sms.smsTxs : stmts.statementTxs;
   const [analysisResult, setAnalysisResult] =

@@ -9,9 +9,15 @@ function easeOutCubic(t: number): number {
  * Animate a numeric value toward `target` with requestAnimationFrame.
  * Starts from the previous value (0 on mount). Returns target immediately
  * when the user prefers reduced motion (app setting or OS) or when
- * rendering on the server.
+ * rendering on the server. Pass `active = false` to hold the value until the
+ * figure scrolls into view (see useInView), so the count-up plays for the
+ * user instead of running off screen.
  */
-export function useCountUp(target: number, durationMs = 800): number {
+export function useCountUp(
+  target: number,
+  durationMs = 800,
+  active = true,
+): number {
   const reduced = useReduceMotionEnabled();
   const [value, setValue] = useState(() => (reduced ? target : 0));
   const fromRef = useRef(0);
@@ -23,6 +29,8 @@ export function useCountUp(target: number, durationMs = 800): number {
       setValue(target);
       return;
     }
+    // Off screen: hold at the start so the animation can play on entry.
+    if (!active) return;
     const from = fromRef.current;
     if (from === target) {
       setValue(target);
@@ -49,7 +57,7 @@ export function useCountUp(target: number, durationMs = 800): number {
       }
       fromRef.current = target;
     };
-  }, [target, durationMs, reduced]);
+  }, [target, durationMs, reduced, active]);
 
   return value;
 }

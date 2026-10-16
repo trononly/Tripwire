@@ -26,7 +26,16 @@ import {
 	isNewerVersion,
 	normalizeVersion,
 	pickApkAsset,
+	releaseTag,
 } from "@/lib/updater";
+import {
+	CHANGELOG_CACHE_KEY,
+	cacheChangelog,
+	cachedChangelogFor,
+	readChangelogCache,
+	writeChangelogCache,
+	type ChangelogCache,
+} from "@/lib/changelog";
 import {
 	buildPaybillScript,
 	buildSendScript,
@@ -214,6 +223,74 @@ describe("pickApkAsset", () => {
 			pickApkAsset([{ name: "Tripwire-1.2.3.aab", browser_download_url: "u", size: 1 }]),
 		).toBeNull();
 		expect(pickApkAsset([])).toBeNull();
+	});
+});
+
+describe("releaseTag", () => {
+	it("maps a version to its tripwire- release tag", () => {
+		expect(releaseTag("1.2.3")).toBe("tripwire-1.2.3");
+		expect(releaseTag("tripwire-1.2.3")).toBe("tripwire-1.2.3");
+		expect(releaseTag("v1.2.3")).toBe("tripwire-1.2.3");
+	});
+
+	it("returns empty for an unknown version", () => {
+		expect(releaseTag("")).toBe("");
+	});
+});
+
+// --- changelog cache ---
+
+describe("changelog cache", () => {
+	const notes = {
+		version: "1.2.3",
+		title: "Tripwire 1.2.3",
+		notes: "## What's Changed\n* stuff",
+		htmlUrl: "https://github.com/trononly/Tripwire/releases/tag/tripwire-1.2.3",
+	};
+
+	it("round-trips notes through the cache", () => {
+		expect(readChangelogCache()).toEqual({});
+		cacheChangelog(notes);
+		const entry = readChangelogCache()["1.2.3"];
+		expect(entry).toMatchObject(notes);
+		expect(typeof entry.fetchedAt).toBe("number");
+		expect(store.get(CHANGELOG_CACHE_KEY)).toBeTruthy();
+	});
+
+	it("keeps one entry per version, tolerant of a v prefix", () => {
+		cacheChangelog(notes);
+		cacheChangelog({ ...notes, version: "2.0.0", notes: "next" });
+		expect(cachedChangelogFor("1.2.3")).toMatchObject({ notes: notes.notes });
+		expect(cachedChangelogFor("v1.2.3")).toMatchObject({ notes: notes.notes });
+		expect(cachedChangelogFor("2.0.0")).toMatchObject({ notes: "next" });
+	});
+
+	it("returns null for versions that are not cached", () => {
+		cacheChangelog(notes);
+		expect(cachedChangelogFor("9.9.9")).toBeNull();
+		expect(cachedChangelogFor("")).toBeNull();
+	});
+
+	it("evicts the oldest entries past the cap", () => {
+		const seeded: ChangelogCache = {};
+		for (let i = 0; i < 5; i++) {
+			seeded[`1.0.${i}`] = { ...notes, version: `1.0.${i}`, fetchedAt: i + 1 };
+		}
+		writeChangelogCache(seeded);
+		cacheChangelog({ ...notes, version: "2.0.0" });
+		const cache = readChangelogCache();
+		expect(Object.keys(cache).length).toBe(5);
+		expect(cache["1.0.0"]).toBeUndefined();
+		expect(cache["2.0.0"]).toBeDefined();
+	});
+
+	it("rejects malformed or empty cache payloads", () => {
+		store.set(CHANGELOG_CACHE_KEY, "{not json");
+		expect(readChangelogCache()).toEqual({});
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ "1.2.3": { version: "", notes: "x" } }));
+		expect(readChangelogCache()).toEqual({});
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ "1.2.3": { version: "1.2.3" } }));
+		expect(readChangelogCache()).toEqual({});
 	});
 });
 
@@ -571,6 +648,20 @@ describe("CounterpartyCard", () => {
 		expect(texts).toHaveLength(1);
 		expect(texts[0]).toContain("Bob Otieno");
 		expect(texts[0]).toContain("888880");
+	});
+
+	it("remembers the last direction across remounts", () => {
+		const first = render(<CounterpartyCard counterparties={cps} />);
+		fireEvent.click(screen.getByRole("button", { name: "Money in" }));
+		first.unmount();
+		// A fresh mount reads the persisted direction instead of the
+		// default Out ranking.
+		render(<CounterpartyCard counterparties={cps} />);
+		expect(screen.getByRole("button", { name: "Money in" })).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(rows()[0]).toContain("Bob Otieno");
 	});
 
 	it("hands the display name to the search filter on tap", () => {

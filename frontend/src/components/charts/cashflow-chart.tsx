@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { vibrateIfEnabled, useReduceMotionEnabled } from "@/lib/motion-settings";
+import { useInView } from "@/hooks/use-in-view";
 import {
   type ChartConfig,
   ChartContainer,
@@ -74,10 +75,12 @@ export function CashflowChart({
 }) {
 
   const chartData = useMemo(() => binBuckets(buckets), [buckets]);
+  const { ref, inView } = useInView<HTMLDivElement>();
   // Draw-in animation, replayed whenever the dataset or cadence changes
-  // (the key remounts the chart). Reduced motion disables it entirely and
-  // keeps the key stable so nothing replays.
-  const animate = !useReduceMotionEnabled();
+  // (the key remounts the chart). Reduced motion disables it entirely, and
+  // the chart only animates while it is actually on screen - off screen it
+  // renders static instead of playing to completion in the background.
+  const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? `${granularity}:${chartData.length}:${chartData[0]?.label ?? ""}:${chartData[chartData.length - 1]?.label ?? ""}`
     : "static";
@@ -108,7 +111,8 @@ export function CashflowChart({
         </div>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-75 w-full">
+        <div ref={ref}>
+          <ChartContainer config={chartConfig} className="h-75 w-full">
           <BarChart
             key={animationKey}
             data={chartData}
@@ -182,6 +186,7 @@ export function CashflowChart({
             />
           </BarChart>
         </ChartContainer>
+        </div>
       </CardContent>
     </Card>
   );
