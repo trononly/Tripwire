@@ -31,6 +31,7 @@ import {
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Updater } from "@/hooks/use-updater";
+import { WhatsNewCard } from "@/components/whats-new";
 import {
   Card,
   CardContent,
@@ -392,6 +393,7 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
+      {isAndroid && <WhatsNewCard />}
       {isAndroid && (
         <Card>
           <CardHeader>

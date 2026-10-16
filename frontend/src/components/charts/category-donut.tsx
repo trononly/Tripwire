@@ -18,6 +18,7 @@ import {
 import { formatMoney } from "@/lib/format";
 import { isAndroidBridge } from "@/lib/sms-bridge";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
+import { useInView } from "@/hooks/use-in-view";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 // Fixed color per category: adjacent slices never share a hue family, and
@@ -69,9 +70,10 @@ export function CategoryDonut({
     ]),
   ) satisfies ChartConfig;
   // Draw-in animation, replayed whenever the category mix changes (the key
-  // remounts the chart). Reduced motion disables it entirely and keeps the
-  // key stable so nothing replays.
-  const animate = !useReduceMotionEnabled();
+  // remounts the chart). Reduced motion disables it entirely, and the donut
+  // only animates while it is on screen.
+  const { ref, inView } = useInView<HTMLDivElement>();
+  const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? data.map((d) => `${d.name}:${d.value}`).join("|")
     : "static";
@@ -86,7 +88,8 @@ export function CategoryDonut({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={config} className="mx-auto h-75 w-full">
+        <div ref={ref}>
+          <ChartContainer config={config} className="mx-auto h-75 w-full">
           <PieChart key={animationKey}>
             {/* Touch devices get no hover tooltip (same off-screen issue
                 as counterparties); tapping a segment navigates instead. */}
@@ -147,6 +150,7 @@ export function CategoryDonut({
             </Pie>
           </PieChart>
         </ChartContainer>
+        </div>
       </CardContent>
     </Card>
   );

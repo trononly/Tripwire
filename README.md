@@ -161,9 +161,24 @@ or copy the APK onto the phone and open it.
     wails3 task android:package      # rebuild after any Go or frontend change
     adb logcat --pid=$(adb shell pidof com.tripwire.app)   # runtime logs
 
+# Contributing
+
+Open a PR against `main`. Give the PR a user-facing **title** and include a
+`## What's new` section in the description (see
+`.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). Releases are built from
+`tripwire-*` tags with GitHub's auto-generated notes, and those notes are
+assembled from merged PR **titles** - exactly what the in-app **What's new**
+card shows users - so the title is the line people read after an update. The
+section below it restates the title for reviewers.
+
+Before opening a PR:
+
+    go test ./...
+    cd frontend && pnpm exec tsc --noEmit && pnpm test
+
 # Notes from creator
 
 - Onboarding should have the user setup their own icons for categories. For every section have an icon showing how we categorize them
 - TODO: Streamline customization, inspiration: https://www.youtube.com/watch?v=MccJdr61xnc - Geoffrey Litt
-- The app should have a "what's new" modal on first launch after an update. Can be disabled in the settings
-- Make animations disable them in the settings with a "reduce motion" option
+- DONE: "What's new" for the installed release, cached and shown in Settings
+- DONE: Reduce motion option in Settings (stops the Pay icons pulsing)
