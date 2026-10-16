@@ -2,18 +2,22 @@
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
+import { filterGroups } from "@/lib/transaction-filter";
+import { ReleaseNotes } from "@/components/release-notes";
+import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
   counterpartyDisplayName,
-  counterpartyLabelLines,
-} from "@/components/charts/counterparty-chart";
+  CounterpartyCard,
+} from "@/components/counterparty-card";
 import type * as models from "../bindings/mpesa-analyzer/models";
+import type * as analysis from "../bindings/mpesa-analyzer/internal/analysis/models";
 import { todayKey } from "@/lib/ads";
 import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import { parseHouseAds, pickHouseAd, type HouseAd } from "@/lib/house-ads";
@@ -213,8 +217,98 @@ describe("pickApkAsset", () => {
 	});
 });
 
-// --- ussd-menus ---
+// --- release notes ---
 
+const RELEASE_BODY = `## What's Changed
+* Add **dark mode** by @alice in https://github.com/trononly/Tripwire/pull/12
+* Fix a \`nil\` panic by @bob in https://github.com/trononly/Tripwire/pull/13
+<!-- contributor hint -->
+
+## New Contributors
+* @alice made their first contribution in https://github.com/trononly/Tripwire/pull/12
+
+**Full Changelog**: https://github.com/trononly/Tripwire/compare/tripwire-1.0.0...tripwire-1.1.0`;
+
+describe("release notes markdown", () => {
+	it("parses headings, bullets and the changelog footer into blocks", () => {
+		const blocks = parseReleaseNotes(RELEASE_BODY);
+		expect(blocks[0]).toMatchObject({ kind: "heading", level: 2 });
+		expect(blocks[1]).toMatchObject({ kind: "list", ordered: false });
+		const list = blocks.find((b) => b.kind === "list");
+		expect(list && list.kind === "list" ? list.items.length : 0).toBe(2);
+		// The footer is a paragraph mixing bold and a link.
+		const footer = blocks[blocks.length - 1];
+		expect(footer.kind).toBe("paragraph");
+		if (footer.kind === "paragraph") {
+			expect(footer.content[0]).toEqual({ kind: "bold", value: "Full Changelog" });
+			expect(footer.content.at(-1)).toMatchObject({ kind: "link" });
+		}
+	});
+
+	it("links bare URLs and keeps inline code literal", () => {
+		const items = parseReleaseNotes(RELEASE_BODY).find(
+			(b) => b.kind === "list",
+		);
+		if (items?.kind !== "list") throw new Error("expected a list");
+		expect(items.items[0]).toEqual([
+			{ kind: "text", value: "Add " },
+			{ kind: "bold", value: "dark mode" },
+			{ kind: "text", value: " by @alice in " },
+			{
+				kind: "link",
+				text: "https://github.com/trononly/Tripwire/pull/12",
+				href: "https://github.com/trononly/Tripwire/pull/12",
+			},
+		]);
+		expect(items.items[1][1]).toEqual({ kind: "code", value: "nil" });
+	});
+
+	it("drops HTML comments and supports ordered lists", () => {
+		expect(parseReleaseNotes("text\n<!-- hidden -->")).toEqual([
+			{ kind: "paragraph", content: [{ kind: "text", value: "text" }] },
+		]);
+		expect(parseReleaseNotes("1. one\n2. two")[0]).toMatchObject({
+			kind: "list",
+			ordered: true,
+		});
+	});
+
+	it("parses [label](url) links and leaves underscores literal", () => {
+		expect(parseInline("[docs](https://x.example) send_money")).toEqual([
+			{ kind: "link", text: "docs", href: "https://x.example" },
+			{ kind: "text", value: " send_money" },
+		]);
+	});
+
+	it("renders styled notes rather than raw markdown", () => {
+		render(<ReleaseNotes notes={RELEASE_BODY} />);
+		expect(screen.getByText("What's Changed")).toBeInTheDocument();
+		const links = screen.getAllByRole("link", {
+			name: "https://github.com/trononly/Tripwire/pull/12",
+		});
+		expect(links[0]).toHaveAttribute(
+			"href",
+			"https://github.com/trononly/Tripwire/pull/12",
+		);
+		// Markers must not leak into the visible text.
+		expect(screen.queryByText(/##/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
+	it("opens note links in the system browser", () => {
+		render(<ReleaseNotes notes={RELEASE_BODY} />);
+		fireEvent.click(
+			screen.getByRole("link", {
+				name: "https://github.com/trononly/Tripwire/pull/13",
+			}),
+		);
+		expect(Browser.OpenURL).toHaveBeenCalledWith(
+			"https://github.com/trononly/Tripwire/pull/13",
+		);
+	});
+});
+
+// --- ussd-menus ---
 describe("ussd-menus", () => {
 	it("builds a send script ending in PIN-stop + confirm", () => {
 		const s = buildSendScript("send", "0722123456", "500");
@@ -371,7 +465,7 @@ describe("TransactionList", () => {
 	});
 });
 
-describe("counterparty axis labels", () => {
+describe("counterparty display names", () => {
 	it("drops numeric tokens but keeps the full name for filtering", () => {
 		expect(counterpartyDisplayName("TERESIA WAKERA MUNENE")).toBe(
 			"TERESIA WAKERA MUNENE",
@@ -385,18 +479,120 @@ describe("counterparty axis labels", () => {
 		expect(counterpartyDisplayName("RICHARD 2547***287")).toBe("RICHARD");
 		// A name that is only a number has nothing to strip to.
 		expect(counterpartyDisplayName("0712***752")).toBe("0712***752");
+		// A dropped reference must not leave its separator behind.
+		expect(counterpartyDisplayName("517819 - IM BANK LIMITED")).toBe(
+			"IM BANK LIMITED",
+		);
+	});
+});
+
+describe("transactions search", () => {
+	const g = (): Group[] => [
+		{
+			dayKey: "2026-04-28",
+			endBalance: 0,
+			endOwed: 0,
+			txs: [
+				row({
+					description:
+						"Business Payment from 303031 - Absa Bank Kenya PLC. via API. Original conversation ID is 66922406.",
+					category: "Receive",
+					type: "receive",
+					counterparty: "Absa Bank Kenya PLC",
+				}),
+			],
+		},
+	];
+
+	it("matches every search word, not the query as one substring", () => {
+		// The words are non-adjacent in the source, so a substring match fails.
+		expect(filterGroups(g(), "Absa PLC", "all", "all", "", "")).toHaveLength(
+			1,
+		);
+		expect(
+			filterGroups(g(), "absa bank", "all", "all", "", ""),
+		).toHaveLength(1);
+		expect(
+			filterGroups(g(), "Absa Equity", "all", "all", "", ""),
+		).toHaveLength(0);
+	});
+});
+
+describe("CounterpartyCard", () => {
+	const cps: analysis.Counterparty[] = [
+		{
+			name: "Alice Wanjiru 0712000001",
+			number: "0712000001",
+			count: 3,
+			amount: -50000,
+			in: 0,
+			out: 50000,
+		},
+		{
+			name: "Bob Otieno",
+			number: "888880",
+			count: 2,
+			amount: 200000,
+			in: 200000,
+			out: 0,
+		},
+		{
+			name: "Calvin Kamara",
+			number: "07******752",
+			count: 1,
+			amount: -10000,
+			in: 0,
+			out: 10000,
+		},
+	];
+
+	const rows = () =>
+		screen
+			.getAllByTestId("counterparty-row")
+			.map((r) => r.textContent ?? "");
+
+	it("defaults to money out, ranked, with the number beside the name", () => {
+		render(<CounterpartyCard counterparties={cps} />);
+		const texts = rows();
+		// Bob has only inflow, so the default Out view leaves him out.
+		expect(texts).toHaveLength(2);
+		expect(texts[0]).toContain("Alice Wanjiru");
+		expect(texts[0]).toContain("0712000001");
+		expect(texts[0]).not.toContain("Alice Wanjiru 0712000001");
+		expect(texts[1]).toContain("Calvin Kamara");
+		// Masked numbers still surface as the number line.
+		expect(texts[1]).toContain("07******752");
 	});
 
-	it("wraps long display names into at most two balanced lines", () => {
-		expect(counterpartyLabelLines("KPLC PREPAID")).toEqual(["KPLC PREPAID"]);
-		expect(counterpartyLabelLines("TERESIA WAKERA MUNENE")).toEqual([
-			"TERESIA",
-			"WAKERA MUNENE",
-		]);
-		expect(counterpartyLabelLines("NAIROBI BUDGET BUTCHERY 2")).toEqual([
-			"NAIROBI BUDGET",
-			"BUTCHERY",
-		]);
+	it("re-ranks by money in when toggled", () => {
+		render(<CounterpartyCard counterparties={cps} />);
+		fireEvent.click(screen.getByRole("button", { name: "Money in" }));
+		const texts = rows();
+		expect(texts).toHaveLength(1);
+		expect(texts[0]).toContain("Bob Otieno");
+		expect(texts[0]).toContain("888880");
+	});
+
+	it("hands the display name to the search filter on tap", () => {
+		const onSelect = vi.fn();
+		render(
+			<CounterpartyCard counterparties={cps} onSelectCounterparty={onSelect} />,
+		);
+		fireEvent.click(screen.getAllByTestId("counterparty-row")[0]);
+		expect(onSelect).toHaveBeenCalledWith("Alice Wanjiru");
+	});
+
+	it("caps the leaderboard at five names", () => {
+		const many: analysis.Counterparty[] = Array.from({ length: 8 }, (_, i) => ({
+			name: `Person ${i + 1}`,
+			number: "",
+			count: 1,
+			amount: -(i + 1) * 1000,
+			in: 0,
+			out: (i + 1) * 1000,
+		}));
+		render(<CounterpartyCard counterparties={many} />);
+		expect(rows()).toHaveLength(5);
 	});
 });
 

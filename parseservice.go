@@ -219,7 +219,7 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 			Balance:      tx.Balance,
 			Category:     analysis.CategoryOf(tx.Description),
 			Type:         string(analysis.TypeOf(tx.Description)),
-			Counterparty: analysis.CounterpartyOf(tx.Description),
+			Counterparty: analysis.CounterpartyLabel(tx.Description),
 		})
 	}
 	return out
