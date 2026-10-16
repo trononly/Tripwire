@@ -29,6 +29,13 @@ import {
 	buildTillScript,
 	normalizePhone,
 } from "@/lib/ussd-menus";
+import {
+	PRIVACY_MODE_KEY,
+	getPrivacyModeEnabled,
+	setPrivacyMode,
+	togglePrivacyMode,
+} from "@/lib/privacy-mode";
+import { dayEndMs, dayStartMs, filterSmsResults } from "@/lib/sms-filter";
 
 // Keep every other import of the Wails runtime intact; only the browser
 // opener is a spy so external-url stays testable off-device.
@@ -390,5 +397,89 @@ describe("counterparty axis labels", () => {
 			"NAIROBI BUDGET",
 			"BUTCHERY",
 		]);
+	});
+});
+
+describe("privacy mode", () => {
+	it("defaults off and round-trips through localStorage", () => {
+		expect(getPrivacyModeEnabled()).toBe(false);
+		setPrivacyMode(true);
+		expect(getPrivacyModeEnabled()).toBe(true);
+		expect(store.get(PRIVACY_MODE_KEY)).toBe("1");
+		setPrivacyMode(false);
+		expect(getPrivacyModeEnabled()).toBe(false);
+		expect(store.get(PRIVACY_MODE_KEY)).toBe("0");
+	});
+
+	it("toggles against the stored value", () => {
+		togglePrivacyMode();
+		expect(getPrivacyModeEnabled()).toBe(true);
+		togglePrivacyMode();
+		expect(getPrivacyModeEnabled()).toBe(false);
+	});
+});
+
+describe("sms result filtering", () => {
+	const noon = (y: number, month: number, d: number) =>
+		new Date(y, month - 1, d, 12, 0, 0, 0).getTime();
+	const rows: models.SmsParseResult[] = [
+		{ sourceId: "OLD", kind: "imported", dateMs: noon(2026, 1, 5), body: "old mpesa" },
+		{
+			sourceId: "NEW",
+			kind: "imported",
+			dateMs: noon(2026, 3, 9),
+			body: "new mpesa",
+			address: "MPESA",
+		},
+		{ sourceId: "MID", kind: "unsupported", dateMs: noon(2026, 2, 20), body: "mid" },
+		{ sourceId: "NODATE", kind: "malformed", body: "no date" },
+	];
+
+	it("orders results today-to-past (newest first)", () => {
+		expect(filterSmsResults(rows).map((r) => r.sourceId)).toEqual([
+			"NEW",
+			"MID",
+			"OLD",
+			"NODATE",
+		]);
+	});
+
+	it("filters by kind and by free text across sender and body", () => {
+		expect(
+			filterSmsResults(rows, { kind: "unsupported" }).map((r) => r.sourceId),
+		).toEqual(["MID"]);
+		expect(filterSmsResults(rows, { query: "mpesa" }).map((r) => r.sourceId)).toEqual([
+			"NEW",
+			"OLD",
+		]);
+		expect(filterSmsResults(rows, { query: "nomatch" })).toHaveLength(0);
+	});
+
+	it("applies an inclusive received-date window and drops undated rows", () => {
+		expect(
+			filterSmsResults(rows, { from: "2026-02-01", to: "2026-02-28" }).map(
+				(r) => r.sourceId,
+			),
+		).toEqual(["MID"]);
+		// Both bounds on one day keep that day's messages.
+		expect(
+			filterSmsResults(rows, { from: "2026-03-09", to: "2026-03-09" }).map(
+				(r) => r.sourceId,
+			),
+		).toEqual(["NEW"]);
+		// A from-only window still excludes rows with no received time.
+		expect(
+			filterSmsResults(rows, { from: "2020-01-01" }).map((r) => r.sourceId),
+		).toEqual(["NEW", "MID", "OLD"]);
+	});
+
+	it("spans a full local day between the start and end bounds", () => {
+		const start = dayStartMs("2026-03-09");
+		const end = dayEndMs("2026-03-09");
+		expect(start).not.toBeNull();
+		expect(end).not.toBeNull();
+		expect(end! - start!).toBe(24 * 60 * 60 * 1000 - 1);
+		expect(dayStartMs("")).toBeNull();
+		expect(dayEndMs("nope")).toBeNull();
 	});
 });
