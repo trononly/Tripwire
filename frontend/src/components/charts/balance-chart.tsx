@@ -15,6 +15,7 @@ import {
 import { formatMoney } from "@/lib/format";
 import { safeFormatTick, safeFormatFull } from "@/lib/safe-date";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
+import { useInView } from "@/hooks/use-in-view";
 // safe-date import if needed
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
@@ -40,9 +41,10 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [data]);
   // Draw-in animation, replayed whenever the dataset changes (the key
-  // remounts the chart). Reduced motion disables it entirely and keeps the
-  // key stable so nothing replays.
-  const animate = !useReduceMotionEnabled();
+  // remounts the chart). Reduced motion disables it entirely, and the chart
+  // only animates while on screen so it never plays in the background.
+  const { ref, inView } = useInView<HTMLDivElement>();
+  const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? `${points.length}:${points[0]?.date ?? ""}:${points[points.length - 1]?.date ?? ""}`
     : "static";
@@ -53,7 +55,8 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
         <CardTitle>Balance Trajectory</CardTitle>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="w-full h-[220px]">
+        <div ref={ref}>
+          <ChartContainer config={chartConfig} className="w-full h-[220px]">
           <AreaChart
             key={animationKey}
             data={points}
@@ -116,6 +119,7 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
             />
           </AreaChart>
         </ChartContainer>
+        </div>
       </CardContent>
     </Card>
   );

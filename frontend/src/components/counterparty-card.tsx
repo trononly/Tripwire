@@ -17,6 +17,17 @@ import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/
 /** Row granularity of the card: rank by money received or money sent. */
 type Direction = "in" | "out";
 
+/** The In/Out choice persists so the card reopens on the last view. */
+const DIRECTION_KEY = "mpesa-analyzer.counterparty-direction";
+
+function readDirection(): Direction {
+  try {
+    return localStorage.getItem(DIRECTION_KEY) === "in" ? "in" : "out";
+  } catch {
+    return "out";
+  }
+}
+
 /** Display name: tills, accounts, phone masks and trailing counters crowd a
  *  row, so numeric tokens go. The number is surfaced on its own line; the
  *  full name still drives filtering and navigation.
@@ -102,7 +113,18 @@ export function CounterpartyCard({
   counterparties: analysis.Counterparty[];
   onSelectCounterparty?: (name: string) => void;
 }) {
-  const [direction, setDirection] = useState<Direction>("out");
+  const [direction, setDirectionState] = useState<Direction>(readDirection);
+
+  // Remember the chosen direction across sessions instead of always
+  // snapping back to the default "out" ranking.
+  const setDirection = (next: Direction) => {
+    setDirectionState(next);
+    try {
+      localStorage.setItem(DIRECTION_KEY, next);
+    } catch {
+      /* private mode: selection stays session-only */
+    }
+  };
 
   const data = useMemo(() => {
     return counterparties

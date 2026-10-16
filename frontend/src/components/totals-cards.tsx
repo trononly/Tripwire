@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
 import { useCountUp } from "@/hooks/use-count-up";
+import { useInView } from "@/hooks/use-in-view";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { useReveal } from "@/lib/privacy-mode";
 import { cn } from "@/lib/utils";
@@ -83,11 +84,17 @@ export function TotalsCards({
   totals: analysis.Totals | null;
   currentBalance?: number;
 }) {
-  const totalIn = useCountUp(totals?.totalIn ?? 0);
-  const totalOut = useCountUp(totals?.totalOut ?? 0);
+  const { ref, inView } = useInView<HTMLDivElement>();
+  // Count-ups only run once the row of KPIs is actually on screen.
+  const totalIn = useCountUp(totals?.totalIn ?? 0, 800, inView);
+  const totalOut = useCountUp(totals?.totalOut ?? 0, 800, inView);
   const netValue = (totals?.totalIn ?? 0) - (totals?.totalOut ?? 0);
-  const net = useCountUp(netValue);
-  const closingBalance = useCountUp(currentBalance ?? totals?.closingBalance ?? 0);
+  const net = useCountUp(netValue, 800, inView);
+  const closingBalance = useCountUp(
+    currentBalance ?? totals?.closingBalance ?? 0,
+    800,
+    inView,
+  );
 
   useEffect(() => {
     if (!totals) return;
@@ -96,7 +103,7 @@ export function TotalsCards({
 
   if (!totals) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div ref={ref} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {["Total In", "Total Out", "Net Flow", "Current Balance"].map((l) => (
           <KpiCard key={l} label={l} value="-" hint="No data yet" />
         ))}
@@ -105,7 +112,7 @@ export function TotalsCards({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div ref={ref} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <KpiCard
         label="Current Balance"
         value={formatMoney(closingBalance)}
