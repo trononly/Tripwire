@@ -33,11 +33,14 @@ type TransactionRow struct {
 }
 
 // TransactionGroup is one calendar day of rows for the list. BalanceAfter is
-// the true balance at the end of that day (computed from the unfiltered
-// data), so the header stays meaningful while rows are filtered.
+// the net M-Pesa position (wallet cash minus Fuliza debt) at the end of that
+// day and OwedAfter is the Fuliza debt owed then (positive cents, zero when
+// debt-free), both computed from the unfiltered data, so the header stays
+// meaningful while rows are filtered.
 type TransactionGroup struct {
 	DateLabel    string           `json:"dateLabel"`    // "Today, 28 Apr" / "Yesterday, 27 Apr" / "28 Apr" / "28 Apr 2024"
-	BalanceAfter float64          `json:"balanceAfter"` // KES
+	BalanceAfter float64          `json:"balanceAfter"` // KES, net position
+	OwedAfter    float64          `json:"owedAfter"`    // KES, positive Fuliza debt
 	Transactions []TransactionRow `json:"transactions"`
 }
 
@@ -159,15 +162,10 @@ func GroupedTransactions(txs []parser.Transaction, filter TransactionFilter) []T
 		return sorted[i].ID > sorted[j].ID
 	})
 
-	// True end-of-day balances: the first occurrence of a day in
-	// newest-first order is that day's latest transaction.
-	endBalance := make(map[string]int64, 16)
-	for _, tx := range sorted {
-		day := tx.Date[:10]
-		if _, ok := endBalance[day]; !ok {
-			endBalance[day] = tx.Balance
-		}
-	}
+	// True end-of-day positions from the net ledger: wallet cash minus
+	// Fuliza debt (plus the debt itself for the header). Keyed by day, so
+	// filtering rows below can never move a header.
+	dayNet, dayOwed := DayLedger(txs)
 
 	groups := make([]TransactionGroup, 0, 16)
 	var lastDay string
@@ -184,13 +182,10 @@ func GroupedTransactions(txs []parser.Transaction, filter TransactionFilter) []T
 
 		day := tx.Date[:10]
 		if len(groups) == 0 || day != lastDay {
-			var bal int64
-			if v, ok := endBalance[day]; ok {
-				bal = v
-			}
 			groups = append(groups, TransactionGroup{
 				DateLabel:    DateLabelOf(day),
-				BalanceAfter: toKES(bal),
+				BalanceAfter: toKES(dayNet[day]),
+				OwedAfter:    toKES(dayOwed[day]),
 				Transactions: []TransactionRow{},
 			})
 			lastDay = day
