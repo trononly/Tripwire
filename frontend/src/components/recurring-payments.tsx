@@ -59,8 +59,9 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
         grid gap-3 bg-muted/40 p-4
         transition-colors hover:bg-muted/60
 
-        md:grid-cols-[minmax(0,1.8fr)_minmax(120px,1fr)_110px_110px_140px]
+        md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]
         md:items-center
+        md:gap-x-5
         md:px-5
       "
     >
@@ -97,7 +98,7 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
 
       {/* Amount */}
       <div className="min-w-0">
-        <p className="text-base font-semibold tabular-nums">
+        <p className="text-base font-semibold whitespace-nowrap tabular-nums">
           {formatMoney(payment.amount)}
         </p>
 
@@ -111,7 +112,7 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
       {/* Cadence */}
       <div className="hidden md:block">
         <span
-          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${cadence.className}`}
+          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap ${cadence.className}`}
         >
           {cadence.label}
         </span>
@@ -119,7 +120,7 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
 
       {/* Frequency */}
       <div className="hidden md:block">
-        <p className="text-sm tabular-nums">
+        <p className="text-sm whitespace-nowrap tabular-nums">
           {payment.count} {payment.count === 1 ? "payment" : "payments"}
         </p>
       </div>
@@ -127,7 +128,9 @@ function PaymentItem({ payment }: { payment: recurring.RecurringPayment }) {
       {/* Last paid */}
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">Last paid</p>
-        <p className="truncate text-sm">{formatFullDate(payment.lastDate)}</p>
+        <p className="truncate text-sm whitespace-nowrap">
+          {formatFullDate(payment.lastDate)}
+        </p>
       </div>
     </div>
   );
@@ -197,8 +200,8 @@ export function RecurringPayments({
               className="
                 hidden px-5 pb-1 text-xs font-medium
                 text-muted-foreground
-                md:grid md:grid-cols-[minmax(0,1.8fr)_minmax(120px,1fr)_110px_110px_140px]
-                md:gap-3
+                md:grid md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]
+                md:gap-3 md:gap-x-5
               "
             >
               <span>Payment</span>

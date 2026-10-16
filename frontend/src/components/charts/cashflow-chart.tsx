@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { vibrateIfEnabled } from "@/lib/motion-settings";
+import { vibrateIfEnabled, useReduceMotionEnabled } from "@/lib/motion-settings";
 import {
   type ChartConfig,
   ChartContainer,
@@ -74,6 +74,13 @@ export function CashflowChart({
 }) {
 
   const chartData = useMemo(() => binBuckets(buckets), [buckets]);
+  // Draw-in animation, replayed whenever the dataset or cadence changes
+  // (the key remounts the chart). Reduced motion disables it entirely and
+  // keeps the key stable so nothing replays.
+  const animate = !useReduceMotionEnabled();
+  const animationKey = animate
+    ? `${granularity}:${chartData.length}:${chartData[0]?.label ?? ""}:${chartData[chartData.length - 1]?.label ?? ""}`
+    : "static";
 
   return (
     <Card>
@@ -102,7 +109,11 @@ export function CashflowChart({
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-75 w-full">
-          <BarChart data={chartData} margin={{ left: 4, right: 8, top: 8 }}>
+          <BarChart
+            key={animationKey}
+            data={chartData}
+            margin={{ left: 4, right: 8, top: 8 }}
+          >
             <CartesianGrid
               vertical={false}
               strokeDasharray="3 3"
@@ -152,14 +163,18 @@ export function CashflowChart({
             />
             <ChartLegend content={<ChartLegendContent />} />
             <Bar
-              isAnimationActive={false}
+              isAnimationActive={animate}
+              animationDuration={700}
+              animationEasing="ease-out"
               dataKey="in"
               fill="var(--color-in)"
               radius={[4, 4, 0, 0]}
               maxBarSize={32}
             />
             <Bar
-              isAnimationActive={false}
+              isAnimationActive={animate}
+              animationDuration={700}
+              animationEasing="ease-out"
               dataKey="out"
               fill="var(--color-out)"
               radius={[4, 4, 0, 0]}

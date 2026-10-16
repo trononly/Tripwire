@@ -11,6 +11,7 @@ import type { DayGroup } from "../../bindings/mpesa-analyzer/models";
 export type Group = {
   dayKey: string;
   endBalance: number;
+  endOwed: number;
   txs: TransactionView[];
 };
 type TransactionView = NonNullable<DayGroup["txs"]>[number];
@@ -81,6 +82,7 @@ export function useTransactionGroups(txs: parser.Transaction[]): Group[] {
           (g ?? []).map((d) => ({
             dayKey: d.dayKey,
             endBalance: d.endBalance,
+            endOwed: d.endOwed ?? 0,
             txs: d.txs ?? [],
           })),
         );
@@ -324,6 +326,7 @@ export function TransactionList({
                 </span>
                 <span className="text-xs tabular-nums text-muted-foreground">
                   Bal {formatMoney(g.endBalance)}
+                  {g.endOwed > 0 ? ` · Owes ${formatMoney(g.endOwed)}` : ""}
                 </span>
               </header>
               <div className="divide-y divide-border">
