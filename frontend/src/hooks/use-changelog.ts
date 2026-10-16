@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { cacheChangelog, cachedChangelogFor } from "@/lib/changelog";
 import { getInstalledVersion } from "@/lib/update-bridge";
 import { fetchReleaseNotes, type ReleaseNotesInfo } from "@/lib/updater";
-import { cachedChangelogFor, writeChangelogCache } from "@/lib/changelog";
 
 export interface Changelog {
 	/** Installed version the notes describe, "" when unknown (desktop). */
@@ -11,10 +11,28 @@ export interface Changelog {
 	release: ReleaseNotesInfo | null;
 	loading: boolean;
 	error: string | null;
-	/** True when the notes came straight from the local cache. */
-	cached: boolean;
 	/** Re-fetch, ignoring the cache. */
 	refresh: () => void;
+}
+
+/**
+ * Warm the changelog cache the moment the app opens, so the Settings dialog
+ * has the installed build's notes ready - and offline-capable - before it is
+ * ever opened. One request per launch; failures stay silent because the
+ * dialog fetches again on demand. No-op without an installed version
+ * (desktop, bridgeless builds).
+ */
+export function useChangelogPrefetch(): void {
+	useEffect(() => {
+		const version = getInstalledVersion()?.versionName ?? "";
+		if (!version) return;
+		const controller = new AbortController();
+		fetchReleaseNotes(version, controller.signal).then((result) => {
+			if (controller.signal.aborted) return;
+			if (result.ok && result.release) cacheChangelog(result.release);
+		});
+		return () => controller.abort();
+	}, []);
 }
 
 /**
@@ -28,18 +46,16 @@ export function useChangelog(enabled = true): Changelog {
 	const [release, setRelease] = useState<ReleaseNotesInfo | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [cached, setCached] = useState(false);
 	const [reload, setReload] = useState(0);
 
 	useEffect(() => {
 		if (!enabled || !version) return;
 
-		// Cache first: no network on the common path.
+		// Cache first: the launch prefetch usually means no network here.
 		if (reload === 0) {
 			const hit = cachedChangelogFor(version);
 			if (hit) {
 				setRelease(hit);
-				setCached(true);
 				setError(null);
 				return;
 			}
@@ -48,7 +64,6 @@ export function useChangelog(enabled = true): Changelog {
 		const controller = new AbortController();
 		setLoading(true);
 		setError(null);
-		setCached(false);
 		fetchReleaseNotes(version, controller.signal)
 			.then((result) => {
 				if (controller.signal.aborted) return;
@@ -57,12 +72,7 @@ export function useChangelog(enabled = true): Changelog {
 					return;
 				}
 				setRelease(result.release);
-				if (result.release) {
-					writeChangelogCache({
-						...result.release,
-						fetchedAt: Date.now(),
-					});
-				}
+				if (result.release) cacheChangelog(result.release);
 			})
 			.finally(() => {
 				if (!controller.signal.aborted) setLoading(false);
@@ -72,5 +82,5 @@ export function useChangelog(enabled = true): Changelog {
 
 	const refresh = useCallback(() => setReload((n) => n + 1), []);
 
-	return { version, release, loading, error, cached, refresh };
+	return { version, release, loading, error, refresh };
 }

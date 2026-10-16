@@ -16,6 +16,7 @@ import {
 	isNewerVersion,
 	type ReleaseInfo,
 } from "@/lib/updater";
+import { cacheChangelog } from "@/lib/changelog";
 
 export type UpdaterStatus =
 	| "idle"
@@ -168,6 +169,14 @@ export function useUpdater(): Updater {
 						setNeedsInstallPermission(false);
 						setStatus("available");
 						setVisible(true);
+						// Keep the incoming version's notes so the Changelog is
+						// ready (offline included) once this build is installed.
+						cacheChangelog({
+							version: result.release.version,
+							title: result.release.title,
+							notes: result.release.notes,
+							htmlUrl: result.release.htmlUrl,
+						});
 					} else if (manual) {
 						setStatus("up-to-date");
 					} else {

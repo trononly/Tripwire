@@ -30,9 +30,11 @@ import {
 } from "@/lib/updater";
 import {
 	CHANGELOG_CACHE_KEY,
+	cacheChangelog,
 	cachedChangelogFor,
 	readChangelogCache,
 	writeChangelogCache,
+	type ChangelogCache,
 } from "@/lib/changelog";
 import {
 	buildPaybillScript,
@@ -239,35 +241,56 @@ describe("releaseTag", () => {
 // --- changelog cache ---
 
 describe("changelog cache", () => {
-	const entry = {
+	const notes = {
 		version: "1.2.3",
 		title: "Tripwire 1.2.3",
 		notes: "## What's Changed\n* stuff",
 		htmlUrl: "https://github.com/trononly/Tripwire/releases/tag/tripwire-1.2.3",
-		fetchedAt: 123,
 	};
 
 	it("round-trips notes through the cache", () => {
-		expect(readChangelogCache()).toBeNull();
-		writeChangelogCache(entry);
-		expect(readChangelogCache()).toEqual(entry);
+		expect(readChangelogCache()).toEqual({});
+		cacheChangelog(notes);
+		const entry = readChangelogCache()["1.2.3"];
+		expect(entry).toMatchObject(notes);
+		expect(typeof entry.fetchedAt).toBe("number");
 		expect(store.get(CHANGELOG_CACHE_KEY)).toBeTruthy();
 	});
 
-	it("only returns notes for the installed version", () => {
-		writeChangelogCache(entry);
-		expect(cachedChangelogFor("1.2.3")).toMatchObject({ notes: entry.notes });
+	it("keeps one entry per version, tolerant of a v prefix", () => {
+		cacheChangelog(notes);
+		cacheChangelog({ ...notes, version: "2.0.0", notes: "next" });
+		expect(cachedChangelogFor("1.2.3")).toMatchObject({ notes: notes.notes });
+		expect(cachedChangelogFor("v1.2.3")).toMatchObject({ notes: notes.notes });
+		expect(cachedChangelogFor("2.0.0")).toMatchObject({ notes: "next" });
+	});
+
+	it("returns null for versions that are not cached", () => {
+		cacheChangelog(notes);
 		expect(cachedChangelogFor("9.9.9")).toBeNull();
 		expect(cachedChangelogFor("")).toBeNull();
 	});
 
+	it("evicts the oldest entries past the cap", () => {
+		const seeded: ChangelogCache = {};
+		for (let i = 0; i < 5; i++) {
+			seeded[`1.0.${i}`] = { ...notes, version: `1.0.${i}`, fetchedAt: i + 1 };
+		}
+		writeChangelogCache(seeded);
+		cacheChangelog({ ...notes, version: "2.0.0" });
+		const cache = readChangelogCache();
+		expect(Object.keys(cache).length).toBe(5);
+		expect(cache["1.0.0"]).toBeUndefined();
+		expect(cache["2.0.0"]).toBeDefined();
+	});
+
 	it("rejects malformed or empty cache payloads", () => {
 		store.set(CHANGELOG_CACHE_KEY, "{not json");
-		expect(readChangelogCache()).toBeNull();
-		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ version: "", notes: "x" }));
-		expect(readChangelogCache()).toBeNull();
-		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ version: "1.2.3" }));
-		expect(readChangelogCache()).toBeNull();
+		expect(readChangelogCache()).toEqual({});
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ "1.2.3": { version: "", notes: "x" } }));
+		expect(readChangelogCache()).toEqual({});
+		store.set(CHANGELOG_CACHE_KEY, JSON.stringify({ "1.2.3": { version: "1.2.3" } }));
+		expect(readChangelogCache()).toEqual({});
 	});
 });
 

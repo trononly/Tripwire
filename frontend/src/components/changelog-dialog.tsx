@@ -39,8 +39,8 @@ function ChangelogDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
-	const { version, release, loading, error, cached, refresh } =
-		useChangelog(open);
+	const { version, release, loading, error, refresh } = useChangelog(open);
+	const shown = release?.version || version;
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,11 +51,7 @@ function ChangelogDialog({
 						Changelog
 					</DialogTitle>
 					<DialogDescription>
-						{release
-							? `${release.title || `Tripwire ${release.version}`}${cached ? " · cached" : ""}`
-							: version
-								? `Tripwire ${version}`
-								: "Tripwire"}
+						{shown ? `Tripwire ${shown}` : "Tripwire"}
 					</DialogDescription>
 				</DialogHeader>
 

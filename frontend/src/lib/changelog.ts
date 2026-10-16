@@ -1,63 +1,94 @@
-// Local cache for the in-app "Changelog". The release notes for the
-// installed version are fetched from GitHub at most once, then reused on
-// every later open (offline included) until the version changes or the user
-// asks to refresh. Pure read/write plus validation, so it stays testable
-// without a network or a React render.
-import type { ReleaseNotesInfo } from "@/lib/updater";
+// Local cache for the in-app "Changelog": release notes keyed by version, so
+// the installed build's notes are ready the moment they are needed (offline
+// included) and the notes for an update we just discovered survive the
+// install. Pure read/write plus validation - no network, no React - so it
+// stays trivially testable.
+import { normalizeVersion, type ReleaseNotesInfo } from "@/lib/updater";
 
 export const CHANGELOG_CACHE_KEY = "tripwire.changelog-cache";
+
+/** Versions to keep before the oldest entry is evicted. */
+const MAX_ENTRIES = 5;
 
 export interface ChangelogCacheEntry extends ReleaseNotesInfo {
 	/** Epoch ms the entry was cached. */
 	fetchedAt: number;
 }
 
-function isNonEmptyString(value: unknown): value is string {
-	return typeof value === "string" && value !== "";
+/** Notes per normalized version, keyed by that version. */
+export type ChangelogCache = Record<string, ChangelogCacheEntry>;
+
+function parseEntry(value: unknown): ChangelogCacheEntry | null {
+	if (typeof value !== "object" || value === null) return null;
+	const entry = value as Partial<ChangelogCacheEntry>;
+	if (typeof entry.version !== "string" || entry.version === "") return null;
+	if (typeof entry.notes !== "string") return null;
+	return {
+		version: entry.version,
+		title: typeof entry.title === "string" ? entry.title : "",
+		notes: entry.notes,
+		htmlUrl: typeof entry.htmlUrl === "string" ? entry.htmlUrl : "",
+		fetchedAt: typeof entry.fetchedAt === "number" ? entry.fetchedAt : 0,
+	};
 }
 
-/** Cached changelog, or null when nothing usable is stored. */
-export function readChangelogCache(): ChangelogCacheEntry | null {
+/** The whole cache, keyed by normalized version. Empty when nothing is stored. */
+export function readChangelogCache(): ChangelogCache {
 	try {
 		const raw = localStorage.getItem(CHANGELOG_CACHE_KEY);
-		if (!raw) return null;
+		if (!raw) return {};
 		const parsed: unknown = JSON.parse(raw);
-		if (typeof parsed !== "object" || parsed === null) return null;
-		const entry = parsed as Partial<ChangelogCacheEntry>;
-		if (!isNonEmptyString(entry.version) || typeof entry.notes !== "string") {
-			return null;
+		if (typeof parsed !== "object" || parsed === null) return {};
+		const cache: ChangelogCache = {};
+		for (const value of Object.values(parsed as Record<string, unknown>)) {
+			const entry = parseEntry(value);
+			if (entry) cache[normalizeVersion(entry.version)] = entry;
 		}
-		return {
-			version: entry.version,
-			title: typeof entry.title === "string" ? entry.title : "",
-			notes: entry.notes,
-			htmlUrl: typeof entry.htmlUrl === "string" ? entry.htmlUrl : "",
-			fetchedAt: typeof entry.fetchedAt === "number" ? entry.fetchedAt : 0,
-		};
+		return cache;
 	} catch {
 		/* private mode / malformed payload */
-		return null;
+		return {};
 	}
 }
 
-/** Cache the changelog for one version, replacing any previous entry. */
-export function writeChangelogCache(entry: ChangelogCacheEntry): void {
+/** Persist the whole map, replacing what was there. */
+export function writeChangelogCache(cache: ChangelogCache): void {
 	try {
-		localStorage.setItem(CHANGELOG_CACHE_KEY, JSON.stringify(entry));
+		localStorage.setItem(CHANGELOG_CACHE_KEY, JSON.stringify(cache));
 	} catch {
 		/* private mode: cache stays session-only */
 	}
 }
 
-/** The cached changelog for `version`, or null when absent / a different build. */
+/** Cached notes for `version`, or null when that version is not stored. */
 export function cachedChangelogFor(version: string): ReleaseNotesInfo | null {
-	if (!version) return null;
-	const cache = readChangelogCache();
-	if (!cache || cache.version !== version) return null;
+	const key = normalizeVersion(version);
+	if (!key) return null;
+	const entry = readChangelogCache()[key];
+	if (!entry) return null;
 	return {
-		version: cache.version,
-		title: cache.title,
-		notes: cache.notes,
-		htmlUrl: cache.htmlUrl,
+		version: entry.version,
+		title: entry.title,
+		notes: entry.notes,
+		htmlUrl: entry.htmlUrl,
 	};
+}
+
+/**
+ * Store notes under the version they describe, keeping the newest few entries
+ * so a pending update's notes coexist with the installed build's.
+ */
+export function cacheChangelog(notes: ReleaseNotesInfo): void {
+	const key = normalizeVersion(notes.version);
+	if (!key) return;
+	const cache = readChangelogCache();
+	cache[key] = { ...notes, version: key, fetchedAt: Date.now() };
+	const keys = Object.keys(cache);
+	if (keys.length > MAX_ENTRIES) {
+		keys.sort((a, b) => cache[a].fetchedAt - cache[b].fetchedAt);
+		for (const stale of keys.slice(0, keys.length - MAX_ENTRIES)) {
+			delete cache[stale];
+		}
+	}
+	writeChangelogCache(cache);
 }
