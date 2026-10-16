@@ -16,6 +16,7 @@ import { BalanceChart } from "@/components/charts/balance-chart";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { CounterpartyChart } from "@/components/charts/counterparty-chart";
 import { TotalsCards } from "@/components/totals-cards";
+import { Private } from "@/components/privacy";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
 import { maxDayOf } from "@/lib/date-window";
 import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
@@ -353,32 +354,52 @@ export default function Dashboard({
             {/* Money flow: where and when, with the category share beside it. */}
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="min-w-0 lg:col-span-2">
-                <CashflowChart
-                  buckets={buckets}
-                  granularity={granularity}
-                  onGranularityChange={setGranularityOverride}
-                />
+                <Private
+                  className="w-full"
+                  label="Tap to reveal the cashflow chart"
+                >
+                  <CashflowChart
+                    buckets={buckets}
+                    granularity={granularity}
+                    onGranularityChange={setGranularityOverride}
+                  />
+                </Private>
               </div>
               <div className="min-w-0">
-                <CategoryDonut
-                  categories={visible.categories ?? []}
-                  onSelectCategory={(category) =>
-                    navigate(
-                      `/transactions?category=${encodeURIComponent(category)}`,
-                    )
-                  }
-                />
+                <Private
+                  className="w-full"
+                  label="Tap to reveal the spending breakdown"
+                >
+                  <CategoryDonut
+                    categories={visible.categories ?? []}
+                    onSelectCategory={(category) =>
+                      navigate(
+                        `/transactions?category=${encodeURIComponent(category)}`,
+                      )
+                    }
+                  />
+                </Private>
               </div>
               <div className="min-w-0 lg:col-span-2">
-                <BalanceChart data={visible.balanceSeries ?? []} />
+                <Private
+                  className="w-full"
+                  label="Tap to reveal the balance chart"
+                >
+                  <BalanceChart data={visible.balanceSeries ?? []} />
+                </Private>
               </div>
               <div className="min-w-0">
-                <CounterpartyChart
-                  counterparties={visible.topCounterparties ?? []}
-                  onSelectCounterparty={(name) =>
-                    navigate(`/transactions?q=${encodeURIComponent(name)}`)
-                  }
-                />
+                <Private
+                  className="w-full"
+                  label="Tap to reveal the top counterparties"
+                >
+                  <CounterpartyChart
+                    counterparties={visible.topCounterparties ?? []}
+                    onSelectCounterparty={(name) =>
+                      navigate(`/transactions?q=${encodeURIComponent(name)}`)
+                    }
+                  />
+                </Private>
               </div>
             </div>
           </div>
