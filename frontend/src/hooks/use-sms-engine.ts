@@ -118,14 +118,59 @@ export function useSmsEngine(deps: {
 		});
 	}
 
-	// Explicit refresh (pull-to-refresh): merge whatever the catcher has
-	// queued, bypassing the silent throttle. Draining the queue needs no
-	// permission, so RECEIVE_SMS alone is enough. Resolves when settled.
+	// One full inbox read: the bridge answers on common:sms (success or
+	// error) and this resolves once the merge settles, so the pull
+	// indicator can clear. Mirrors startSmsImport's read but stays out of
+	// the smsImporting skeleton state, which belongs to the import button.
+	function readInbox(announce: boolean): Promise<boolean> {
+		return new Promise((resolve) => {
+			let settled = false;
+			const timer = window.setTimeout(() => finish(false), 20000);
+			function finish(value: boolean) {
+				if (settled) return;
+				settled = true;
+				window.clearTimeout(timer);
+				resolve(value);
+			}
+			Events.Once("common:sms", (ev) => {
+				const data = ev.data as SmsBridgeResult;
+				if (!data?.ok) {
+					finish(false);
+					return;
+				}
+				void mergeSmsBatch(
+					stampSmsMessages(data.messages ?? []),
+					data.count ?? 0,
+					announce,
+				).then(finish);
+			});
+			requestSmsImport();
+		});
+	}
+
+	// Explicit refresh (pull-to-refresh, foreground resume): do the same
+	// work as tapping the header's Import SMS button so a pull genuinely
+	// re-reads the inbox instead of only draining the catcher queue. The
+	// queue merges first (append-only, no permission needed); unless it
+	// already delivered the newest message, the whole inbox is re-read and
+	// Go drops anything already known. Resolves when settled.
 	function refreshSmsNow(): Promise<boolean> {
 		if (!isAndroidBridge()) return Promise.resolve(false);
 		const perms = smsPermissions();
 		if (!perms.read && !perms.receive) return Promise.resolve(false);
-		return mergeSmsBatch(drainPendingSms(), 0, true);
+		const queued = drainPendingSms();
+		const drained =
+			queued.length > 0
+				? mergeSmsBatch(queued, queued.length, true)
+				: Promise.resolve(false);
+		// A full inbox read needs READ_SMS; without it the queue drain (when
+		// RECEIVE_SMS caught the message) is the whole refresh.
+		if (!perms.read) return drained;
+		// It was already in notifications: that batch carried the newest
+		// message, so skip the re-read. Otherwise - the usual case, since
+		// the 5s tick keeps the queue drained - re-read the whole inbox the
+		// way the Import SMS button does. Go drops anything already known.
+		return drained.then((fromQueue) => (fromQueue ? true : readInbox(true)));
 	}
 
 	// Foreground entry for the native side (see WailsBridge.onResume): the

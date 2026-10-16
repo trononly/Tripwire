@@ -1,9 +1,10 @@
-import { FileUp, MessageSquareText } from "lucide-react";
+import { Eye, EyeOff, FileUp, MessageSquareText } from "lucide-react";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { HistorySheet } from "@/components/history-sheet";
 import { SimSwitcher } from "@/components/sim-switcher";
+import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { DataMode } from "@/lib/data-mode";
 
@@ -23,6 +24,23 @@ export interface AppHeaderProps {
 	onDelete: (id: string) => void;
 	onSwitchSim: (meta: store.StatementMeta) => void;
 	onImportSms: () => void;
+}
+
+/** Quick Privacy Mode switch: blurs balances until each figure is tapped. */
+function PrivacyToggle() {
+	const on = usePrivacyMode();
+	return (
+		<Button
+			size="icon"
+			variant="ghost"
+			aria-pressed={on}
+			aria-label={on ? "Turn off Privacy Mode" : "Turn on Privacy Mode"}
+			title={on ? "Privacy Mode: on" : "Privacy Mode: off"}
+			onClick={() => setPrivacyMode(!on)}
+		>
+			{on ? <EyeOff /> : <Eye />}
+		</Button>
+	);
 }
 
 /** Sticky top bar: brand, history, and the mode-matched import action. */
@@ -55,6 +73,9 @@ export function AppHeader(props: AppHeaderProps) {
 				</div>
 
 				<div className="flex items-center gap-2">
+					{(statements.length > 0 || smsMetas.length > 0) && (
+						<PrivacyToggle />
+					)}
 					{statements.length > 0 && mode === "statements" && (
 						<HistorySheet
 							statements={statements}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { typeStyle } from "@/lib/transaction-types";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Private } from "@/components/privacy";
 import { formatMoney } from "@/lib/format";
 import { TransactionReceiptDialog } from "@/components/transaction-receipt-dialog";
 import { TransactionGroups } from "../../bindings/mpesa-analyzer/parseservice";
@@ -324,10 +325,12 @@ export function TransactionList({
                 <span className="text-[13px] font-medium">
                   {dateGroupLabel(g.dayKey)}
                 </span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  Bal {formatMoney(g.endBalance)}
-                  {g.endOwed > 0 ? ` · Owes ${formatMoney(g.endOwed)}` : ""}
-                </span>
+                <Private label="Tap to reveal the balance">
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    Bal {formatMoney(g.endBalance)}
+                    {g.endOwed > 0 ? ` · Owes ${formatMoney(g.endOwed)}` : ""}
+                  </span>
+                </Private>
               </header>
               <div className="divide-y divide-border">
                 {g.txs.map((t) => (
