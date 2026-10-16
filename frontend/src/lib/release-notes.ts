@@ -1,4 +1,4 @@
-// Tiny Markdown reader for the GitHub release notes shown as "What's new".
+// Tiny Markdown reader for the GitHub release notes shown as the Changelog.
 // The notes are auto-generated (`generate_release_notes: true`) and are a
 // narrow GFM subset - ATX headings, `*`/`-` bullets, **bold**, `code`,
 // [links](url) and bare URLs - so a full Markdown engine is not worth the
