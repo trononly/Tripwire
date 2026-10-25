@@ -21,6 +21,10 @@ name: CI
 
 on:
   pull_request:
+    # `edited`, `labeled` and `unlabeled` re-run the notes check after a
+    # contributor fixes the PR body or adds `skip-release-notes`. Without
+    # them a label added after opening the PR would not re-trigger CI.
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
   push:
     branches:
       - main
