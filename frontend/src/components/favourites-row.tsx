@@ -1,4 +1,4 @@
-import { Plus, Settings2, Star } from "lucide-react";
+import { Plus, Star } from "lucide-react";
 
 import { favouriteInitials } from "@/lib/favourites";
 import { cn } from "@/lib/utils";
@@ -20,8 +20,10 @@ export interface FavouritesRowProps {
 }
 
 /**
- * Quick-pick chips above the form. Tapping one only fills the fields -
- * sending stays an explicit second tap.
+ * Quick-pick shortcuts above the form. Tapping a tile only fills the fields -
+ * sending stays an explicit second tap. The add tile comes first so the row
+ * reads "add, then saved people"; tiles are square and borderless to match
+ * the rest of the app.
  */
 export function FavouritesRow({
 	items,
@@ -34,28 +36,18 @@ export function FavouritesRow({
 
 	return (
 		<div className="space-y-2">
-			<div className="flex items-center justify-between">
-				<span className="flex items-center gap-1.5 text-sm font-medium">
-					<Star className="size-3.5 text-rose-500" aria-hidden />
-					Favourites
-				</span>
-				<button
-					type="button"
-					onClick={onManage}
-					className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-				>
-					<Settings2 className="size-3.5" aria-hidden />
-					Manage
-				</button>
-			</div>
+			<span className="flex items-center gap-1.5 text-sm font-medium">
+				<Star className="size-3.5 text-rose-500" aria-hidden />
+				Favourites
+			</span>
 
 			{items.length === 0 ? (
 				<button
 					type="button"
 					onClick={onManage}
-					className="flex w-full items-center gap-2.5 rounded-md border border-dashed border-border px-3 py-2 text-left transition-colors hover:border-rose-500/40 hover:bg-rose-500/5"
+					className="flex w-full items-center gap-3 rounded-none border border-dashed border-border px-3 py-2 text-left transition-colors hover:border-rose-500/40 hover:bg-rose-500/5"
 				>
-					<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+					<span className="flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
 						<Plus className="size-4 text-muted-foreground" aria-hidden />
 					</span>
 					<span className="min-w-0">
@@ -68,7 +60,24 @@ export function FavouritesRow({
 					</span>
 				</button>
 			) : (
-				<div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				<div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+					<button
+						type="button"
+						onClick={onManage}
+						aria-label="Add favourite"
+						className="flex w-20 shrink-0 flex-col items-center gap-1 rounded-none p-1 text-center transition-colors hover:bg-muted/60"
+					>
+						<span className="flex size-11 items-center justify-center rounded-none bg-neutral-200 dark:bg-neutral-800">
+							<Plus
+								className="size-4 text-neutral-600 dark:text-neutral-400"
+								aria-hidden
+							/>
+						</span>
+						<span className="w-full truncate text-xs font-medium leading-tight text-muted-foreground">
+							Add
+						</span>
+					</button>
+
 					{shown.map((item) => (
 						<button
 							key={item.id}
@@ -76,36 +85,21 @@ export function FavouritesRow({
 							onClick={item.onPick}
 							aria-pressed={item.active}
 							className={cn(
-								"flex shrink-0 items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-left transition-colors",
-								item.active
-									? "border-rose-500/60 bg-rose-500/10"
-									: "border-border bg-background hover:border-rose-500/30 hover:bg-muted",
+								"flex w-20 shrink-0 flex-col items-center gap-1 rounded-none p-1 text-center transition-colors",
+								item.active ? "bg-muted" : "hover:bg-muted/60",
 							)}
 						>
 							<span
-								className={cn(
-									"flex size-7 items-center justify-center rounded-full text-[10px] font-semibold",
-									item.active
-										? "bg-rose-500/20 text-rose-700 dark:text-rose-300"
-										: "bg-muted text-muted-foreground",
-								)}
+								className="flex size-11 items-center justify-center rounded-none bg-neutral-200 text-xs font-normal text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
 								aria-hidden
 							>
 								{favouriteInitials(item.name)}
 							</span>
-							<span className="max-w-[8rem] truncate text-xs font-medium">
+							<span className="w-full truncate text-xs font-medium leading-tight text-foreground">
 								{item.name}
 							</span>
 						</button>
 					))}
-					<button
-						type="button"
-						onClick={onManage}
-						aria-label="Manage favourites"
-						className="flex size-9 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-rose-500/40 hover:text-foreground"
-					>
-						<Plus className="size-4" aria-hidden />
-					</button>
 				</div>
 			)}
 		</div>

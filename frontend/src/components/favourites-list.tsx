@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { favouriteInitials, moveItem } from "@/lib/favourites";
-import { cn } from "@/lib/utils";
 
 export interface FavouritesListItem {
 	id: string;
@@ -98,19 +97,19 @@ export function FavouritesList({
 			</div>
 
 			{loading ? (
-				<p className="rounded-md border p-4 text-center text-xs text-muted-foreground">
+				<p className="rounded-none border p-4 text-center text-xs text-muted-foreground">
 					Loading…
 				</p>
 			) : order.length === 0 ? (
-				<p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+				<p className="rounded-none border border-dashed p-4 text-center text-xs text-muted-foreground">
 					No favourites yet
 				</p>
 			) : (
-				<ul className="divide-y rounded-md border">
+				<ul className="divide-y rounded-none border">
 					{order.map((item, index) => (
-						<li key={item.id} className="flex items-center gap-2 px-3 py-2">
+						<li key={item.id} className="flex items-center gap-2 px-3 py-1.5">
 							<span
-								className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground"
+								className="flex size-9 shrink-0 items-center justify-center rounded-none bg-neutral-200 text-xs font-normal text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
 								aria-hidden
 							>
 								{favouriteInitials(item.name)}
@@ -233,7 +232,6 @@ export function FavouritesList({
 										size="icon-sm"
 										variant="ghost"
 										aria-label={`Rename ${item.name}`}
-										className={cn("text-muted-foreground")}
 										onClick={() => {
 											setEditingId(item.id);
 											setEditName(item.name);

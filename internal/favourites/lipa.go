@@ -15,9 +15,25 @@ const (
 	LipaKindTill    = "till"
 )
 
-// ListLipa returns the saved Lipa na M-Pesa destinations in display order.
-func (s *Service) ListLipa() ([]store.LipaFavourite, error) {
-	return s.store.ListLipaFavourites()
+// lipaKindOf normalizes and validates a Lipa flow name.
+func lipaKindOf(raw string) (string, error) {
+	kind := strings.ToLower(strings.TrimSpace(raw))
+	switch kind {
+	case LipaKindPaybill, LipaKindTill:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("unknown favourite kind")
+	}
+}
+
+// ListLipa returns one flow's saved Lipa na M-Pesa destinations in display
+// order: paybills and tills never mix.
+func (s *Service) ListLipa(kind string) ([]store.LipaFavourite, error) {
+	clean, err := lipaKindOf(kind)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.ListLipaFavourites(clean)
 }
 
 // AddLipa validates a manually entered paybill or till and saves it. Lipa
@@ -25,9 +41,9 @@ func (s *Service) ListLipa() ([]store.LipaFavourite, error) {
 // typed by the user. The name is optional and falls back to the account
 // (paybill) or the number (till).
 func (s *Service) AddLipa(name, kind, number, account string) (store.LipaFavourite, error) {
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	if kind != LipaKindPaybill && kind != LipaKindTill {
-		return store.LipaFavourite{}, fmt.Errorf("unknown favourite kind")
+	kind, err := lipaKindOf(kind)
+	if err != nil {
+		return store.LipaFavourite{}, err
 	}
 	// Tolerate grouping spaces in typed numbers ("247 247"); anything that
 	// still is not all digits fails the length/format check below.

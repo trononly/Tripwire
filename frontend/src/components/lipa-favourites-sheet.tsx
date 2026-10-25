@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Loader2, Plus, ReceiptText, ShoppingCart } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FavouritesList } from "@/components/favourites-list";
@@ -13,15 +13,15 @@ import {
 } from "@/components/ui/drawer";
 import type { LipaKind, LipaFavourite } from "@/lib/lipa-favourites";
 import { lipaFavouriteDetail } from "@/lib/lipa-favourites";
-import { cn } from "@/lib/utils";
 import { isValidAccount, isValidPaybill, isValidTill } from "@/lib/ussd-menus";
 
 export interface LipaFavouritesSheetProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** The active Lipa tab: each flow keeps its own saved destinations. */
+	kind: LipaKind;
 	favourites: LipaFavourite[];
 	loading: boolean;
-	defaultKind: LipaKind;
 	defaultNumber: string;
 	defaultAccount: string;
 	onAdd: (
@@ -35,21 +35,17 @@ export interface LipaFavouritesSheetProps {
 	onReorder: (ids: string[]) => Promise<boolean>;
 }
 
-const KINDS: { id: LipaKind; label: string; icon: typeof ReceiptText }[] = [
-	{ id: "paybill", label: "Paybill", icon: ReceiptText },
-	{ id: "till", label: "Till", icon: ShoppingCart },
-];
-
 /**
- * Manage saved Lipa na M-Pesa destinations. Everything is typed by hand:
- * there is no contact picker because a paybill/till is never a phone number.
+ * Manage the saved Lipa destinations for one flow: paybills on the Paybill
+ * tab, tills on Buy Goods. Everything is typed by hand because a business
+ * number is never one of the phone's contacts.
  */
 export function LipaFavouritesSheet({
 	open,
 	onOpenChange,
+	kind,
 	favourites,
 	loading,
-	defaultKind,
 	defaultNumber,
 	defaultAccount,
 	onAdd,
@@ -57,7 +53,6 @@ export function LipaFavouritesSheet({
 	onRemove,
 	onReorder,
 }: LipaFavouritesSheetProps) {
-	const [kind, setKind] = useState<LipaKind>(defaultKind);
 	const [name, setName] = useState("");
 	const [number, setNumber] = useState("");
 	const [account, setAccount] = useState("");
@@ -80,13 +75,12 @@ export function LipaFavouritesSheet({
 
 	useEffect(() => {
 		if (!open) return;
-		setKind(defaultKind);
 		setName("");
 		setNumber(defaultNumber.replace(/\D/g, ""));
-		setAccount(defaultKind === "till" ? "" : defaultAccount);
+		setAccount(kind === "till" ? "" : defaultAccount);
 		setTouched(false);
 		setSaving(false);
-	}, [open, defaultKind, defaultNumber, defaultAccount]);
+	}, [open, kind, defaultNumber, defaultAccount]);
 
 	async function handleAdd(e: FormEvent) {
 		e.preventDefault();
@@ -108,35 +102,13 @@ export function LipaFavouritesSheet({
 		<Drawer open={open} onOpenChange={onOpenChange}>
 			<DrawerContent className="max-h-[88vh]">
 				<DrawerHeader>
-					<DrawerTitle>Lipa na M-Pesa favourites</DrawerTitle>
+					<DrawerTitle>
+						{kind === "paybill" ? "Paybill favourites" : "Buy Goods favourites"}
+					</DrawerTitle>
 				</DrawerHeader>
 
 				<div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-2">
 					<form onSubmit={handleAdd} className="space-y-2">
-						<div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
-							{KINDS.map(({ id, label, icon: Icon }) => (
-								<button
-									key={id}
-									type="button"
-									aria-pressed={kind === id}
-									onClick={() => {
-										setKind(id);
-										setTouched(false);
-										if (id === "till") setAccount("");
-									}}
-									className={cn(
-										"flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors",
-										kind === id
-											? "bg-background text-foreground shadow-sm"
-											: "text-muted-foreground hover:text-foreground",
-									)}
-								>
-									<Icon className="size-4" aria-hidden />
-									{label}
-								</button>
-							))}
-						</div>
-
 						<Input
 							aria-label="Favourite name"
 							placeholder="Name (optional)"

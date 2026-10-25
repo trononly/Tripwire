@@ -47,7 +47,7 @@ export default function Send() {
   const [favOpen, setFavOpen] = useState(false);
   const auto = useAutomationAvailable();
   const qe = useQuickEntry();
-  const fav = useFavourites();
+  const fav = useFavourites(tab);
 
   const phoneOk = normalizePhone(phone) !== "";
   const amountOk = isValidAmount(amount);
@@ -207,6 +207,9 @@ export default function Send() {
       <FavouritesSheet
         open={favOpen}
         onOpenChange={setFavOpen}
+        title={
+          tab === "send" ? "Send Money favourites" : "Pochi favourites"
+        }
         favourites={fav.favourites}
         loading={fav.loading}
         picking={fav.picking}

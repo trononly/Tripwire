@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 
@@ -16,6 +16,9 @@ import {
 	type ContactPickResult,
 } from "@/lib/sms-bridge";
 
+/** Send Money and Pochi keep separate favourite lists. */
+export type SendFavouriteKind = "send" | "pochi";
+
 /** Best-effort message for a rejected Wails call. */
 function messageOf(err: unknown): string {
 	if (err instanceof Error && err.message.trim()) return err.message;
@@ -32,25 +35,37 @@ function nameOf(data: ContactPickResult): string {
 }
 
 /**
- * Saved Send recipients. Storage lives in SQLite behind ParseService; this
- * hook keeps the list in sync and drives the Android contact picker.
+ * Saved recipients for one Send flow. Storage lives in SQLite behind
+ * ParseService; this hook keeps the list in sync and drives the Android
+ * contact picker.
  */
-export function useFavourites() {
+export function useFavourites(kind: SendFavouriteKind) {
 	const [favourites, setFavourites] = useState<Favourite[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [picking, setPicking] = useState(false);
+	const requestId = useRef(0);
 
 	const refresh = useCallback(async () => {
+		const id = ++requestId.current;
 		try {
-			const list = await ListFavourites();
-			setFavourites(list ?? []);
+			const list = await ListFavourites(kind);
+			// Ignore a slow response from the flow the user just left.
+			if (id === requestId.current) setFavourites(list ?? []);
 		} catch (e) {
 			console.error("Loading favourites failed:", e);
 		}
-	}, []);
+	}, [kind]);
 
 	useEffect(() => {
-		refresh().finally(() => setLoading(false));
+		setFavourites([]);
+		setLoading(true);
+		let current = true;
+		refresh().finally(() => {
+			if (current) setLoading(false);
+		});
+		return () => {
+			current = false;
+		};
 	}, [refresh]);
 
 	// Register before opening the picker: the result arrives as an event.
@@ -64,7 +79,7 @@ export function useFavourites() {
 				toast.error(data.error || "Could not read that contact.");
 				return;
 			}
-			AddFavourite(data.name ?? "", data.phone)
+			AddFavourite(data.name ?? "", data.phone, kind)
 				.then(async () => {
 					await refresh();
 					toast.success(`${nameOf(data)} saved.`);
@@ -73,12 +88,12 @@ export function useFavourites() {
 		});
 		pickContact();
 		return off;
-	}, [picking, refresh]);
+	}, [picking, refresh, kind]);
 
 	const add = useCallback(
 		async (name: string, phone: string) => {
 			try {
-				await AddFavourite(name, phone);
+				await AddFavourite(name, phone, kind);
 				await refresh();
 				toast.success("Favourite saved.");
 				return true;
@@ -87,7 +102,7 @@ export function useFavourites() {
 				return false;
 			}
 		},
-		[refresh],
+		[refresh, kind],
 	);
 
 	const rename = useCallback(

@@ -714,25 +714,26 @@ func (p *ParseService) RenameStatement(id, name string) error {
 	return s.Rename(id, name)
 }
 
-// ListFavourites returns the saved Send recipients.
-func (p *ParseService) ListFavourites() ([]store.Favourite, error) {
+// ListFavourites returns the saved recipients for one Send flow: "send" for
+// Send Money or "pochi" for Pochi La Biashara.
+func (p *ParseService) ListFavourites(kind string) ([]store.Favourite, error) {
 	s, err := p.statements()
 	if err != nil {
 		return nil, err
 	}
-	return favourites.New(s).List()
+	return favourites.New(s).List(kind)
 }
 
-// AddFavourite saves a Send recipient. The phone is normalized to the local
-// 07…/01… form; the name is optional and falls back to the number. The
-// frontend normally sends the picker's raw number, so normalization lives in
-// Go rather than Java.
-func (p *ParseService) AddFavourite(name, phone string) (store.Favourite, error) {
+// AddFavourite saves a recipient in the given Send flow. The phone is
+// normalized to the local 07…/01… form; the name is optional and falls back
+// to the number. The frontend normally sends the picker's raw number, so
+// normalization lives in Go rather than Java.
+func (p *ParseService) AddFavourite(name, phone, kind string) (store.Favourite, error) {
 	s, err := p.statements()
 	if err != nil {
 		return store.Favourite{}, err
 	}
-	return favourites.New(s).Add(name, phone)
+	return favourites.New(s).Add(name, phone, kind)
 }
 
 // RenameFavourite changes a saved recipient's display name.
@@ -762,13 +763,14 @@ func (p *ParseService) ReorderFavourites(ids []string) error {
 	return favourites.New(s).Reorder(ids)
 }
 
-// ListLipaFavourites returns the saved Lipa na M-Pesa destinations.
-func (p *ParseService) ListLipaFavourites() ([]store.LipaFavourite, error) {
+// ListLipaFavourites returns the saved destinations for one Lipa flow:
+// "paybill" or "till".
+func (p *ParseService) ListLipaFavourites(kind string) ([]store.LipaFavourite, error) {
 	s, err := p.statements()
 	if err != nil {
 		return nil, err
 	}
-	return favourites.New(s).ListLipa()
+	return favourites.New(s).ListLipa(kind)
 }
 
 // AddLipaFavourite saves a manually entered paybill or till. The kind,

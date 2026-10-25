@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -24,24 +24,36 @@ function messageOf(err: unknown): string {
 }
 
 /**
- * Saved Lipa na M-Pesa destinations (paybill or till). Manual entry only:
- * unlike Send recipients these never come from the phone's contacts.
+ * Saved Lipa na M-Pesa destinations for one flow: paybills on the Paybill
+ * tab, tills on Buy Goods. Manual entry only: unlike Send recipients these
+ * never come from the phone's contacts.
  */
-export function useLipaFavourites() {
+export function useLipaFavourites(kind: LipaKind) {
 	const [favourites, setFavourites] = useState<LipaFavourite[]>([]);
 	const [loading, setLoading] = useState(true);
+	const requestId = useRef(0);
 
 	const refresh = useCallback(async () => {
+		const id = ++requestId.current;
 		try {
-			const list = await ListLipaFavourites();
-			setFavourites(list ?? []);
+			const list = await ListLipaFavourites(kind);
+			// Ignore a slow response from the flow the user just left.
+			if (id === requestId.current) setFavourites(list ?? []);
 		} catch (e) {
 			console.error("Loading Lipa favourites failed:", e);
 		}
-	}, []);
+	}, [kind]);
 
 	useEffect(() => {
-		refresh().finally(() => setLoading(false));
+		setFavourites([]);
+		setLoading(true);
+		let current = true;
+		refresh().finally(() => {
+			if (current) setLoading(false);
+		});
+		return () => {
+			current = false;
+		};
 	}, [refresh]);
 
 	const add = useCallback(

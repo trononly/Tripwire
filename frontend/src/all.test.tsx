@@ -547,6 +547,7 @@ function favourite(overrides: Partial<Favourite>): Favourite {
 		id: "f1",
 		name: "Mama Jane",
 		phone: "0712345678",
+		kind: "send",
 		sortOrder: 0,
 		createdAt: "2026-01-01T00:00:00Z",
 		...overrides,

@@ -18,6 +18,8 @@ import { normalizePhone } from "@/lib/ussd-menus";
 export interface FavouritesSheetProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Names the flow, e.g. "Send Money favourites". */
+	title?: string;
 	favourites: Favourite[];
 	loading: boolean;
 	picking: boolean;
@@ -39,6 +41,7 @@ export interface FavouritesSheetProps {
 export function FavouritesSheet({
 	open,
 	onOpenChange,
+	title = "Favourites",
 	favourites,
 	loading,
 	picking,
@@ -102,7 +105,7 @@ export function FavouritesSheet({
 		<Drawer open={open} onOpenChange={onOpenChange}>
 			<DrawerContent className="max-h-[88vh]">
 				<DrawerHeader>
-					<DrawerTitle>Favourites</DrawerTitle>
+					<DrawerTitle>{title}</DrawerTitle>
 				</DrawerHeader>
 
 				<div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-2">

@@ -49,7 +49,7 @@ export default function Lipa() {
   const [favOpen, setFavOpen] = useState(false);
   const auto = useAutomationAvailable();
   const qe = useQuickEntry();
-  const fav = useLipaFavourites();
+  const fav = useLipaFavourites(tab);
 
   const paybillOk =
     isValidPaybill(paybill) && isValidAccount(account) && isValidAmount(amount);
@@ -289,9 +289,9 @@ export default function Lipa() {
       <LipaFavouritesSheet
         open={favOpen}
         onOpenChange={setFavOpen}
+        kind={tab}
         favourites={fav.favourites}
         loading={fav.loading}
-        defaultKind={tab}
         defaultNumber={currentNumber}
         defaultAccount={currentAccount}
         onAdd={fav.add}
