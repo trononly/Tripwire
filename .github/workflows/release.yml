@@ -197,6 +197,12 @@ jobs:
     # `tag_name` input). Untagged manual runs stop after building.
     if: ${{ needs.build-android.result == 'success' && (startsWith(github.ref, 'refs/tags/tripwire-') || startsWith(inputs.tag_name, 'tripwire-')) }}
     steps:
+      # The release body is a committed file, so the job needs the repo
+      # itself. For a tag push this checks out the tag; for a manual
+      # dispatch it checks out the branch the run was started from.
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all packaged artifacts
         uses: actions/download-artifact@v4
         with:
@@ -205,18 +211,35 @@ jobs:
       - name: List release assets
         run: find dist -type f -print
 
-      - name: Resolve tag and title
+      - name: Resolve tag, title and version
         id: meta
         run: |
           TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#tripwire-}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "title=Tripwire ${TAG#tripwire-}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "title=Tripwire ${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Refuse to publish a release with no notes. The notes file is
+      # drafted with scripts/draft-release-notes.mjs, edited, and committed
+      # before the tag is pushed.
+      - name: Require release notes
+        run: |
+          NOTES="release-notes/${{ steps.meta.outputs.version }}.md"
+          test -s "$NOTES" || {
+            echo "::error::$NOTES is missing or empty. Run 'node scripts/draft-release-notes.mjs ${{ steps.meta.outputs.tag }}', edit it, and commit it before tagging."
+            exit 1
+          }
+          grep -q "^## What's new" "$NOTES" || {
+            echo "::error::$NOTES must contain a '## What's new' section."
+            exit 1
+          }
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.title }}
-          generate_release_notes: true
+          body_path: release-notes/${{ steps.meta.outputs.version }}.md
           fail_on_unmatched_files: false
           files: dist/**/*
