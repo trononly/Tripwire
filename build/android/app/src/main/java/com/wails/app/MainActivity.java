@@ -889,10 +889,26 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
+        if (webView == null) {
             super.onBackPressed();
+            return;
         }
+        // Give the React shell the first chance: an open dialog/drawer closes
+        // itself and returns true, so back never pops the route underneath it.
+        webView.evaluateJavascript(
+                "(function(){try{return !!(window.__tripwireHandleBack&&window.__tripwireHandleBack());}catch(e){return false;}})()",
+                value -> {
+                    if (value != null && value.trim().equalsIgnoreCase("true")) return;
+                    if (webView.canGoBack()) {
+                        webView.goBack();
+                    } else {
+                        systemBack();
+                    }
+                });
+    }
+
+    /** Finish the activity from a callback without touching the JS stack. */
+    private void systemBack() {
+        super.onBackPressed();
     }
 }

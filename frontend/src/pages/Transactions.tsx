@@ -395,7 +395,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
               )}
             </div>
           </div>
-          <DrawerFooter className="sticky bottom-0 border-t border-border bg-surface pb-[calc(1rem+var(--safe-bottom,env(safe-area-inset-bottom)))]">
+          <DrawerFooter className="sticky bottom-0 border-t border-border bg-surface">
             <Button
               onClick={applyDraft}
               className="h-12 w-full rounded-none bg-brand text-sm font-semibold text-white hover:brightness-110"

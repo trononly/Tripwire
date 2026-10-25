@@ -190,6 +190,15 @@ public class WailsJSBridge {
     }
 
     /**
+     * Match the Android system bars to the app theme.
+     * Called from JavaScript: wails.setSystemBars(JSON.stringify({dark}))
+     */
+    @JavascriptInterface
+    public void setSystemBars(String json) {
+        bridge.setSystemBars(json);
+    }
+
+    /**
      * Installed app version as JSON
      * {"versionName","versionCode","packageName"}.
      * Called from JavaScript: wails.getAppVersion()

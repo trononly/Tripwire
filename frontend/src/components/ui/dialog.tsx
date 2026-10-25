@@ -3,12 +3,25 @@ import { cn } from "cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useModalBack } from "@/hooks/use-modal-back"
+import { isToastPointer } from "@/lib/toast-guard"
 import { XIcon } from "lucide-react"
 
 function Dialog({
+  open,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  // Android back closes this dialog instead of navigating the page.
+  useModalBack(Boolean(open), () => onOpenChange?.(false))
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      open={open}
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function DialogTrigger({
@@ -49,6 +62,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -59,9 +73,22 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-none bg-popover p-4 text-xs/relaxed text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Centred dialogs only need the height cap: subtracting both safe
+          // areas keeps a tall dialog out of the gesture strip without
+          // off-centring short ones. Full-screen variants add their own
+          // safe padding (see import-statement-dialog).
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem-var(--safe-top,env(safe-area-inset-top))-var(--safe-bottom,env(safe-area-inset-bottom)))] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-none bg-popover p-4 text-xs/relaxed text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
+        onPointerDownOutside={(event) => {
+          // Toasts win over the modal: tapping or swiping one must not also
+          // dismiss the dialog it is floating above.
+          if (isToastPointer(event.detail.originalEvent.target)) {
+            event.preventDefault()
+            return
+          }
+          onPointerDownOutside?.(event)
+        }}
         {...props}
       >
         {children}

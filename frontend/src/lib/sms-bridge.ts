@@ -21,6 +21,7 @@ interface WailsAndroidBridge {
 	// desktop and older builds degrade gracefully.
 	getAppVersion?(): string;
 	getSafeArea?(): string;
+	setSystemBars?(json: string): void;
 	canInstallPackages?(): boolean;
 	openInstallPermissionSettings?(): void;
 	openAppSettings?(): void;

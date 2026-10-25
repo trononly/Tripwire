@@ -16,6 +16,7 @@ import android.content.pm.PackageManager;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.graphics.Rect;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -46,6 +47,7 @@ import android.telephony.SubscriptionManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
@@ -739,6 +741,48 @@ public class WailsBridge {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "setStatusBar failed", e);
+            }
+        });
+    }
+
+    /**
+     * Match the status and navigation bars to the app theme.
+     * json: {"dark":bool}. Dark gets #09090B with light icons, light gets
+     * #FFFFFF with dark icons. The color is also painted behind the gesture
+     * handle so no gray system scrim shows through.
+     */
+    public void setSystemBars(final String json) {
+        mainHandler.post(() -> {
+            try {
+                boolean dark = new JSONObject(json).optBoolean("dark", true);
+                Window window = activity.getWindow();
+                int color = Color.parseColor(dark ? "#09090B" : "#FFFFFF");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    window.setStatusBarContrastEnforced(false);
+                    window.setNavigationBarContrastEnforced(false);
+                }
+                window.setStatusBarColor(color);
+                window.setNavigationBarColor(color);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowInsetsController c = window.getInsetsController();
+                    if (c != null) {
+                        int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                        c.setSystemBarsAppearance(dark ? 0 : mask, mask);
+                    }
+                } else {
+                    int vis = window.getDecorView().getSystemUiVisibility();
+                    if (dark) {
+                        vis &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                                | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                    } else {
+                        vis |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                                | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                    }
+                    window.getDecorView().setSystemUiVisibility(vis);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "setSystemBars failed", e);
             }
         });
     }

@@ -26,6 +26,7 @@ import { useStatements } from "@/hooks/use-statements";
 import { useSmsEngine } from "@/hooks/use-sms-engine";
 import { useSimNames } from "@/hooks/use-sim-names";
 import { useSafeAreaInsets } from "@/hooks/use-safe-area";
+import { useSystemBars } from "@/hooks/use-system-bars";
 import { loadInitialMode, saveMode, type DataMode } from "@/lib/data-mode";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
@@ -35,6 +36,12 @@ import Insights from "@/pages/Insights";
 import Send from "@/pages/Send";
 import Lipa from "@/pages/Lipa";
 import Withdraw from "@/pages/Withdraw";
+
+/** Runs inside ThemeProvider so it can read the resolved in-app theme. */
+function SystemBarsSync() {
+  useSystemBars();
+  return null;
+}
 
 function App() {
   const [mode, setModeState] = useState<DataMode>(loadInitialMode);
@@ -131,6 +138,7 @@ function App() {
       disableTransitionOnChange
     >
       <HashRouter>
+        <SystemBarsSync />
         <ScrollToTop />
         <BackToPrimaryTabs />
         <SidebarProvider>
