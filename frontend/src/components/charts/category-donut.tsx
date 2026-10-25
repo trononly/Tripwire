@@ -124,8 +124,8 @@ export function CategoryDonut({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <CardTitle>Where the money went</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>By category</CardTitle>
           {toolbar}
         </div>
         <CardDescription>

@@ -88,7 +88,7 @@ export function CashflowChart({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>Cashflow</CardTitle>
           </div>
