@@ -1,6 +1,8 @@
 package suite
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"mpesa-analyzer/internal/categories"
@@ -30,18 +32,18 @@ func idsOf(t *testing.T, s *Store) []string {
 func TestCategoryCRUDAndOrder(t *testing.T) {
 	svc, s := newCategoryService(t)
 
-	food, err := svc.Create("  Food   & groceries ", "🍔")
+	food, err := svc.Create("  Food   & groceries ", "utensils")
 	if err != nil {
 		t.Fatalf("Create food: %v", err)
 	}
-	if food.Name != "Food & groceries" || food.Emoji != "🍔" {
-		t.Fatalf("Create = %+v, want trimmed name and emoji", food)
+	if food.Name != "Food & groceries" || food.Icon != "utensils" {
+		t.Fatalf("Create = %+v, want trimmed name and icon", food)
 	}
-	bills, err := svc.Create("Bills", "⚡")
+	bills, err := svc.Create("Bills", "zap")
 	if err != nil {
 		t.Fatalf("Create bills: %v", err)
 	}
-	travel, err := svc.Create("Travel", "🚌")
+	travel, err := svc.Create("Travel", "bus")
 	if err != nil {
 		t.Fatalf("Create travel: %v", err)
 	}
@@ -54,7 +56,7 @@ func TestCategoryCRUDAndOrder(t *testing.T) {
 	if err := svc.Update(bills.ID, "Bills & utilities", "🔌"); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if err := svc.Update(travel.ID, "bills & UTILITIES", "🚌"); err == nil {
+	if err := svc.Update(travel.ID, "bills & UTILITIES", "bus"); err == nil {
 		t.Fatal("renaming onto another category's name should be rejected")
 	}
 
@@ -99,28 +101,28 @@ func TestCategoryCRUDAndOrder(t *testing.T) {
 func TestCategoryEmbeddedNames(t *testing.T) {
 	svc, _ := newCategoryService(t)
 
-	if _, err := svc.Create("", "🍔"); err == nil {
+	if _, err := svc.Create("", "utensils"); err == nil {
 		t.Fatal("empty name should be rejected")
 	}
-	if _, err := svc.Create("   ", "🍔"); err == nil {
+	if _, err := svc.Create("   ", "utensils"); err == nil {
 		t.Fatal("whitespace-only name should be rejected")
 	}
 	if _, err := svc.Create("Food", "  "); err == nil {
-		t.Fatal("empty emoji should be rejected")
+		t.Fatal("empty icon should be rejected")
 	}
 	long := ""
 	for i := 0; i < 41; i++ {
 		long += "a"
 	}
-	if _, err := svc.Create(long, "🍔"); err == nil {
+	if _, err := svc.Create(long, "utensils"); err == nil {
 		t.Fatal("over-long name should be rejected")
 	}
 }
 
 func TestCategoryResolutionPrecedence(t *testing.T) {
 	svc, s := newCategoryService(t)
-	food, _ := svc.Create("Food", "🍔")
-	bills, _ := svc.Create("Bills", "⚡")
+	food, _ := svc.Create("Food", "utensils")
+	bills, _ := svc.Create("Bills", "zap")
 
 	const merchant = "Merchant Payment to 7408526 - FAITH NJOKI BACHIA"
 	const merchant2 = "Merchant Payment to 999 - FAITH NJOKI BACHIA 0712544752"
@@ -206,8 +208,8 @@ func TestCategoryResolutionPrecedence(t *testing.T) {
 
 func TestCategoryOwnRuleBeatsFulizaInheritance(t *testing.T) {
 	svc, _ := newCategoryService(t)
-	food, _ := svc.Create("Food", "🍔")
-	bills, _ := svc.Create("Bills", "⚡")
+	food, _ := svc.Create("Food", "utensils")
+	bills, _ := svc.Create("Bills", "zap")
 
 	txs := []parser.Transaction{
 		{ID: "A", Description: "Merchant Payment to 7408526 - FAITH NJOKI BACHIA", Amount: -100},
@@ -234,7 +236,7 @@ func TestCategoryOwnRuleBeatsFulizaInheritance(t *testing.T) {
 
 func TestAssignCategoryScopes(t *testing.T) {
 	svc, s := newCategoryService(t)
-	food, _ := svc.Create("Food", "🍔")
+	food, _ := svc.Create("Food", "utensils")
 
 	// Single row: a transaction rule, even for "Automatic" (category "").
 	if err := svc.Assign("A", "till", "SHOP", food.ID, false); err != nil {
@@ -285,8 +287,8 @@ func TestAssignCategoryScopes(t *testing.T) {
 
 func TestCategoryTotals(t *testing.T) {
 	svc, _ := newCategoryService(t)
-	food, _ := svc.Create("Food", "🍔")
-	bills, _ := svc.Create("Bills", "⚡")
+	food, _ := svc.Create("Food", "utensils")
+	bills, _ := svc.Create("Bills", "zap")
 
 	const merchant = "Merchant Payment to 7408526 - FAITH NJOKI BACHIA"
 	const kplc = "Pay Bill Online to 888880 - KPLC PREPAID Acc. 01450540651"
@@ -340,5 +342,83 @@ func TestCategoryTotals(t *testing.T) {
 	}
 	if len(empty) != 0 {
 		t.Errorf("empty dataset = %+v, want no buckets", empty)
+	}
+}
+
+// TestCategoryEmojiColumnMigrates covers the dev database written before
+// categories used icons: opening it must rebuild the table with the icon
+// column, keep the stored value (the frontend maps the old emoji), and stay
+// a no-op on the next open.
+func TestCategoryEmojiColumnMigrates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "statements.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE categories (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL,
+		emoji      TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("old schema: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO categories (id, name, emoji, sort_order, created_at)
+		 VALUES ('c1', 'Food', '🛒', 1, '2026-01-01T00:00:00Z')`,
+	); err != nil {
+		t.Fatalf("old row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
+	s, err := New(path)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	list, err := s.ListCategories()
+	if err != nil {
+		t.Fatalf("ListCategories: %v", err)
+	}
+	if len(list) != 1 || list[0].Icon != "🛒" || list[0].Name != "Food" {
+		t.Fatalf("migrated categories = %+v, want the old value kept", list)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("reopen raw: %v", err)
+	}
+	defer raw.Close()
+	var emoji, icon int
+	if err := raw.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name = 'emoji'`,
+	).Scan(&emoji); err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if err := raw.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name = 'icon'`,
+	).Scan(&icon); err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if emoji != 0 || icon != 1 {
+		t.Fatalf("columns: emoji=%d icon=%d, want emoji gone and icon present", emoji, icon)
+	}
+
+	again, err := New(path)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	t.Cleanup(func() { again.Close() })
+	list, err = again.ListCategories()
+	if err != nil {
+		t.Fatalf("ListCategories after second open: %v", err)
+	}
+	if len(list) != 1 || list[0].Icon != "🛒" {
+		t.Fatalf("categories after second open = %+v", list)
 	}
 }

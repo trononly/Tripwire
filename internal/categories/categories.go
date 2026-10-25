@@ -22,7 +22,7 @@ import (
 
 const (
 	maxNameLen    = 40
-	maxEmojiBytes = 32
+	maxIconBytes  = 40
 	maxCategories = 60
 )
 
@@ -41,12 +41,12 @@ func (s *Service) List() ([]store.Category, error) {
 }
 
 // Create validates and appends a category.
-func (s *Service) Create(rawName, rawEmoji string) (store.Category, error) {
+func (s *Service) Create(rawName, rawIcon string) (store.Category, error) {
 	name, err := cleanName(rawName)
 	if err != nil {
 		return store.Category{}, err
 	}
-	emoji, err := cleanEmoji(rawEmoji)
+	icon, err := cleanIcon(rawIcon)
 	if err != nil {
 		return store.Category{}, err
 	}
@@ -58,21 +58,21 @@ func (s *Service) Create(rawName, rawEmoji string) (store.Category, error) {
 	if len(existing) >= maxCategories {
 		return store.Category{}, fmt.Errorf("you already have %d categories; delete one first", maxCategories)
 	}
-	return s.store.AddCategory(name, emoji)
+	return s.store.AddCategory(name, icon)
 }
 
-// Update changes a category's name and emoji. The id (and therefore every
+// Update changes a category's name and icon. The id (and therefore every
 // rule and link) stays the same.
-func (s *Service) Update(id, rawName, rawEmoji string) error {
+func (s *Service) Update(id, rawName, rawIcon string) error {
 	name, err := cleanName(rawName)
 	if err != nil {
 		return err
 	}
-	emoji, err := cleanEmoji(rawEmoji)
+	icon, err := cleanIcon(rawIcon)
 	if err != nil {
 		return err
 	}
-	return s.store.UpdateCategory(id, name, emoji)
+	return s.store.UpdateCategory(id, name, icon)
 }
 
 // Delete removes a category and its rules. Transactions fall back to their
@@ -154,7 +154,7 @@ func CounterpartyKey(description string) string {
 type Total struct {
 	ID      string  `json:"id"`
 	Name    string  `json:"name"`
-	Emoji   string  `json:"emoji"`
+	Icon    string  `json:"icon"`
 	Amount  int64   `json:"amount"`
 	Count   int     `json:"count"`
 	Percent float64 `json:"percent"`
@@ -179,7 +179,7 @@ func (s *Service) Totals(txs []parser.Transaction) ([]Total, error) {
 		if c, ok := assigned[tx.ID]; ok {
 			key = c.ID
 			if _, ok := buckets[key]; !ok {
-				buckets[key] = &Total{ID: c.ID, Name: c.Name, Emoji: c.Emoji}
+				buckets[key] = &Total{ID: c.ID, Name: c.Name, Icon: c.Icon}
 			}
 		} else if _, ok := buckets[key]; !ok {
 			buckets[key] = &Total{Name: uncategorizedTotal.Name}
@@ -342,13 +342,13 @@ func cleanName(raw string) (string, error) {
 	return name, nil
 }
 
-func cleanEmoji(raw string) (string, error) {
-	emoji := strings.TrimSpace(raw)
-	if emoji == "" {
-		return "", fmt.Errorf("pick an emoji")
+func cleanIcon(raw string) (string, error) {
+	icon := strings.TrimSpace(raw)
+	if icon == "" {
+		return "", fmt.Errorf("pick an icon")
 	}
-	if len(emoji) > maxEmojiBytes {
-		return "", fmt.Errorf("pick a single emoji")
+	if len(icon) > maxIconBytes {
+		return "", fmt.Errorf("that icon name is too long")
 	}
-	return emoji, nil
+	return icon, nil
 }

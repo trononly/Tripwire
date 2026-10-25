@@ -74,7 +74,7 @@ React/TypeScript frontend.
 - `internal/counterparty`, `internal/txtype` - shared helpers that extract the
   counterparty and classify a transaction description, used by both analysis
   and the recurring detector.
-- `internal/categories` - the user's own emoji categories plus the rule layer
+- `internal/categories` - the user's own icon categories plus the rule layer
   that maps a receipt, counterparty or transaction type to one.
 - `frontend/src` - the UI: `App.tsx` shell, `pages/`, `components/`, `lib/`.
 - `frontend/bindings` - generated Wails bindings; do not edit by hand.

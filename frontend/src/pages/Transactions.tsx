@@ -7,6 +7,7 @@ import {
   type TransactionView,
 } from "@/components/transaction-list";
 import { CategoryPickerSheet } from "@/components/category-picker-sheet";
+import { CategoryIcon } from "@/components/category-icon";
 import {
   Drawer,
   DrawerContent,
@@ -460,9 +461,13 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
                           vibrateIfEnabled(8);
                           setDraftCustom(draftCustom === c.id ? "all" : c.id);
                         }}
-                        className={chipClass(draftCustom === c.id)}
+                        className={cn(
+                          chipClass(draftCustom === c.id),
+                          "inline-flex items-center gap-1.5",
+                        )}
                       >
-                        {c.emoji} {c.name}
+                        <CategoryIcon icon={c.icon} className="size-3.5" />
+                        {c.name}
                       </button>
                     ))}
                     <button

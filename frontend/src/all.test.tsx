@@ -9,6 +9,10 @@ import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
+import {
+	resolveCategoryIcon,
+	searchCategoryIcons,
+} from "@/components/category-icon";
 import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
@@ -889,7 +893,7 @@ function row(overrides: Partial<Row>): Row {
 		counterpartyKey: "FAITH NJOKI BACHIA",
 		customCategoryId: "",
 		customCategoryName: "",
-		customCategoryEmoji: "",
+		customCategoryIcon: "",
 		...overrides,
 	};
 }
@@ -985,7 +989,7 @@ describe("TransactionList", () => {
 		expect(screen.queryByText("Description")).not.toBeInTheDocument();
 	});
 
-	it("shows an assigned emoji category instead of the type in the row", () => {
+	it("shows an assigned category instead of the type in the row", () => {
 		const assigned: Group[] = [
 			{
 				dayKey: "2026-04-28",
@@ -995,7 +999,7 @@ describe("TransactionList", () => {
 					row({
 						customCategoryId: "c1",
 						customCategoryName: "Food",
-						customCategoryEmoji: "🍔",
+						customCategoryIcon: "utensils",
 					}),
 				],
 			},
@@ -1007,11 +1011,33 @@ describe("TransactionList", () => {
 				onSetCategory={vi.fn()}
 			/>,
 		);
-		expect(screen.getByText("🍔")).toBeInTheDocument();
 		expect(screen.getByText("Food · 14:22")).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /currently Food/ }),
-		).toBeInTheDocument();
+		const badge = screen.getByRole("button", { name: /currently Food/ });
+		expect(badge).toBeInTheDocument();
+		// The themed icon replaces the transaction type's icon in the badge.
+		expect(badge.querySelector("svg")).not.toBeNull();
+	});
+});
+
+describe("category icons", () => {
+	it("maps the first-build emojis to their themed icon", () => {
+		expect(resolveCategoryIcon("🍔")).toBe("utensils");
+		expect(resolveCategoryIcon("🛒")).toBe("shopping-cart");
+		// An icon key passes through untouched.
+		expect(resolveCategoryIcon("shopping-cart")).toBe("shopping-cart");
+	});
+
+	it("finds icons by the words people actually type", () => {
+		const names = (query: string) =>
+			searchCategoryIcons(query).map((def) => def.name);
+		expect(names("bangi")).toEqual(
+			expect.arrayContaining(["leaf", "cigarette", "cannabis"]),
+		);
+		expect(names("weed")).toContain("cannabis");
+		expect(names("matatu")).toContain("bus");
+		expect(names("pombe")).toContain("beer");
+		expect(names("chama").length).toBeGreaterThan(0);
+		expect(names("zzzz")).toHaveLength(0);
 	});
 });
 
@@ -1079,14 +1105,14 @@ describe("custom category filter", () => {
 					id: "R1",
 					customCategoryId: "c-food",
 					customCategoryName: "Food",
-					customCategoryEmoji: "🍔",
+					customCategoryIcon: "🍔",
 				}),
 				row({ id: "R2" }),
 				row({
 					id: "R3",
 					customCategoryId: "c-travel",
 					customCategoryName: "Travel",
-					customCategoryEmoji: "🚌",
+					customCategoryIcon: "🚌",
 				}),
 			],
 		},

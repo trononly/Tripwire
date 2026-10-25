@@ -166,19 +166,19 @@ const smsMaxDateMs = int64(4102444800000)
 // "apply to similar" matches on, so the UI's preview and the backend's rule
 // agree.
 type TransactionView struct {
-	ID                  string `json:"id"`
-	Date                string `json:"date"`
-	Description         string `json:"description"`
-	Status              string `json:"status"`
-	Amount              int64  `json:"amount"`
-	Balance             int64  `json:"balance"`
-	Category            string `json:"category"`
-	Type                string `json:"type"`
-	Counterparty        string `json:"counterparty"`
-	CounterpartyKey     string `json:"counterpartyKey"`
-	CustomCategoryID    string `json:"customCategoryId"`
-	CustomCategoryName  string `json:"customCategoryName"`
-	CustomCategoryEmoji string `json:"customCategoryEmoji"`
+	ID                 string `json:"id"`
+	Date               string `json:"date"`
+	Description        string `json:"description"`
+	Status             string `json:"status"`
+	Amount             int64  `json:"amount"`
+	Balance            int64  `json:"balance"`
+	Category           string `json:"category"`
+	Type               string `json:"type"`
+	Counterparty       string `json:"counterparty"`
+	CounterpartyKey    string `json:"counterpartyKey"`
+	CustomCategoryID   string `json:"customCategoryId"`
+	CustomCategoryName string `json:"customCategoryName"`
+	CustomCategoryIcon string `json:"customCategoryIcon"`
 }
 
 // DayGroup is one calendar day of transactions, newest first. EndBalance is
@@ -256,7 +256,7 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) ([]DayGroup, 
 		if c, ok := assigned[tx.ID]; ok {
 			view.CustomCategoryID = c.ID
 			view.CustomCategoryName = c.Name
-			view.CustomCategoryEmoji = c.Emoji
+			view.CustomCategoryIcon = c.Icon
 		}
 		g := &out[len(out)-1]
 		g.Txs = append(g.Txs, view)
@@ -295,12 +295,12 @@ func (p *ParseService) ListCategories() ([]store.Category, error) {
 
 // CreateCategory adds a user category. The picker calls this inline when the
 // user labels a transaction with a category that does not exist yet.
-func (p *ParseService) CreateCategory(name, emoji string) (store.Category, error) {
+func (p *ParseService) CreateCategory(name, icon string) (store.Category, error) {
 	svc, err := p.categoryService()
 	if err != nil {
 		return store.Category{}, err
 	}
-	return svc.Create(name, emoji)
+	return svc.Create(name, icon)
 }
 
 // AssignCategory applies one choice from the category picker. applyToSimilar
@@ -314,14 +314,14 @@ func (p *ParseService) AssignCategory(txID, txType, counterpartyKey, categoryID 
 	return svc.Assign(txID, txType, counterpartyKey, categoryID, applyToSimilar)
 }
 
-// UpdateCategory renames a category and picks a new emoji. The id survives,
+// UpdateCategory renames a category and picks a new icon. The id survives,
 // so every assignment, filter link and chart slice keeps pointing at it.
-func (p *ParseService) UpdateCategory(id, name, emoji string) error {
+func (p *ParseService) UpdateCategory(id, name, icon string) error {
 	svc, err := p.categoryService()
 	if err != nil {
 		return err
 	}
-	return svc.Update(id, name, emoji)
+	return svc.Update(id, name, icon)
 }
 
 // DeleteCategory removes a category and its rules. The transactions are

@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { typeStyle } from "@/lib/transaction-types";
 import { cn } from "@/lib/utils";
-import { CATEGORY_EMOJIS } from "@/lib/category-emoji";
+import { CategoryIcon } from "@/components/category-icon";
+import { IconPicker } from "@/components/icon-picker";
 import { useCategories } from "@/hooks/use-categories";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
@@ -59,7 +60,8 @@ export function CategoryPickerSheet({
 	const [applySimilar, setApplySimilar] = useState(true);
 	const [busy, setBusy] = useState(false);
 	const [creating, setCreating] = useState(false);
-	const [emoji, setEmoji] = useState("");
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
 
@@ -67,7 +69,8 @@ export function CategoryPickerSheet({
 		if (!open) return;
 		setApplySimilar(true);
 		setCreating(false);
-		setEmoji("");
+		setPickerOpen(false);
+		setIcon("tag");
 		setName("");
 		setFormError(null);
 		void reload();
@@ -99,14 +102,14 @@ export function CategoryPickerSheet({
 		e.preventDefault();
 		if (!shown || busy) return;
 		const clean = name.trim();
-		if (!emoji.trim() || !clean) {
-			setFormError("Pick an emoji and give the category a name.");
+		if (!clean) {
+			setFormError("Give the category a name.");
 			return;
 		}
 		setFormError(null);
 		setBusy(true);
 		try {
-			const category = await CreateCategory(clean, emoji.trim());
+			const category = await CreateCategory(clean, icon.trim());
 			bumpCategories();
 			await reload();
 			// Assign in the same gesture: creating a category mid-pick is
@@ -132,17 +135,27 @@ export function CategoryPickerSheet({
 	const stamp = typeStyle(shown.type);
 	const TypeIcon = stamp.icon;
 	const title = shown.counterparty || stamp.label;
-	const current = shown.customCategoryId
-		? `${shown.customCategoryEmoji} ${shown.customCategoryName}`
-		: `Automatic · ${shown.category}`;
-	const canCreate = emoji.trim() !== "" && name.trim() !== "" && !busy;
+	const canCreate = name.trim() !== "" && !busy;
 
 	return (
 		<Drawer open={open} onOpenChange={onOpenChange}>
 			<DrawerContent className="max-h-[90dvh]">
 				<DrawerHeader className="text-left">
 					<DrawerTitle>Category for {title}</DrawerTitle>
-					<p className="text-sm text-muted-foreground">Currently {current}</p>
+					<p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+						Currently
+						{shown.customCategoryId ? (
+							<>
+								<CategoryIcon
+									icon={shown.customCategoryIcon}
+									className="size-4"
+								/>
+								{shown.customCategoryName}
+							</>
+						) : (
+							`Automatic · ${shown.category}`
+						)}
+					</p>
 				</DrawerHeader>
 
 				<div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-2">
@@ -192,11 +205,11 @@ export function CategoryPickerSheet({
 											: "hover:bg-accent/50",
 									)}
 								>
-									<span
-										className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-[18px] leading-none"
-										aria-hidden
-									>
-										{category.emoji}
+									<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+										<CategoryIcon
+											icon={category.icon}
+											className="size-4.5"
+										/>
 									</span>
 									<span className="min-w-0 flex-1 truncate text-sm font-medium">
 										{category.name}
@@ -224,14 +237,6 @@ export function CategoryPickerSheet({
 						<form onSubmit={create} className="space-y-2 rounded-md border p-3">
 							<div className="flex gap-2">
 								<Input
-									aria-label="Category emoji"
-									value={emoji}
-									onChange={(e) => setEmoji(e.target.value)}
-									placeholder="🍔"
-									maxLength={32}
-									className="w-14 shrink-0 text-center text-lg"
-								/>
-								<Input
 									aria-label="Category name"
 									value={name}
 									onChange={(e) => setName(e.target.value)}
@@ -246,22 +251,26 @@ export function CategoryPickerSheet({
 									)}
 								</Button>
 							</div>
-							<div className="flex flex-wrap gap-1.5">
-								{CATEGORY_EMOJIS.map((suggestion) => (
-									<button
-										key={suggestion}
-										type="button"
-										aria-label={`Use ${suggestion}`}
-										onClick={() => setEmoji(suggestion)}
-										className={cn(
-											"flex size-8 items-center justify-center rounded-md text-lg hover:bg-accent",
-											emoji === suggestion && "bg-accent",
-										)}
-									>
-										{suggestion}
-									</button>
-								))}
-							</div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="w-full justify-start gap-2"
+								aria-expanded={pickerOpen}
+								onClick={() => setPickerOpen((v) => !v)}
+							>
+								<CategoryIcon icon={icon} className="size-4" />
+								{pickerOpen ? "Hide icons" : "Choose an icon"}
+							</Button>
+							{pickerOpen && (
+								<IconPicker
+									value={icon}
+									onSelect={(value) => {
+										setIcon(value);
+										setPickerOpen(false);
+									}}
+								/>
+							)}
 							{formError && (
 								<p className="text-xs text-destructive">{formError}</p>
 							)}

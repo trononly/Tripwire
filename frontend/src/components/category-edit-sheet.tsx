@@ -1,10 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-	ArrowDown,
-	ArrowUp,
-	Loader2,
-	Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Trash2 } from "lucide-react";
 
 import {
 	Drawer,
@@ -16,10 +11,13 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	CategoryIcon,
+	resolveCategoryIcon,
+} from "@/components/category-icon";
+import { IconPicker } from "@/components/icon-picker";
 import { formatMoney } from "@/lib/format";
-import { CATEGORY_EMOJIS } from "@/lib/category-emoji";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
-import { cn } from "@/lib/utils";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
 	CreateCategory,
@@ -47,7 +45,7 @@ export type CategoryEditSheetProps = {
 };
 
 /**
- * Create or edit one user category: emoji, name, order and deletion. The
+ * Create or edit one user category: icon, name, order and deletion. The
  * picker's inline create is deliberately narrower - this is the full form
  * behind the Categories page, where renaming and reordering live.
  */
@@ -62,22 +60,24 @@ export function CategoryEditSheet({
 	move,
 	onDelete,
 }: CategoryEditSheetProps) {
-	const [emoji, setEmoji] = useState("");
+	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [pickerOpen, setPickerOpen] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	useEffect(() => {
 		if (!open) return;
-		setEmoji(category?.emoji ?? "");
+		setIcon(resolveCategoryIcon(category?.icon ?? "tag"));
 		setName(category?.name ?? "");
 		setError(null);
 		setBusy(false);
+		setPickerOpen(false);
 		setConfirmDelete(false);
 	}, [open, category]);
 
-	const canSave = emoji.trim() !== "" && name.trim() !== "" && !busy;
+	const canSave = icon.trim() !== "" && name.trim() !== "" && !busy;
 
 	async function save(e: FormEvent) {
 		e.preventDefault();
@@ -86,9 +86,9 @@ export function CategoryEditSheet({
 		setError(null);
 		try {
 			if (category) {
-				await UpdateCategory(category.id, name.trim(), emoji.trim());
+				await UpdateCategory(category.id, name.trim(), icon.trim());
 			} else {
-				await CreateCategory(name.trim(), emoji.trim());
+				await CreateCategory(name.trim(), icon.trim());
 			}
 			bumpCategories();
 			vibrateIfEnabled(10);
@@ -145,41 +145,35 @@ export function CategoryEditSheet({
 				</DrawerHeader>
 
 				<form onSubmit={save} className="space-y-3 overflow-y-auto px-4 pb-2">
-					<div className="flex gap-2">
-						<Input
-							aria-label="Category emoji"
-							value={emoji}
-							onChange={(e) => setEmoji(e.target.value)}
-							placeholder="🍔"
-							maxLength={32}
-							className="w-16 shrink-0 text-center text-lg"
-						/>
-						<Input
-							aria-label="Category name"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="Food & groceries"
-							maxLength={40}
-						/>
-					</div>
+					<Input
+						aria-label="Category name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="Food & groceries"
+						maxLength={40}
+					/>
 
-					<div className="flex flex-wrap gap-1.5">
-						{CATEGORY_EMOJIS.map((suggestion) => (
-							<button
-								key={suggestion}
-								type="button"
-								aria-label={`Use ${suggestion}`}
-								aria-pressed={emoji === suggestion}
-								onClick={() => setEmoji(suggestion)}
-								className={cn(
-									"flex size-9 items-center justify-center rounded-md text-lg hover:bg-accent",
-									emoji === suggestion && "bg-accent",
-								)}
-							>
-								{suggestion}
-							</button>
-						))}
-					</div>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="w-full justify-start gap-2"
+						aria-expanded={pickerOpen}
+						onClick={() => setPickerOpen((v) => !v)}
+					>
+						<CategoryIcon icon={icon} className="size-4" />
+						{pickerOpen ? "Hide icons" : "Choose an icon"}
+					</Button>
+
+					{pickerOpen && (
+						<IconPicker
+							value={icon}
+							onSelect={(value) => {
+								setIcon(value);
+								setPickerOpen(false);
+							}}
+						/>
+					)}
 
 					{error && <p className="text-xs text-destructive">{error}</p>}
 
@@ -199,7 +193,7 @@ export function CategoryEditSheet({
 						{confirmDelete ? (
 							<div className="space-y-2">
 								<p className="text-sm font-medium">
-									Delete “{category.emoji} {category.name}”?
+									Delete “{category.name}”?
 								</p>
 								<p className="text-xs text-muted-foreground">
 									{usage && usage.count > 0

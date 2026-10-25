@@ -217,7 +217,7 @@ export default function Dashboard({
   }));
   const customSlices: DonutSlice[] = customTotals.map((t) => ({
     key: t.id || "none",
-    label: t.id ? `${t.emoji} ${t.name}` : t.name,
+    label: t.name,
     amount: t.amount,
     count: t.count,
   }));

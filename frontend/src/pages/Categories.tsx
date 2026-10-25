@@ -5,11 +5,11 @@ import { toast } from "sonner";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CategoryIcon } from "@/components/category-icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	CategoryEditSheet,
@@ -75,7 +75,7 @@ export default function Categories({
 		await DeleteCategory(category.id);
 		bumpCategories();
 		await reload();
-		toast.success(`${category.emoji} ${category.name} deleted`);
+		toast.success(`${category.name} deleted`);
 		setEditing(null);
 	}
 
@@ -100,10 +100,6 @@ export default function Categories({
 			<Card>
 				<CardHeader>
 					<CardTitle>Your categories</CardTitle>
-					<CardDescription>
-						Tap a category to rename it, move it, or delete it. Counts
-						cover the dataset you are viewing.
-					</CardDescription>
 				</CardHeader>
 				<CardContent className="p-0">
 					{loading && categories.length === 0 ? (
@@ -141,11 +137,11 @@ export default function Categories({
 												onClick={() => setEditing({ category })}
 												className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/50"
 											>
-												<span
-													className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-xl leading-none"
-													aria-hidden
-												>
-													{category.emoji}
+												<span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+													<CategoryIcon
+														icon={category.icon}
+														className="size-5"
+													/>
 												</span>
 												<span className="min-w-0 flex-1">
 													<span className="block truncate text-sm font-medium">

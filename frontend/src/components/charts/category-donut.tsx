@@ -112,9 +112,10 @@ export function CategoryDonut({
     ]),
   ) satisfies ChartConfig;
   // Draw-in animation, replayed whenever the category mix changes (the key
-  // remounts the chart). Reduced motion disables it entirely, and the donut
-  // only animates while it is on screen.
-  const { ref, inView } = useInView<HTMLDivElement>();
+  // remounts the chart). Reduced motion disables it entirely, and it draws in
+  // once, the first time it is on screen: scrolling away and back must not
+  // keep replaying it.
+  const { ref, inView } = useInView<HTMLDivElement>({ once: true });
   const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? data.map((d) => `${d.name}:${d.value}`).join("|")

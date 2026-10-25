@@ -330,8 +330,8 @@ export default function Settings({
         <CardHeader>
           <CardTitle>Categories</CardTitle>
           <CardDescription>
-            Label transactions with your own emoji categories, on top of the
-            M-Pesa ones.
+            Label transactions with your own icons and names, on top of the
+            M-Pesa categories.
           </CardDescription>
         </CardHeader>
         <CardContent>
