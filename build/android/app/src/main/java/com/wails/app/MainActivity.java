@@ -19,6 +19,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
@@ -68,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private int pendingFilePickerCallbackID = -1;
     private static final int PHOTO_CAPTURE_REQUEST = 7002;
     private static final int VIDEO_CAPTURE_REQUEST = 7003;
+    private static final int CONTACT_PICKER_REQUEST = 7004;
     private static final int CAMERA_PERMISSION_REQUEST = 7010;
     private File pendingCaptureFile;
     private boolean pendingCaptureIsVideo;
@@ -457,6 +459,10 @@ public class MainActivity extends AppCompatActivity {
             handleCaptureResult(resultCode, data);
             return;
         }
+        if (requestCode == CONTACT_PICKER_REQUEST) {
+            handleContactResult(resultCode, data);
+            return;
+        }
         if (requestCode != FILE_PICKER_REQUEST) {
             return;
         }
@@ -487,6 +493,60 @@ public class MainActivity extends AppCompatActivity {
             }
             bridge.filePickerDone(callbackID);
         }).start();
+    }
+
+    /**
+     * Launch the system contact picker filtered to phone numbers. No contacts
+     * permission is requested: the returned URI is a one-off grant.
+     */
+    public void launchContactPicker() {
+        Intent intent = new Intent(
+                Intent.ACTION_PICK,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI);
+        try {
+            startActivityForResult(intent, CONTACT_PICKER_REQUEST);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to launch contact picker", e);
+            bridge.contactPickerError("no contacts app available");
+        }
+    }
+
+    /**
+     * Read the picked phone row and hand the name + number to the bridge.
+     * The URI grant is only valid for this read - the app never lists or
+     * stores contacts.
+     */
+    private void handleContactResult(int resultCode, @Nullable Intent data) {
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            bridge.contactPickerCancelled();
+            return;
+        }
+
+        String name = "";
+        String phone = "";
+        String[] projection = {
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+        };
+        try (Cursor cursor = getContentResolver().query(
+                data.getData(), projection, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIdx = cursor.getColumnIndex(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+                int phoneIdx = cursor.getColumnIndex(
+                        ContactsContract.CommonDataKinds.Phone.NUMBER);
+                if (nameIdx >= 0) name = cursor.getString(nameIdx);
+                if (phoneIdx >= 0) phone = cursor.getString(phoneIdx);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to read picked contact", e);
+        }
+
+        if (phone == null || phone.trim().isEmpty()) {
+            bridge.contactPickerError("that contact has no phone number");
+            return;
+        }
+        bridge.contactPickerResult(name, phone);
     }
 
     /**

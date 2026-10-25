@@ -43,6 +43,13 @@ import {
 	normalizePhone,
 } from "@/lib/ussd-menus";
 import {
+	favouriteInitials,
+	formatFavouritePhone,
+	isActiveFavourite,
+	type Favourite,
+} from "@/lib/favourites";
+import FavouritesRow from "@/components/favourites-row";
+import {
 	PRIVACY_MODE_KEY,
 	getPrivacyModeEnabled,
 	setPrivacyMode,
@@ -412,6 +419,15 @@ describe("ussd-menus", () => {
 		expect(normalizePhone("12345")).toBe("");
 	});
 
+	it("normalizes the formats contacts and manual entry produce", () => {
+		expect(normalizePhone("00254 722 123 456")).toBe("0722123456");
+		expect(normalizePhone("254 (0) 722 123 456")).toBe("0722123456");
+		expect(normalizePhone("722 123 456")).toBe("0722123456");
+		expect(normalizePhone("0712-345-678")).toBe("0712345678");
+		expect(normalizePhone("0112 345 678")).toBe("0112345678");
+		expect(normalizePhone("020 123 4567")).toBe("");
+	});
+
 	it("rejects invalid send input", () => {
 		expect(buildSendScript("send", "12345", "500")).toBeNull();
 		expect(buildSendScript("send", "0722123456", "0")).toBeNull();
@@ -442,6 +458,74 @@ describe("ussd-menus", () => {
 
 	it("rejects USSD control chars in account names", () => {
 		expect(buildPaybillScript("123456", "a*b#c", "100")).toBeNull();
+	});
+});
+
+// --- favourites ---
+
+function favourite(overrides: Partial<Favourite>): Favourite {
+	return {
+		id: "f1",
+		name: "Mama Jane",
+		phone: "0712345678",
+		createdAt: "2026-01-01T00:00:00Z",
+		...overrides,
+	};
+}
+
+describe("favourite helpers", () => {
+	it("formats canonical numbers and leaves anything else alone", () => {
+		expect(formatFavouritePhone("0712345678")).toBe("0712 345 678");
+		expect(formatFavouritePhone("254712345678")).toBe("254712345678");
+	});
+
+	it("builds initials from name words or the phone tail", () => {
+		expect(favouriteInitials("Mama Jane")).toBe("MJ");
+		expect(favouriteInitials("  alice  ")).toBe("A");
+		expect(favouriteInitials("0712345678")).toBe("78");
+		expect(favouriteInitials("")).toBe("#");
+	});
+
+	it("marks the active favourite across number formats", () => {
+		expect(isActiveFavourite(favourite({}), "+254 712 345 678")).toBe(true);
+		expect(isActiveFavourite(favourite({}), "")).toBe(false);
+		expect(
+			isActiveFavourite(favourite({ phone: "0722000001" }), "0712345678"),
+		).toBe(false);
+	});
+});
+
+describe("FavouritesRow", () => {
+	it("prompts to save regulars when empty and opens management", () => {
+		const onManage = vi.fn();
+		render(
+			<FavouritesRow
+				favourites={[]}
+				phone=""
+				onPick={vi.fn()}
+				onManage={onManage}
+			/>,
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: /save your regulars/i }),
+		);
+		expect(onManage).toHaveBeenCalledOnce();
+	});
+
+	it("fills the phone from a chip without sending", () => {
+		const onPick = vi.fn();
+		render(
+			<FavouritesRow
+				favourites={[favourite({})]}
+				phone="+254712345678"
+				onPick={onPick}
+				onManage={vi.fn()}
+			/>,
+		);
+		const chip = screen.getByRole("button", { name: /mama jane/i });
+		expect(chip).toHaveAttribute("aria-pressed", "true");
+		fireEvent.click(chip);
+		expect(onPick).toHaveBeenCalledWith("0712345678");
 	});
 });
 

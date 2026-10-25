@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
-import { Send as SendIcon, Store } from "lucide-react";
+import { Send as SendIcon, Star, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { AutomationOffPanel, useAutomationAvailable } from "@/components/automation-gate";
+import FavouritesRow from "@/components/favourites-row";
+import FavouritesSheet from "@/components/favourites-sheet";
 import { cn } from "@/lib/utils";
 import {
   buildSendScript,
@@ -18,6 +20,8 @@ import {
   openUssdAutomationSettings,
 } from "@/lib/sms-bridge";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
+import { useFavourites } from "@/hooks/use-favourites";
+import { vibrateIfEnabled } from "@/lib/motion-settings";
 
 const TABS: { id: SendKind; label: string; icon: typeof SendIcon }[] = [
   { id: "send", label: "Send Money", icon: SendIcon },
@@ -33,13 +37,18 @@ export default function Send() {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
   const [touched, setTouched] = useState(false);
+  const [favOpen, setFavOpen] = useState(false);
   const auto = useAutomationAvailable();
   const qe = useQuickEntry();
+  const fav = useFavourites();
 
   const phoneOk = normalizePhone(phone) !== "";
   const amountOk = isValidAmount(amount);
   const valid = phoneOk && amountOk;
   const busy = qe.status === "starting" || qe.status === "step";
+  const favouriteSaved =
+    phoneOk &&
+    fav.favourites.some((f) => normalizePhone(f.phone) === normalizePhone(phone));
 
   function handleSend() {
     setTouched(true);
@@ -112,9 +121,39 @@ export default function Send() {
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Phone number</span>
+          <FavouritesRow
+            favourites={fav.favourites}
+            phone={phone}
+            onPick={(p) => {
+              vibrateIfEnabled(8);
+              setPhone(p);
+            }}
+            onManage={() => setFavOpen(true)}
+          />
+          <div className="h-px bg-border" />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor="send-phone" className="text-sm font-medium">
+                Phone number
+              </label>
+              {favouriteSaved ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                  <Star className="size-3.5 fill-current" aria-hidden />
+                  Saved
+                </span>
+              ) : phoneOk && !fav.loading ? (
+                <button
+                  type="button"
+                  onClick={() => void fav.add("", phone)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Star className="size-3.5" aria-hidden />
+                  Save to favourites
+                </button>
+              ) : null}
+            </div>
             <Input
+              id="send-phone"
               inputMode="tel"
               placeholder="07XX XXX XXX"
               value={phone}
@@ -122,11 +161,11 @@ export default function Send() {
               aria-invalid={touched && !phoneOk}
             />
             {touched && !phoneOk && (
-              <span className="text-xs text-destructive">
+              <span className="block text-xs text-destructive">
                 Enter a valid Safaricom number (07.. / 01..).
               </span>
             )}
-          </label>
+          </div>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">Amount (KSh)</span>
             <Input
@@ -158,6 +197,20 @@ export default function Send() {
 
         </CardContent>
       </Card>
+
+      <FavouritesSheet
+        open={favOpen}
+        onOpenChange={setFavOpen}
+        favourites={fav.favourites}
+        loading={fav.loading}
+        picking={fav.picking}
+        canPick={fav.canPick}
+        defaultPhone={phoneOk ? normalizePhone(phone) : ""}
+        onAdd={fav.add}
+        onRename={fav.rename}
+        onRemove={fav.remove}
+        onPickContact={fav.pickFromContacts}
+      />
     </div>
   );
 }

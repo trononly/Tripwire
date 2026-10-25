@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mpesa-analyzer/internal/analysis"
+	"mpesa-analyzer/internal/favourites"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
 	"mpesa-analyzer/internal/sms"
@@ -711,4 +712,43 @@ func (p *ParseService) RenameStatement(id, name string) error {
 		return err
 	}
 	return s.Rename(id, name)
+}
+
+// ListFavourites returns the saved Send recipients.
+func (p *ParseService) ListFavourites() ([]store.Favourite, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	return favourites.New(s).List()
+}
+
+// AddFavourite saves a Send recipient. The phone is normalized to the local
+// 07…/01… form; the name is optional and falls back to the number. The
+// frontend normally sends the picker's raw number, so normalization lives in
+// Go rather than Java.
+func (p *ParseService) AddFavourite(name, phone string) (store.Favourite, error) {
+	s, err := p.statements()
+	if err != nil {
+		return store.Favourite{}, err
+	}
+	return favourites.New(s).Add(name, phone)
+}
+
+// RenameFavourite changes a saved recipient's display name.
+func (p *ParseService) RenameFavourite(id, name string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).Rename(id, name)
+}
+
+// DeleteFavourite removes a saved recipient.
+func (p *ParseService) DeleteFavourite(id string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).Delete(id)
 }

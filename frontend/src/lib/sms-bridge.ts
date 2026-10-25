@@ -26,6 +26,7 @@ interface WailsAndroidBridge {
 	downloadAndInstallApk?(url: string, fileName: string): void;
 	openUrl?(url: string): void;
 	openURL?(url: string): void;
+	pickContact?(): void;
 }
 
 declare global {
@@ -213,6 +214,36 @@ export function requestPhoneStatePermission(): void {
 export function openAppSettings(): void {
 	try {
 		window.wails?.openAppSettings?.();
+	} catch {
+		/* ignore */
+	}
+}
+
+/** The "common:contact" event payload from WailsBridge.java. */
+export interface ContactPickResult {
+	ok?: boolean;
+	name?: string;
+	phone?: string;
+	error?: string;
+	cancelled?: boolean;
+}
+
+/**
+ * True when this build can open the Android system contact picker. The
+ * picker needs no contacts permission: ACTION_PICK returns a one-off URI
+ * for the row the user tapped. Desktop degrades to manual entry.
+ */
+export function canPickContact(): boolean {
+	return isAndroidBridge() && window.wails?.pickContact !== undefined;
+}
+
+/**
+ * Open the system contact picker; the result arrives as a "common:contact"
+ * event. No-op off-Android - callers should check canPickContact first.
+ */
+export function pickContact(): void {
+	try {
+		window.wails?.pickContact?.();
 	} catch {
 		/* ignore */
 	}
