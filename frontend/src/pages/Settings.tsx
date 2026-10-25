@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   Smartphone,
   Sun,
+  Tags,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -322,6 +323,24 @@ export default function Settings({
           <Button onClick={() => openExternalUrl(SODA_URL)}>
             <CupSoda />
             Buy me a soda
+          </Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Categories</CardTitle>
+          <CardDescription>
+            Label transactions with your own emoji categories, on top of the
+            M-Pesa ones.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline">
+            <Link to="/categories">
+              <Tags />
+              Manage categories
+              <ArrowRight />
+            </Link>
           </Button>
         </CardContent>
       </Card>

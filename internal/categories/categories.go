@@ -10,6 +10,7 @@ package categories
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -143,6 +144,83 @@ func (s *Service) Assign(txID, txType, counterpartyKey, categoryID string, apply
 // grouping preview and the backend's rule matching can never disagree.
 func CounterpartyKey(description string) string {
 	return counterparty.GroupKey(analysis.CounterpartyLabel(description))
+}
+
+// Total is one category's share of a dataset. ID is empty for the
+// Uncategorized bucket - the transactions no rule labelled - which the
+// custom donut draws as a single gray slice so the labelled part never looks
+// like the whole. Amount is the signed sum in cents and Percent is over the
+// absolute total, mirroring analysis.CategoryTotal.
+type Total struct {
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	Emoji   string  `json:"emoji"`
+	Amount  int64   `json:"amount"`
+	Count   int     `json:"count"`
+	Percent float64 `json:"percent"`
+}
+
+// uncategorizedTotal labels the bucket for transactions with no assignment.
+var uncategorizedTotal = Total{Name: "Uncategorized"}
+
+// Totals sums a dataset by user category, highest absolute volume first.
+// Unlabelled rows are kept as their own bucket rather than dropped, so the
+// donut always accounts for every transaction in the window.
+func (s *Service) Totals(txs []parser.Transaction) ([]Total, error) {
+	ix, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	assigned := ix.ResolveAll(txs)
+
+	buckets := make(map[string]*Total, len(ix.categories)+1)
+	for _, tx := range txs {
+		key := ""
+		if c, ok := assigned[tx.ID]; ok {
+			key = c.ID
+			if _, ok := buckets[key]; !ok {
+				buckets[key] = &Total{ID: c.ID, Name: c.Name, Emoji: c.Emoji}
+			}
+		} else if _, ok := buckets[key]; !ok {
+			buckets[key] = &Total{Name: uncategorizedTotal.Name}
+		}
+		b := buckets[key]
+		b.Amount += tx.Amount
+		b.Count++
+	}
+
+	out := make([]Total, 0, len(buckets))
+	var absTotal int64
+	for _, b := range buckets {
+		out = append(out, *b)
+		absTotal += absOf(b.Amount)
+	}
+	if absTotal > 0 {
+		for i := range out {
+			out[i].Percent = float64(absOf(out[i].Amount)) / float64(absTotal) * 100
+		}
+	}
+	// Stable across runs: volume first, then name, with Uncategorized last
+	// among equal-volume slices so the fallback never leads the legend.
+	sort.Slice(out, func(i, j int) bool {
+		ai, aj := absOf(out[i].Amount), absOf(out[j].Amount)
+		if ai != aj {
+			return ai > aj
+		}
+		ui, uj := out[i].ID == "", out[j].ID == ""
+		if ui != uj {
+			return uj
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
+}
+
+func absOf(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 // Index is the resolved category state of one dataset: the definitions plus

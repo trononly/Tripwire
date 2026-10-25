@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { typeStyle } from "@/lib/transaction-types";
 import { cn } from "@/lib/utils";
+import { CATEGORY_EMOJIS } from "@/lib/category-emoji";
 import { useCategories } from "@/hooks/use-categories";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
@@ -20,33 +21,6 @@ import {
 	CreateCategory,
 } from "../../bindings/mpesa-analyzer/parseservice";
 import type { TransactionView } from "@/components/transaction-list";
-
-// A small starter grid: enough to make the first category one tap away
-// without turning the drawer into a full emoji keyboard.
-const EMOJI_SUGGESTIONS = [
-	"🍔",
-	"🛒",
-	"🚌",
-	"⚡",
-	"🏠",
-	"💊",
-	"🎓",
-	"👨‍👩‍👧",
-	"💼",
-	"🎉",
-	"✈️",
-	"📱",
-	"💧",
-	"⛽",
-	"🏦",
-	"🎁",
-	"☕",
-	"👕",
-	"🧾",
-	"🐖",
-	"❤️",
-	"🔧",
-];
 
 export type CategoryPickerSheetProps = {
 	open: boolean;
@@ -273,7 +247,7 @@ export function CategoryPickerSheet({
 								</Button>
 							</div>
 							<div className="flex flex-wrap gap-1.5">
-								{EMOJI_SUGGESTIONS.map((suggestion) => (
+								{CATEGORY_EMOJIS.map((suggestion) => (
 									<button
 										key={suggestion}
 										type="button"

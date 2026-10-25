@@ -18,9 +18,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { filterGroups } from "@/lib/transaction-filter";
+import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { typeStyle } from "@/lib/transaction-types";
+import { useCategories } from "@/hooks/use-categories";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
 /** Local-day "YYYY-MM-DD" helpers for the quick date presets. */
@@ -79,11 +80,18 @@ function inferPreset(from: string, to: string): DatePreset {
 function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const groups = useTransactionGroups(txs);
+  const { categories: userCategories, loading: categoriesLoading } =
+    useCategories();
 
   const [globalFilter, setGlobalFilter] = useState("");
   // Applied filters drive the list behind the drawer.
   const [categoryFilter, setCategoryFilter] = useState(
     searchParams.get("category") ?? "all",
+  );
+  // The user's own categories: "all", a category id, or "none" for the rows
+  // no label covers (the dashboard's gray slice).
+  const [customFilter, setCustomFilter] = useState(
+    searchParams.get("custom") ?? "all",
   );
   const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">(
     "all",
@@ -120,6 +128,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   // Chips + presets update the draft (and its live preview count)
   // instantly with no secondary picker.
   const [draftCategory, setDraftCategory] = useState(categoryFilter);
+  const [draftCustom, setDraftCustom] = useState(customFilter);
   const [draftDirection, setDraftDirection] = useState<"all" | "in" | "out">(
     directionFilter,
   );
@@ -132,6 +141,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   useEffect(() => {
     if (filtersOpen) {
       setDraftCategory(categoryFilter);
+      setDraftCustom(customFilter);
       setDraftDirection(directionFilter);
       setDraftFrom(fromDate);
       setDraftTo(toDate);
@@ -140,28 +150,67 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   }, [filtersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    // Deep links: ?category=X (from dashboard charts). A ?q= navigation starts a fresh view:
+    // Deep links: ?category=X (built-in slice) and ?custom=Y (own category or
+    // "none") from the dashboard donut. A ?q= navigation starts a fresh view:
     // it becomes the search term and other filters reset.
     const q = searchParams.get("q");
     if (q !== null) {
       setGlobalFilter(q);
       setCategoryFilter("all");
+      setCustomFilter("all");
       setDirectionFilter("all");
       setFromDate("");
       setToDate("");
       setDraftCategory("all");
+      setDraftCustom("all");
       setDraftDirection("all");
       setDraftFrom("");
       setDraftTo("");
       setDraftPreset("all");
       return;
     }
-    const fromUrl = searchParams.get("category");
-    if (fromUrl) {
-      setCategoryFilter(fromUrl);
-      setDraftCategory(fromUrl);
+    const fromCategory = searchParams.get("category");
+    const fromCustom = searchParams.get("custom");
+    if (fromCategory) {
+      setCategoryFilter(fromCategory);
+      setDraftCategory(fromCategory);
+    } else if (fromCustom) {
+      // Each donut slice opens its own view, not an AND of two filters.
+      setCategoryFilter("all");
+      setDraftCategory("all");
+    }
+    if (fromCustom) {
+      setCustomFilter(fromCustom);
+      setDraftCustom(fromCustom);
+    } else if (fromCategory) {
+      setCustomFilter("all");
+      setDraftCustom("all");
     }
   }, [searchParams]);
+
+  // A saved link can outlive its category: fall back to "all" instead of
+  // showing a silently empty list once the list has loaded.
+  useEffect(() => {
+    if (
+      customFilter === "all" ||
+      customFilter === "none" ||
+      categoriesLoading
+    ) {
+      return;
+    }
+    if (!userCategories.some((c) => c.id === customFilter)) {
+      setCustomFilter("all");
+      setDraftCustom("all");
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("custom");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [customFilter, userCategories, categoriesLoading, setSearchParams]);
 
   const allCategories = useMemo(() => {
     const set = new Set<string>();
@@ -171,29 +220,51 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
 
   const filteredGroups = useMemo(
     () =>
-      filterGroups(
-        groups,
-        globalFilter,
-        categoryFilter,
-        directionFilter,
-        fromDate,
-        toDate,
+      filterByCustomCategory(
+        filterGroups(
+          groups,
+          globalFilter,
+          categoryFilter,
+          directionFilter,
+          fromDate,
+          toDate,
+        ),
+        customFilter,
       ),
-    [groups, globalFilter, categoryFilter, directionFilter, fromDate, toDate],
+    [
+      groups,
+      globalFilter,
+      categoryFilter,
+      customFilter,
+      directionFilter,
+      fromDate,
+      toDate,
+    ],
   );
 
   // Live preview of the draft while the drawer is open.
   const previewGroups = useMemo(
     () =>
-      filterGroups(
-        groups,
-        globalFilter,
-        draftCategory,
-        draftDirection,
-        draftFrom,
-        draftTo,
+      filterByCustomCategory(
+        filterGroups(
+          groups,
+          globalFilter,
+          draftCategory,
+          draftDirection,
+          draftFrom,
+          draftTo,
+        ),
+        draftCustom,
       ),
-    [groups, globalFilter, draftCategory, draftDirection, draftFrom, draftTo],
+    [
+      groups,
+      globalFilter,
+      draftCategory,
+      draftCustom,
+      draftDirection,
+      draftFrom,
+      draftTo,
+    ],
   );
   const previewCount = useMemo(
     () => previewGroups.reduce((n, g) => n + g.txs.length, 0),
@@ -202,6 +273,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
 
   const activeFilters =
     (categoryFilter !== "all" ? 1 : 0) +
+    (customFilter !== "all" ? 1 : 0) +
     (directionFilter !== "all" ? 1 : 0) +
     (fromDate ? 1 : 0) +
     (toDate ? 1 : 0);
@@ -218,21 +290,25 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   const applyDraft = () => {
     vibrateIfEnabled(12);
     setCategoryFilter(draftCategory);
+    setCustomFilter(draftCustom);
     setDirectionFilter(draftDirection);
     setFromDate(draftFrom);
     setToDate(draftTo);
-    if (draftCategory === "all") setSearchParams({}, { replace: true });
-    else
-      setSearchParams({ category: draftCategory }, { replace: true });
+    const params: Record<string, string> = {};
+    if (draftCategory !== "all") params.category = draftCategory;
+    if (draftCustom !== "all") params.custom = draftCustom;
+    setSearchParams(params, { replace: true });
     setFiltersOpen(false);
   };
 
   const resetAll = () => {
     setCategoryFilter("all");
+    setCustomFilter("all");
     setDirectionFilter("all");
     setFromDate("");
     setToDate("");
     setDraftCategory("all");
+    setDraftCustom("all");
     setDraftDirection("all");
     setDraftFrom("");
     setDraftTo("");
@@ -314,6 +390,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
                 onClick={resetAll}
                 disabled={
                   draftCategory === "all" &&
+                  draftCustom === "all" &&
                   draftDirection === "all" &&
                   !draftFrom &&
                   !draftTo &&
@@ -358,6 +435,51 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
                 </div>
               </div>
             </div>
+            {userCategories.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">My categories</p>
+                <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex flex-nowrap gap-2 pb-1" role="group" aria-label="My categories">
+                    <button
+                      type="button"
+                      aria-pressed={draftCustom === "all"}
+                      onClick={() => {
+                        vibrateIfEnabled(8);
+                        setDraftCustom("all");
+                      }}
+                      className={chipClass(draftCustom === "all")}
+                    >
+                      All
+                    </button>
+                    {userCategories.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={draftCustom === c.id}
+                        onClick={() => {
+                          vibrateIfEnabled(8);
+                          setDraftCustom(draftCustom === c.id ? "all" : c.id);
+                        }}
+                        className={chipClass(draftCustom === c.id)}
+                      >
+                        {c.emoji} {c.name}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      aria-pressed={draftCustom === "none"}
+                      onClick={() => {
+                        vibrateIfEnabled(8);
+                        setDraftCustom(draftCustom === "none" ? "all" : "none");
+                      }}
+                      className={chipClass(draftCustom === "none")}
+                    >
+                      Uncategorized
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <p className="text-sm font-medium">Direction</p>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Direction">

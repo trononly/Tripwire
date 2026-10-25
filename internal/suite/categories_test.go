@@ -282,3 +282,63 @@ func TestAssignCategoryScopes(t *testing.T) {
 		t.Fatal("assigning without a transaction id should fail")
 	}
 }
+
+func TestCategoryTotals(t *testing.T) {
+	svc, _ := newCategoryService(t)
+	food, _ := svc.Create("Food", "🍔")
+	bills, _ := svc.Create("Bills", "⚡")
+
+	const merchant = "Merchant Payment to 7408526 - FAITH NJOKI BACHIA"
+	const kplc = "Pay Bill Online to 888880 - KPLC PREPAID Acc. 01450540651"
+	txs := []parser.Transaction{
+		{ID: "A", Description: merchant, Amount: -1000},
+		// Paired fee: inherits the purchase's label, so it joins the slice.
+		{ID: "A-F", Description: "Fuliza Access Fee", Amount: -10},
+		{ID: "B", Description: kplc, Amount: -500},
+		// Nothing labels these two, and one is income: the bucket keeps the
+		// signed sum so the slices still add up to the dataset.
+		{ID: "C", Description: "Salary Payment from 504900 - NCBA BANK", Amount: 5000},
+		{ID: "D", Description: "Reversal of charge", Amount: -4900},
+	}
+	if err := svc.Assign("A", "till", categories.CounterpartyKey(merchant), food.ID, true); err != nil {
+		t.Fatalf("Assign food: %v", err)
+	}
+	if err := svc.Assign("B", "paybill", categories.CounterpartyKey(kplc), bills.ID, true); err != nil {
+		t.Fatalf("Assign bills: %v", err)
+	}
+
+	got, err := svc.Totals(txs)
+	if err != nil {
+		t.Fatalf("Totals: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("buckets = %+v, want food, bills and uncategorized", got)
+	}
+	if got[0].ID != food.ID || got[0].Amount != -1010 || got[0].Count != 2 {
+		t.Errorf("first bucket = %+v, want food (-1010, 2 txs incl the fee)", got[0])
+	}
+	if got[1].ID != bills.ID || got[1].Amount != -500 || got[1].Count != 1 {
+		t.Errorf("second bucket = %+v, want bills (-500, 1 tx)", got[1])
+	}
+	if got[2].ID != "" || got[2].Name != "Uncategorized" || got[2].Count != 2 {
+		t.Errorf("last bucket = %+v, want Uncategorized (2 txs)", got[2])
+	}
+	if got[2].Amount != 100 {
+		t.Errorf("uncategorized amount = %d, want 100 (signed sum)", got[2].Amount)
+	}
+	var percent float64
+	for _, b := range got {
+		percent += b.Percent
+	}
+	if percent < 99.99 || percent > 100.01 {
+		t.Errorf("percent total = %f, want 100", percent)
+	}
+
+	empty, err := svc.Totals(nil)
+	if err != nil {
+		t.Fatalf("Totals(nil): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("empty dataset = %+v, want no buckets", empty)
+	}
+}

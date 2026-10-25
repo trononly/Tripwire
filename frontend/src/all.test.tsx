@@ -9,7 +9,7 @@ import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
-import { filterGroups } from "@/lib/transaction-filter";
+import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
@@ -1065,6 +1065,51 @@ describe("transactions search", () => {
 		expect(
 			filterGroups(g(), "Absa Equity", "all", "all", "", ""),
 		).toHaveLength(0);
+	});
+});
+
+describe("custom category filter", () => {
+	const customGroups = (): Group[] => [
+		{
+			dayKey: "2026-04-28",
+			endBalance: 0,
+			endOwed: 0,
+			txs: [
+				row({
+					id: "R1",
+					customCategoryId: "c-food",
+					customCategoryName: "Food",
+					customCategoryEmoji: "🍔",
+				}),
+				row({ id: "R2" }),
+				row({
+					id: "R3",
+					customCategoryId: "c-travel",
+					customCategoryName: "Travel",
+					customCategoryEmoji: "🚌",
+				}),
+			],
+		},
+	];
+
+	it("keeps only the requested category, preserving the day header", () => {
+		const out = filterByCustomCategory(customGroups(), "c-food");
+		expect(out).toHaveLength(1);
+		expect(out[0].dayKey).toBe("2026-04-28");
+		expect(out[0].txs.map((t) => t.id)).toEqual(["R1"]);
+	});
+
+	it("treats none as the unlabelled rows and all as no filter", () => {
+		expect(
+			filterByCustomCategory(customGroups(), "none")[0].txs.map((t) => t.id),
+		).toEqual(["R2"]);
+		expect(filterByCustomCategory(customGroups(), "all")[0].txs).toHaveLength(
+			3,
+		);
+	});
+
+	it("drops a whole day when nothing in it matches", () => {
+		expect(filterByCustomCategory(customGroups(), "c-gone")).toHaveLength(0);
 	});
 });
 

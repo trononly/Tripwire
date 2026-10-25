@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileUp, MessageSquareText, Calendar, ChevronDown } from "lucide-react";
+import {
+  FileUp,
+  MessageSquareText,
+  Calendar,
+  ChevronDown,
+  Tags,
+} from "lucide-react";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
@@ -13,13 +19,20 @@ import {
   type Granularity,
 } from "@/components/charts/cashflow-chart";
 import { BalanceChart } from "@/components/charts/balance-chart";
-import { CategoryDonut } from "@/components/charts/category-donut";
+import {
+  CategoryDonut,
+  type DonutSlice,
+} from "@/components/charts/category-donut";
 import { CounterpartyCard } from "@/components/counterparty-card";
 import { TotalsCards } from "@/components/totals-cards";
 import { Private } from "@/components/privacy";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
 import { maxDayOf } from "@/lib/date-window";
 import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
+import { useCustomCategoryTotals } from "@/hooks/use-custom-category-totals";
+import { useDonutMode } from "@/lib/donut-mode";
+import { vibrateIfEnabled } from "@/lib/motion-settings";
+import { cn } from "@/lib/utils";
 import { FilterSheet, type FilterRangeKey } from "@/components/filter-sheet";
 
 /** Dashboard-wide time filter, anchored to the newest transaction (not
@@ -189,6 +202,26 @@ export default function Dashboard({
         return visible.cashflowDaily ?? [];
     }
   }, [visible, granularity]);
+
+  // The breakdown can show Safaricom's built-in categories or the user's own
+  // labels. Custom totals are fetched only while that view is selected, and
+  // follow the same date window as every other chart on the page.
+  const [donutMode, setDonutMode] = useDonutMode();
+  const { totals: customTotals, loading: customLoading } =
+    useCustomCategoryTotals(filteredTxs, donutMode === "custom");
+  const builtInSlices: DonutSlice[] = (visible?.categories ?? []).map((c) => ({
+    key: c.name,
+    label: c.name,
+    amount: c.amount,
+    count: c.count,
+  }));
+  const customSlices: DonutSlice[] = customTotals.map((t) => ({
+    key: t.id || "none",
+    label: t.id ? `${t.emoji} ${t.name}` : t.name,
+    amount: t.amount,
+    count: t.count,
+  }));
+  const labelledSlices = customSlices.filter((s) => s.key !== "none");
 
   if (transactions.length === 0) {
     return (
@@ -371,11 +404,83 @@ export default function Dashboard({
                   label="Tap to reveal the spending breakdown"
                 >
                   <CategoryDonut
-                    categories={visible.categories ?? []}
-                    onSelectCategory={(category) =>
+                    slices={
+                      donutMode === "custom" ? customSlices : builtInSlices
+                    }
+                    onSelectSlice={(key) =>
                       navigate(
-                        `/transactions?category=${encodeURIComponent(category)}`,
+                        donutMode === "custom"
+                          ? `/transactions?custom=${encodeURIComponent(key)}`
+                          : `/transactions?category=${encodeURIComponent(key)}`,
                       )
+                    }
+                    toolbar={
+                      <div
+                        className="flex gap-1"
+                        role="group"
+                        aria-label="Category view"
+                      >
+                        {(
+                          [
+                            { key: "mpesa", label: "M-Pesa" },
+                            { key: "custom", label: "My categories" },
+                          ] as const
+                        ).map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            aria-pressed={donutMode === option.key}
+                            className={cn(
+                              "tile",
+                              donutMode === option.key && "tile-active",
+                            )}
+                            onClick={() => {
+                              vibrateIfEnabled(8);
+                              setDonutMode(option.key);
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    }
+                    footer={
+                      donutMode === "custom" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1 w-full justify-center gap-1.5 text-xs text-muted-foreground"
+                          onClick={() => navigate("/categories")}
+                        >
+                          <Tags className="size-3.5" />
+                          Manage categories
+                        </Button>
+                      ) : undefined
+                    }
+                    empty={
+                      donutMode === "custom" ? (
+                        customLoading && customTotals.length === 0 ? (
+                          <Skeleton className="mx-auto h-75 w-full" />
+                        ) : labelledSlices.length === 0 ? (
+                          <div className="flex min-h-56 flex-col items-center justify-center gap-2 px-4 text-center">
+                            <Tags className="size-6 text-muted-foreground" />
+                            <p className="text-sm font-medium">
+                              Nothing labelled in this view
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Tap a transaction's icon to give it a category,
+                              and it shows up here.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate("/transactions")}
+                            >
+                              Label transactions
+                            </Button>
+                          </div>
+                        ) : undefined
+                      ) : undefined
                     }
                   />
                 </Private>

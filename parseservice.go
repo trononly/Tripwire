@@ -314,6 +314,46 @@ func (p *ParseService) AssignCategory(txID, txType, counterpartyKey, categoryID 
 	return svc.Assign(txID, txType, counterpartyKey, categoryID, applyToSimilar)
 }
 
+// UpdateCategory renames a category and picks a new emoji. The id survives,
+// so every assignment, filter link and chart slice keeps pointing at it.
+func (p *ParseService) UpdateCategory(id, name, emoji string) error {
+	svc, err := p.categoryService()
+	if err != nil {
+		return err
+	}
+	return svc.Update(id, name, emoji)
+}
+
+// DeleteCategory removes a category and its rules. The transactions are
+// untouched: they fall back to their built-in M-Pesa category.
+func (p *ParseService) DeleteCategory(id string) error {
+	svc, err := p.categoryService()
+	if err != nil {
+		return err
+	}
+	return svc.Delete(id)
+}
+
+// ReorderCategories persists the management page's manual order.
+func (p *ParseService) ReorderCategories(ids []string) error {
+	svc, err := p.categoryService()
+	if err != nil {
+		return err
+	}
+	return svc.Reorder(ids)
+}
+
+// CustomCategoryTotals sums a dataset by user category for the dashboard's
+// "My categories" donut. Unlabelled transactions come back as one bucket with
+// an empty id, so the caller can draw them as a gray Uncategorized slice.
+func (p *ParseService) CustomCategoryTotals(txs []parser.Transaction) ([]categories.Total, error) {
+	svc, err := p.categoryService()
+	if err != nil {
+		return nil, err
+	}
+	return svc.Totals(txs)
+}
+
 func (p *ParseService) PickFile() (string, error) {
 	return application.Get().Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
 		Title:          "Select a PDF file",

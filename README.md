@@ -103,6 +103,13 @@ Resolution is transaction override, then counterparty, then type, then the
 built-in category, and a paired Fuliza fee inherits its parent purchase's
 label.
 
+The dashboard's spending breakdown switches between the built-in M-Pesa
+categories and **My categories**: unlabelled transactions stay visible as one
+gray Uncategorized slice, and tapping any slice opens the matching rows in
+Transactions. Categories themselves are renamed, reordered and deleted on the
+**Categories** page, reachable from Settings, the desktop sidebar and the
+donut's Manage link.
+
 ## Running it
 
 Development, with hot-reload for both frontend and backend changes:
