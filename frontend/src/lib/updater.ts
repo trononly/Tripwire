@@ -1,7 +1,7 @@
 // Checks the Tripwire GitHub Releases page for a newer build.
 // The release workflow (release.yml) publishes one APK per `tripwire-*` tag
-// named `Tripwire-<version>.apk`, and the generated release notes double as
-// the in-app Changelog.
+// named `Tripwire-<version>.apk`, and the committed release notes
+// (release-notes/<version>.md) double as the in-app Changelog.
 
 export const GITHUB_OWNER = "trononly";
 export const GITHUB_REPO = "Tripwire";

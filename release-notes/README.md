@@ -26,13 +26,20 @@ the file is what users read.
    duplicates, and order by what users care about. The draft is a starting
    point, not the final copy.
 
-3. Commit the file, then tag that commit:
+3. Commit the file through a PR (because `main` is protected), then tag the
+   merge commit:
 
    ```
+   git switch -c release/0.9.7-notes
    git add release-notes/0.9.7.md
    git commit -m "docs: release notes for 0.9.7"
-   git tag tripwire-0.9.7
-   git push origin main --tags
+   gh pr create --title "Release notes for 0.9.7" \
+     --body "## What's new
+   - Release notes for 0.9.7" --label skip-release-notes
+   # merge once CI is green
+   git switch main && git pull --ff-only
+   git tag -a tripwire-0.9.7 -m "Tripwire 0.9.7"
+   git push origin tripwire-0.9.7
    ```
 
 The release workflow fails if the file is missing, empty, or has no

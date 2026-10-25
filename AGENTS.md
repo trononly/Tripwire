@@ -2,9 +2,14 @@
 
 Tripwire is a Wails v3 app: a Go backend plus an embedded React/TypeScript
 frontend (`frontend/`). Before changing anything, read `README.md` for the
-architecture and the dev/test commands.
+architecture and the dev/test commands, and `RELEASING.md` before cutting a
+release.
 
 ## Pull requests
+
+`main` is protected: push a branch and open a PR. Direct pushes are rejected,
+and the PR needs the `Go vet + test`, `Frontend checks` and `Release notes`
+checks green. Do not tag until the release-notes PR is merged.
 
 Every PR **must** have a user-facing title and include a `## What's new`
 section in its description, and the agent must call it out in its final
@@ -27,13 +32,20 @@ The release flow is:
    and order by what users care about. The draft is a starting point, not
    the final copy.
 
-3. Commit the notes file to `main`, then tag that commit:
+3. Commit the notes file through a PR (because `main` is protected), then
+   tag the merge commit:
 
    ```
+   git switch -c release/1.2.3-notes
    git add release-notes/1.2.3.md
    git commit -m "docs: release notes for 1.2.3"
-   git tag tripwire-1.2.3
-   git push origin main --tags
+   gh pr create --title "Release notes for 1.2.3" \
+     --body "## What's new
+   - Release notes for 1.2.3" --label skip-release-notes
+   # merge once CI is green
+   git switch main && git pull --ff-only
+   git tag -a tripwire-1.2.3 -m "Tripwire 1.2.3"
+   git push origin tripwire-1.2.3
    ```
 
 The release workflow publishes `release-notes/<version>.md` verbatim as the
@@ -41,6 +53,8 @@ GitHub Release body, which is exactly what the in-app **What's new** /
 Changelog dialog renders. It fails the release if the file is missing,
 empty, or has no `## What's new` section. Do not publish from the GitHub UI
 and do not re-enable `generate_release_notes`; both bypass this flow.
+`RELEASING.md` has the full checklist, versionCode rules, annotated tags and
+the hotfix path.
 
 The PR title still matters: it is the merge line, the fallback when a PR has
 no section, and the text reviewers see first. Write it as a user-facing
@@ -63,4 +77,5 @@ apply the template automatically, so pass the `## What's new` section in
 ```
 go test ./...
 cd frontend && pnpm exec tsc --noEmit && pnpm test
+node --test scripts/draft-release-notes.test.mjs
 ```
