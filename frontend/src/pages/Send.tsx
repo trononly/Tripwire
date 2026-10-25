@@ -1,14 +1,21 @@
 import { useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
-import { Send as SendIcon, Star, Store } from "lucide-react";
+import { Send as SendIcon, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { AutomationOffPanel, useAutomationAvailable } from "@/components/automation-gate";
+import AmountField from "@/components/amount-field";
+import FavouriteStar from "@/components/favourite-star";
 import FavouritesRow from "@/components/favourites-row";
 import FavouritesSheet from "@/components/favourites-sheet";
 import { cn } from "@/lib/utils";
+import { formatPhoneInput } from "@/lib/format";
+import {
+  formatFavouritePhone,
+  isActiveFavourite,
+} from "@/lib/favourites";
 import {
   buildSendScript,
   isValidAmount,
@@ -49,6 +56,8 @@ export default function Send() {
   const favouriteSaved =
     phoneOk &&
     fav.favourites.some((f) => normalizePhone(f.phone) === normalizePhone(phone));
+  const favouriteName = (name: string, number: string) =>
+    name === number ? formatFavouritePhone(number) : name;
 
   function handleSend() {
     setTouched(true);
@@ -120,67 +129,65 @@ export default function Send() {
       </div>
 
       <Card>
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="space-y-5">
           <FavouritesRow
-            favourites={fav.favourites}
-            phone={phone}
-            onPick={(p) => {
-              vibrateIfEnabled(8);
-              setPhone(p);
-            }}
+            items={fav.favourites.map((f) => ({
+              id: f.id,
+              name: favouriteName(f.name, f.phone),
+              active: isActiveFavourite(f, phone),
+              onPick: () => {
+                vibrateIfEnabled(8);
+                setPhone(formatPhoneInput(f.phone));
+              },
+            }))}
+            emptyHint="Add a contact or number for one-tap sending"
             onManage={() => setFavOpen(true)}
           />
-          <div className="h-px bg-border" />
+
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label htmlFor="send-phone" className="text-sm font-medium">
-                Phone number
-              </label>
-              {favouriteSaved ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400">
-                  <Star className="size-3.5 fill-current" aria-hidden />
-                  Saved
-                </span>
-              ) : phoneOk && !fav.loading ? (
-                <button
-                  type="button"
-                  onClick={() => void fav.add("", phone)}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <Star className="size-3.5" aria-hidden />
-                  Save to favourites
-                </button>
-              ) : null}
+            <label
+              htmlFor="send-phone"
+              className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              Phone number
+            </label>
+            <div className="relative">
+              <Input
+                id="send-phone"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="07XX XXX XXX"
+                value={phone}
+                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                aria-invalid={touched && !phoneOk}
+                className="h-11 pr-11 text-lg font-semibold tracking-wide tabular-nums"
+              />
+              <FavouriteStar
+                saved={favouriteSaved}
+                disabled={!phoneOk || fav.loading}
+                label="Save to favourites"
+                onClick={() => void fav.add("", normalizePhone(phone))}
+              />
             </div>
-            <Input
-              id="send-phone"
-              inputMode="tel"
-              placeholder="07XX XXX XXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              aria-invalid={touched && !phoneOk}
-            />
             {touched && !phoneOk && (
               <span className="block text-xs text-destructive">
                 Enter a valid Safaricom number (07.. / 01..).
               </span>
             )}
           </div>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Amount (KSh)</span>
-            <Input
-              inputMode="numeric"
-              placeholder="500"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              aria-invalid={touched && !amountOk}
-            />
-            {touched && !amountOk && (
-              <span className="text-xs text-destructive">
-                Enter an amount between 1 and 500,000.
-              </span>
-            )}
-          </label>
+
+          <AmountField
+            id="send-amount"
+            value={amount}
+            onChange={setAmount}
+            invalid={touched && !amountOk}
+            error={
+              touched && !amountOk
+                ? "Enter an amount between 1 and 500,000."
+                : undefined
+            }
+          />
+
           {auto.available ? (
             <Button
               className="w-full"
@@ -194,7 +201,6 @@ export default function Send() {
           ) : (
             <AutomationOffPanel />
           )}
-
         </CardContent>
       </Card>
 
@@ -209,10 +215,9 @@ export default function Send() {
         onAdd={fav.add}
         onRename={fav.rename}
         onRemove={fav.remove}
+        onReorder={fav.reorder}
         onPickContact={fav.pickFromContacts}
       />
     </div>
   );
 }
-
-

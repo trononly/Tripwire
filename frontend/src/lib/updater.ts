@@ -8,6 +8,7 @@ export const GITHUB_REPO = "Tripwire";
 
 export const RELEASES_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
 const LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=100`;
 
 export interface ReleaseAsset {
 	name: string;
@@ -94,12 +95,15 @@ export function isNewerVersion(latest: string, current: string): boolean {
 	);
 }
 
-interface GithubReleaseApi {
+export interface GithubReleaseApi {
 	tag_name: string;
 	name: string;
 	body: string | null;
 	html_url: string;
 	assets: ReleaseAsset[];
+	/** GitHub marks pre-releases and drafts; neither should reach the updater. */
+	prerelease?: boolean;
+	draft?: boolean;
 }
 
 /**
@@ -238,4 +242,79 @@ export async function fetchReleaseNotes(
 		return { ok: false, error: "bad release response" };
 	}
 	return { ok: true, release: toReleaseNotesInfo(api) };
+}
+
+/**
+ * Pick every release the user skipped on the way from `current` to `latest`,
+ * oldest first. Only public, non-draft `tripwire-*` releases count, and the
+ * range is exclusive of the installed version and inclusive of the latest,
+ * so a one-release jump yields exactly one entry (the normal changelog).
+ */
+export function selectReleaseHistory(
+	releases: GithubReleaseApi[],
+	current: string,
+	latest: string,
+): ReleaseNotesInfo[] {
+	const from = normalizeVersion(current);
+	const to = normalizeVersion(latest);
+	if (!from || !to) return [];
+	return releases
+		.filter(
+			(r) =>
+				!r.draft &&
+				!r.prerelease &&
+				typeof r.tag_name === "string" &&
+				r.tag_name.toLowerCase().startsWith("tripwire-"),
+		)
+		.map(toReleaseNotesInfo)
+		.filter((r): r is ReleaseNotesInfo => r !== null)
+		.filter(
+			(r) =>
+				compareVersions(r.version, from) > 0 &&
+				compareVersions(r.version, to) <= 0,
+		)
+		.sort((a, b) => compareVersions(a.version, b.version));
+}
+
+export type ReleaseHistoryResult =
+	| { ok: true; releases: ReleaseNotesInfo[] }
+	| { ok: false; error: string };
+
+/**
+ * Fetch the notes for every release between the installed version and the
+ * latest, so the update dialog can show a version header when more than one
+ * release was skipped. A failed fetch simply falls back to the latest
+ * release's notes in the caller.
+ */
+export async function fetchReleaseHistory(
+	current: string,
+	latest: string,
+	signal?: AbortSignal,
+): Promise<ReleaseHistoryResult> {
+	if (!normalizeVersion(current) || !normalizeVersion(latest)) {
+		return { ok: true, releases: [] };
+	}
+	let res: Response;
+	try {
+		res = await fetch(RELEASES_API, {
+			signal,
+			headers: { Accept: "application/vnd.github+json" },
+		});
+	} catch (e) {
+		if (e instanceof DOMException && e.name === "AbortError") {
+			return { ok: false, error: "cancelled" };
+		}
+		return { ok: false, error: "no connection" };
+	}
+	if (!res.ok) {
+		return { ok: false, error: `release history check failed (${res.status})` };
+	}
+	let api: GithubReleaseApi[];
+	try {
+		api = (await res.json()) as GithubReleaseApi[];
+	} catch {
+		return { ok: false, error: "bad releases response" };
+	}
+	if (!Array.isArray(api)) return { ok: false, error: "bad releases response" };
+	return { ok: true, releases: selectReleaseHistory(api, current, latest) };
 }

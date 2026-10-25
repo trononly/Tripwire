@@ -17,6 +17,33 @@ export function formatMoneyShort(cents: number): string {
   }).format(value);
 }
 
+/**
+ * Group a whole-shilling input from the right: "1234567" -> "1,234,567".
+ * Non-digits are dropped, so it doubles as the input mask for amount fields
+ * while the raw digits stay in state for validation and the USSD script.
+ */
+export function formatAmountInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * Display a Kenyan mobile number as "0712 345 678" while typing. Keeps the
+ * leading 0, accepts a pasted +254/254 prefix, and drops anything past the
+ * ten significant digits.
+ */
+export function formatPhoneInput(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("254") && digits.length >= 12) {
+    digits = `0${digits.slice(3)}`;
+  }
+  digits = digits.slice(0, 10);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+}
+
 // "2026-04-28 19:55:42" -> "28 Apr"
 export function formatDay(iso: string): string {
   const d = new Date(iso.replace(" ", "T"));

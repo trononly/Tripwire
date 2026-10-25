@@ -59,6 +59,24 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 	const failed = status === "error";
 	const installed = status === "ready";
 
+	// The latest release is normally the last history entry; if the history
+	// fetch failed or lags, append the release we already have so the newest
+	// notes are never dropped.
+	const entries = [...updater.history];
+	if (
+		entries.length > 0 &&
+		!entries.some((entry) => entry.version === release.version)
+	) {
+		entries.push({
+			version: release.version,
+			title: release.title,
+			notes: release.notes,
+			htmlUrl: release.htmlUrl,
+		});
+	}
+	const multiple = entries.length > 1;
+	const shown = multiple ? entries : release.notes.trim() ? [release] : [];
+
 	return (
 		<Dialog
 			open={visible}
@@ -79,14 +97,39 @@ export function UpdateDialog({ updater }: { updater: Updater }) {
 					</DialogDescription>
 				</DialogHeader>
 
-				{release.notes.trim() !== "" && (
+				{shown.length > 0 && (
 					<div>
 						<p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
 							Changelog
 						</p>
-						<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed">
-							<ReleaseNotes notes={release.notes} />
-						</div>
+						{multiple ? (
+							<div className="max-h-56 space-y-4 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed">
+								{entries.map((entry, index) => (
+									<section
+										key={entry.version}
+										className={
+											index > 0 ? "space-y-1 border-t pt-4" : "space-y-1"
+										}
+									>
+										<div className="flex items-center gap-2">
+											<p className="text-xs font-semibold">
+												Tripwire {entry.version}
+											</p>
+											{entry.version === release.version && (
+												<span className="bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+													New
+												</span>
+											)}
+										</div>
+										<ReleaseNotes notes={entry.notes} />
+									</section>
+								))}
+							</div>
+						) : (
+							<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/40 p-3 text-xs/relaxed">
+								<ReleaseNotes notes={release.notes} />
+							</div>
+						)}
 					</div>
 				)}
 
