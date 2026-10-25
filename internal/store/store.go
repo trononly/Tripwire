@@ -76,12 +76,14 @@ type StatementMeta struct {
 // Favourite is one saved Send recipient. It is a snapshot of the contact
 // the user picked: changing or deleting the contact later does not touch
 // this row, so no contact permission or contact id is needed after saving.
-// SortOrder is the user's manual position: lower shows first, and new
-// favourites are appended after the existing ones.
+// Kind scopes the row to the Send Money or Pochi La Biashara flow, so the two
+// lists stay independent. SortOrder is the user's manual position within
+// that flow: lower shows first, and new favourites are appended.
 type Favourite struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Phone     string    `json:"phone"`
+	Kind      string    `json:"kind"` // "send" or "pochi"
 	SortOrder int       `json:"sortOrder"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -136,9 +138,11 @@ CREATE INDEX IF NOT EXISTS idx_transactions_receipt
 CREATE TABLE IF NOT EXISTS favourites (
 	id         TEXT PRIMARY KEY,
 	name       TEXT NOT NULL,
-	phone      TEXT NOT NULL UNIQUE,
+	phone      TEXT NOT NULL,
+	kind       TEXT NOT NULL DEFAULT 'send',
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	created_at TEXT NOT NULL
+	created_at TEXT NOT NULL,
+	UNIQUE (kind, phone)
 );
 
 CREATE TABLE IF NOT EXISTS lipa_favourites (
@@ -203,6 +207,14 @@ func New(path string) (*Store, error) {
 			return nil, fmt.Errorf("could not migrate statement store: %w", err)
 		}
 	}
+	// Older databases also have a single global UNIQUE(phone) on favourites.
+	// Rebuilding the table is the only way to widen that key to
+	// UNIQUE(kind, phone), so the Send and Pochi lists can hold the same
+	// number independently.
+	if err := migrateFavouritesKind(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	s := &Store{db: db}
 	if err := s.migrateLegacyJSON(path); err != nil {
@@ -210,6 +222,47 @@ func New(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// migrateFavouritesKind widens the old UNIQUE(phone) favourites table to
+// UNIQUE(kind, phone). Every existing row belonged to Send Money, so it is
+// copied as kind='send'. It is a no-op once the kind column exists.
+func migrateFavouritesKind(db *sql.DB) error {
+	var cols int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('favourites') WHERE name = 'kind'`,
+	).Scan(&cols); err != nil {
+		return fmt.Errorf("could not inspect favourite store: %w", err)
+	}
+	if cols > 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start favourite migration: %w", err)
+	}
+	defer tx.Rollback()
+	for _, stmt := range []string{
+		`CREATE TABLE favourites_kind_migration (
+			id         TEXT PRIMARY KEY,
+			name       TEXT NOT NULL,
+			phone      TEXT NOT NULL,
+			kind       TEXT NOT NULL DEFAULT 'send',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			UNIQUE (kind, phone)
+		)`,
+		`INSERT INTO favourites_kind_migration (id, name, phone, kind, sort_order, created_at)
+		 SELECT id, name, phone, 'send', sort_order, created_at FROM favourites`,
+		`DROP TABLE favourites`,
+		`ALTER TABLE favourites_kind_migration RENAME TO favourites`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("could not migrate favourites to per-flow lists: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // Close releases the database handle.
@@ -450,17 +503,18 @@ func (s *Store) Rename(id, name string) error {
 	return nil
 }
 
-// ListFavourites returns the saved Send recipients in the user's manual
-// order, falling back to alphabetical for rows that share a position (all
-// pre-reorder rows default to 0).
-func (s *Store) ListFavourites() ([]Favourite, error) {
+// ListFavourites returns one flow's saved Send recipients in the user's
+// manual order, falling back to alphabetical for rows that share a position
+// (all pre-reorder rows default to 0).
+func (s *Store) ListFavourites(kind string) ([]Favourite, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, name, phone, sort_order, created_at
+		SELECT id, name, phone, kind, sort_order, created_at
 		FROM favourites
-		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`)
+		WHERE kind = ?
+		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`, kind)
 	if err != nil {
 		return nil, fmt.Errorf("could not list favourites: %w", err)
 	}
@@ -472,7 +526,7 @@ func (s *Store) ListFavourites() ([]Favourite, error) {
 			f       Favourite
 			created string
 		)
-		if err := rows.Scan(&f.ID, &f.Name, &f.Phone, &f.SortOrder, &created); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Phone, &f.Kind, &f.SortOrder, &created); err != nil {
 			return nil, fmt.Errorf("could not read favourite: %w", err)
 		}
 		f.CreatedAt = parseTime(created)
@@ -484,15 +538,18 @@ func (s *Store) ListFavourites() ([]Favourite, error) {
 	return out, nil
 }
 
-// AddFavourite inserts a favourite. The caller must pass a canonical phone;
-// a duplicate number is rejected so the UI can name the existing favourite.
-// New favourites are appended after the existing ones.
-func (s *Store) AddFavourite(name, phone string) (Favourite, error) {
+// AddFavourite inserts a favourite for one flow. The caller must pass a
+// canonical phone and a validated kind; a duplicate number within that flow
+// is rejected so the UI can name the existing favourite. New favourites are
+// appended after the existing ones in the same flow.
+func (s *Store) AddFavourite(name, phone, kind string) (Favourite, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var existing string
-	err := s.db.QueryRow("SELECT name FROM favourites WHERE phone = ?", phone).Scan(&existing)
+	err := s.db.QueryRow(
+		"SELECT name FROM favourites WHERE kind = ? AND phone = ?", kind, phone,
+	).Scan(&existing)
 	switch {
 	case err == nil:
 		return Favourite{}, fmt.Errorf("that number is already saved as %s", existing)
@@ -504,12 +561,14 @@ func (s *Store) AddFavourite(name, phone string) (Favourite, error) {
 		ID:        NewID(),
 		Name:      name,
 		Phone:     phone,
+		Kind:      kind,
 		CreatedAt: time.Now().UTC(),
 	}
 	if _, err := s.db.Exec(`
-		INSERT INTO favourites (id, name, phone, sort_order, created_at)
-		VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM favourites), ?)`,
-		fav.ID, fav.Name, fav.Phone, fav.CreatedAt.Format(time.RFC3339Nano),
+		INSERT INTO favourites (id, name, phone, kind, sort_order, created_at)
+		VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM favourites WHERE kind = ?), ?)`,
+		fav.ID, fav.Name, fav.Phone, fav.Kind, kind,
+		fav.CreatedAt.Format(time.RFC3339Nano),
 	); err != nil {
 		return Favourite{}, fmt.Errorf("could not save favourite: %w", err)
 	}
@@ -583,16 +642,17 @@ func (s *Store) ReorderFavourites(ids []string) error {
 	return tx.Commit()
 }
 
-// ListLipaFavourites returns the saved Lipa na M-Pesa destinations in the
-// user's manual order, falling back to alphabetical on shared positions.
-func (s *Store) ListLipaFavourites() ([]LipaFavourite, error) {
+// ListLipaFavourites returns one flow's saved Lipa na M-Pesa destinations in
+// the user's manual order, falling back to alphabetical on shared positions.
+func (s *Store) ListLipaFavourites(kind string) ([]LipaFavourite, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`
 		SELECT id, name, kind, number, account, sort_order, created_at
 		FROM lipa_favourites
-		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`)
+		WHERE kind = ?
+		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`, kind)
 	if err != nil {
 		return nil, fmt.Errorf("could not list Lipa favourites: %w", err)
 	}
@@ -647,8 +707,8 @@ func (s *Store) AddLipaFavourite(name, kind, number, account string) (LipaFavour
 	}
 	if _, err := s.db.Exec(`
 		INSERT INTO lipa_favourites (id, name, kind, number, account, sort_order, created_at)
-		VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM lipa_favourites), ?)`,
-		fav.ID, fav.Name, fav.Kind, fav.Number, fav.Account,
+		VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM lipa_favourites WHERE kind = ?), ?)`,
+		fav.ID, fav.Name, fav.Kind, fav.Number, fav.Account, kind,
 		fav.CreatedAt.Format(time.RFC3339Nano),
 	); err != nil {
 		return LipaFavourite{}, fmt.Errorf("could not save Lipa favourite: %w", err)

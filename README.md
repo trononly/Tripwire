@@ -86,10 +86,12 @@ accepted, and anything else is reported rather than guessed at.
 Send favourites are a local snapshot of a name and canonical phone number.
 On Android they can be added through the system contact picker
 (`ACTION_PICK`), which hands the app a one-off row and needs no contacts
-permission; on desktop the same list is managed by typing a number. Both Send
-and Lipa na M-Pesa favourites can be renamed, removed and reordered from their
-manage sheets; Lipa favourites (paybill or till, plus the paybill account) are
-always typed by hand because a business number is not a contact.
+permission; on desktop the same list is managed by typing a number. Send
+Money and Pochi La Biashara keep separate lists, and Lipa favourites are
+saved per flow too (paybills on the Paybill tab, tills on Buy Goods). All of
+them can be renamed, removed and reordered from their manage sheets; Lipa
+favourites (paybill or till, plus the paybill account) are always typed by
+hand because a business number is not a contact.
 
 ## Running it
 

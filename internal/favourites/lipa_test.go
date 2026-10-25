@@ -104,6 +104,37 @@ func TestAddLipaTillClearsAccount(t *testing.T) {
 	}
 }
 
+func TestListLipaScopesFlows(t *testing.T) {
+	svc := newService(t)
+
+	if _, err := svc.AddLipa("KPLC", "paybill", "888880", "1234"); err != nil {
+		t.Fatalf("AddLipa(paybill): %v", err)
+	}
+	if _, err := svc.AddLipa("Duka", "till", "555555", ""); err != nil {
+		t.Fatalf("AddLipa(till): %v", err)
+	}
+
+	paybills, err := svc.ListLipa(LipaKindPaybill)
+	if err != nil {
+		t.Fatalf("ListLipa(paybill): %v", err)
+	}
+	if len(paybills) != 1 || paybills[0].Name != "KPLC" {
+		t.Fatalf("paybill list = %+v", paybills)
+	}
+	tills, err := svc.ListLipa(LipaKindTill)
+	if err != nil {
+		t.Fatalf("ListLipa(till): %v", err)
+	}
+	if len(tills) != 1 || tills[0].Name != "Duka" {
+		t.Fatalf("till list = %+v", tills)
+	}
+
+	if _, err := svc.ListLipa("water"); err == nil ||
+		!strings.Contains(err.Error(), "unknown favourite kind") {
+		t.Fatalf("unknown list kind = %v", err)
+	}
+}
+
 func TestRenameAndDeleteLipa(t *testing.T) {
 	svc := newService(t)
 	fav, err := svc.AddLipa("KPLC", "paybill", "888880", "1234")
@@ -114,7 +145,7 @@ func TestRenameAndDeleteLipa(t *testing.T) {
 	if err := svc.RenameLipa(fav.ID, "  KPLC   Prepaid  "); err != nil {
 		t.Fatalf("RenameLipa: %v", err)
 	}
-	list, err := svc.ListLipa()
+	list, err := svc.ListLipa(LipaKindPaybill)
 	if err != nil {
 		t.Fatalf("ListLipa: %v", err)
 	}
@@ -129,7 +160,7 @@ func TestRenameAndDeleteLipa(t *testing.T) {
 	if err := svc.DeleteLipa(fav.ID); err != nil {
 		t.Fatalf("DeleteLipa: %v", err)
 	}
-	if list, _ := svc.ListLipa(); len(list) != 0 {
+	if list, _ := svc.ListLipa(LipaKindPaybill); len(list) != 0 {
 		t.Fatalf("after delete = %+v", list)
 	}
 }
@@ -140,7 +171,7 @@ func TestReorderLipa(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddLipa(A): %v", err)
 	}
-	b, err := svc.AddLipa("B", "till", "222222", "")
+	b, err := svc.AddLipa("B", "paybill", "222222", "2")
 	if err != nil {
 		t.Fatalf("AddLipa(B): %v", err)
 	}
@@ -148,7 +179,7 @@ func TestReorderLipa(t *testing.T) {
 	if err := svc.ReorderLipa([]string{b.ID, a.ID}); err != nil {
 		t.Fatalf("ReorderLipa: %v", err)
 	}
-	list, err := svc.ListLipa()
+	list, err := svc.ListLipa(LipaKindPaybill)
 	if err != nil {
 		t.Fatalf("ListLipa: %v", err)
 	}

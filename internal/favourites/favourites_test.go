@@ -21,7 +21,7 @@ func newService(t *testing.T) *Service {
 func TestAddNormalizesAndFallsBackToPhone(t *testing.T) {
 	svc := newService(t)
 
-	fav, err := svc.Add("  Mama   Jane  ", "+254 712 345 678")
+	fav, err := svc.Add("  Mama   Jane  ", "+254 712 345 678", KindSend)
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestAddNormalizesAndFallsBackToPhone(t *testing.T) {
 		t.Fatalf("name = %q, want Mama Jane", fav.Name)
 	}
 
-	unnamed, err := svc.Add("", "0712 000 001")
+	unnamed, err := svc.Add("", "0712 000 001", KindSend)
 	if err != nil {
 		t.Fatalf("Add(unnamed): %v", err)
 	}
@@ -44,20 +44,30 @@ func TestAddNormalizesAndFallsBackToPhone(t *testing.T) {
 func TestAddRejectsInvalidAndDuplicate(t *testing.T) {
 	svc := newService(t)
 
-	if _, err := svc.Add("Alice", "12345"); err == nil {
+	if _, err := svc.Add("Alice", "12345", KindSend); err == nil {
 		t.Fatal("invalid phone should be rejected")
 	}
-	if _, err := svc.Add("Alice", "0722000001"); err != nil {
+	if _, err := svc.Add("Alice", "0722000001", KindSend); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if _, err := svc.Add("Alicia", "+254722000001"); err == nil {
+	if _, err := svc.Add("Alicia", "+254722000001", KindSend); err == nil {
 		t.Fatal("duplicate phone should be rejected")
+	}
+}
+
+func TestAddRejectsUnknownFlow(t *testing.T) {
+	svc := newService(t)
+	if _, err := svc.Add("Alice", "0722000001", "till"); err == nil {
+		t.Fatal("unknown Send flow should be rejected")
+	}
+	if _, err := svc.List("paybill"); err == nil {
+		t.Fatal("unknown Send flow should be rejected on list")
 	}
 }
 
 func TestRenameAndDelete(t *testing.T) {
 	svc := newService(t)
-	fav, err := svc.Add("Alice", "0722000001")
+	fav, err := svc.Add("Alice", "0722000001", KindSend)
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -65,7 +75,7 @@ func TestRenameAndDelete(t *testing.T) {
 	if err := svc.Rename(fav.ID, "  Alice   W.  "); err != nil {
 		t.Fatalf("Rename: %v", err)
 	}
-	list, err := svc.List()
+	list, err := svc.List(KindSend)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -80,7 +90,7 @@ func TestRenameAndDelete(t *testing.T) {
 	if err := svc.Delete(fav.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if list, _ := svc.List(); len(list) != 0 {
+	if list, _ := svc.List(KindSend); len(list) != 0 {
 		t.Fatalf("after delete = %+v", list)
 	}
 }
