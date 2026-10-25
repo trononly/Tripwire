@@ -181,6 +181,15 @@ public class WailsJSBridge {
     }
 
     /**
+     * System-bar safe area as JSON {"top","bottom","left","right"} in CSS px.
+     * Called from JavaScript: wails.getSafeArea()
+     */
+    @JavascriptInterface
+    public String getSafeArea() {
+        return bridge.getSafeAreaJson();
+    }
+
+    /**
      * Installed app version as JSON
      * {"versionName","versionCode","packageName"}.
      * Called from JavaScript: wails.getAppVersion()

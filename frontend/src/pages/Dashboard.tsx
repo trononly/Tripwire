@@ -258,7 +258,7 @@ export default function Dashboard({
   return (
     <>
       <div
-        className={`sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md transition-transform duration-200 md:-mx-6 md:-mt-6 ${filterHidden ? "-translate-y-[110%]" : "translate-y-0"}`}
+        className={`sticky top-[calc(3.5rem+var(--safe-top,env(safe-area-inset-top)))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md transition-transform duration-200 md:-mx-6 md:-mt-6 ${filterHidden ? "-translate-y-[110%]" : "translate-y-0"}`}
       >
         <Button
           variant="outline"

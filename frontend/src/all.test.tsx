@@ -56,7 +56,8 @@ import {
 	lipaFavouriteDetail,
 	type LipaFavourite,
 } from "@/lib/lipa-favourites";
-import { formatAmountInput, formatPhoneInput } from "@/lib/format";
+import { formatAmountInput, formatBytes, formatPhoneInput } from "@/lib/format";
+import { applySafeArea, parseSafeArea } from "@/lib/safe-area";
 import FavouritesRow from "@/components/favourites-row";
 import { FavouritesList } from "@/components/favourites-list";
 import { UpdateDialog } from "@/components/update-dialog";
@@ -655,7 +656,7 @@ describe("FavouritesRow", () => {
 });
 
 describe("FavouritesList", () => {
-	it("reorders with explicit move buttons and persists the full id order", async () => {
+	it("reorders with the keyboard drag handle and persists the full id order", async () => {
 		const onReorder = vi.fn().mockResolvedValue(true);
 		render(
 			<FavouritesList
@@ -669,8 +670,102 @@ describe("FavouritesList", () => {
 			/>,
 		);
 		fireEvent.click(screen.getByRole("button", { name: /^reorder$/i }));
-		fireEvent.click(screen.getByRole("button", { name: /move alice down/i }));
+		fireEvent.keyDown(
+			screen.getByRole("button", { name: /reorder alice/i }),
+			{ key: "ArrowDown" },
+		);
 		await waitFor(() => expect(onReorder).toHaveBeenCalledWith(["b", "a"]));
+	});
+
+	it("reorders by dragging the grip", async () => {
+		const onReorder = vi.fn().mockResolvedValue(true);
+		render(
+			<FavouritesList
+				items={[
+					{ id: "a", name: "Alice" },
+					{ id: "b", name: "Bob" },
+				]}
+				onRename={vi.fn()}
+				onRemove={vi.fn()}
+				onReorder={onReorder}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /^reorder$/i }));
+
+		screen.getAllByRole("listitem").forEach((row, index) => {
+			vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+				top: index * 48,
+				bottom: (index + 1) * 48,
+				height: 48,
+				left: 0,
+				right: 320,
+				width: 320,
+				x: 0,
+				y: index * 48,
+				toJSON: () => ({}),
+			} as DOMRect);
+		});
+
+		const grip = screen.getByRole("button", { name: /reorder alice/i });
+		fireEvent.pointerDown(grip, { pointerId: 7, button: 0, clientY: 24 });
+		fireEvent.pointerMove(grip, { pointerId: 7, clientY: 72 });
+		fireEvent.pointerUp(grip, { pointerId: 7, clientY: 72 });
+
+		await waitFor(() => expect(onReorder).toHaveBeenCalledWith(["b", "a"]));
+	});
+
+	it("does not persist an order the backend rejects", async () => {
+		const onReorder = vi.fn().mockResolvedValue(false);
+		render(
+			<FavouritesList
+				items={[
+					{ id: "a", name: "Alice" },
+					{ id: "b", name: "Bob" },
+				]}
+				onRename={vi.fn()}
+				onRemove={vi.fn()}
+				onReorder={onReorder}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /^reorder$/i }));
+		fireEvent.keyDown(
+			screen.getByRole("button", { name: /reorder alice/i }),
+			{ key: "ArrowDown" },
+		);
+		await waitFor(() => expect(onReorder).toHaveBeenCalledWith(["b", "a"]));
+		// The visual order snaps back to the props when persistence fails.
+		await waitFor(() =>
+			expect(
+				screen.getAllByRole("button", { name: /^Reorder / })[0],
+			).toHaveAccessibleName("Reorder Alice"),
+		);
+	});
+});
+
+describe("update download size and safe area", () => {
+	it("shows the real decimal size of the release asset", () => {
+		expect(formatBytes(15_746_235)).toBe("15.7 MB");
+		expect(formatBytes(1_500)).toBe("2 KB");
+		expect(formatBytes(0)).toBe("");
+	});
+
+	it("parses and applies native system-bar insets", () => {
+		const insets = parseSafeArea(
+			'{"top":24,"bottom":48,"left":0,"right":0}',
+		);
+		expect(insets).toEqual({ top: 24, bottom: 48, left: 0, right: 0 });
+		expect(parseSafeArea("not json")).toBeNull();
+		expect(parseSafeArea('{"top":-2,"bottom":"x"}')).toEqual({
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0,
+		});
+
+		const root = document.createElement("div");
+		applySafeArea(insets!, root);
+		expect(root.style.getPropertyValue("--safe-top")).toBe("24px");
+		expect(root.style.getPropertyValue("--safe-bottom")).toBe("48px");
 	});
 });
 

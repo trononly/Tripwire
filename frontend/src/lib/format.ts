@@ -44,6 +44,18 @@ export function formatPhoneInput(raw: string): string {
   return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
 }
 
+/**
+ * Human-readable file size. Uses decimal MB/KB so the update prompt matches
+ * the size GitHub and the browser show for the release asset (an APK is
+ * 15.7 MB on disk, not 15.0 MiB).
+ */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
+  if (n >= 1_000) return `${Math.max(1, Math.round(n / 1_000))} KB`;
+  return `${Math.round(n)} B`;
+}
+
 // "2026-04-28 19:55:42" -> "28 Apr"
 export function formatDay(iso: string): string {
   const d = new Date(iso.replace(" ", "T"));

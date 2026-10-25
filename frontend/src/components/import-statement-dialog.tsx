@@ -78,7 +78,7 @@ export function ImportStatementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] max-sm:pl-[calc(1rem+env(safe-area-inset-left))] max-sm:pr-[calc(1rem+env(safe-area-inset-right))] sm:max-w-sm">
+      <DialogContent className="max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1rem+var(--safe-top,env(safe-area-inset-top)))] max-sm:pb-[calc(1rem+var(--safe-bottom,env(safe-area-inset-bottom)))] max-sm:pl-[calc(1rem+var(--safe-left,env(safe-area-inset-left)))] max-sm:pr-[calc(1rem+var(--safe-right,env(safe-area-inset-right)))] sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Import statement</DialogTitle>
           <DialogDescription>
