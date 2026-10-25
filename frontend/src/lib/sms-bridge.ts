@@ -20,6 +20,7 @@ interface WailsAndroidBridge {
 	// In-app updates (WailsBridge.java update section). All optional so
 	// desktop and older builds degrade gracefully.
 	getAppVersion?(): string;
+	getSafeArea?(): string;
 	canInstallPackages?(): boolean;
 	openInstallPermissionSettings?(): void;
 	openAppSettings?(): void;

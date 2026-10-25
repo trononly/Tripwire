@@ -429,7 +429,7 @@ export function SmsImportInspector({
         )}
         {/* Sticky bottom bar for pagination */}
         <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:border-0 md:bg-transparent md:backdrop-blur-0"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          style={{ paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))" }}
         >
           <div className="flex items-center justify-between gap-2 px-4 py-2">
             <span className="text-sm text-muted-foreground">

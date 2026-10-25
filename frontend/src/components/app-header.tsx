@@ -64,7 +64,7 @@ export function AppHeader(props: AppHeaderProps) {
 	} = props;
 	return (
 		<header className="sticky top-0 z-40 border-b border-border bg-background">
-			<div style={{ height: "env(safe-area-inset-top)" }} />
+			<div style={{ height: "var(--safe-top,env(safe-area-inset-top))" }} />
 			<div className="flex h-14 items-center justify-between gap-2 px-4">
 				<div className="flex items-center gap-2">
 					<SidebarTrigger className="hidden md:inline-flex" />

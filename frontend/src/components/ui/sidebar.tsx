@@ -205,12 +205,12 @@ function Sidebar({
           <div
             className="flex h-full w-full flex-col"
             style={{
-              paddingTop: "env(safe-area-inset-top)",
-              paddingBottom: "env(safe-area-inset-bottom)",
+              paddingTop: "var(--safe-top,env(safe-area-inset-top))",
+              paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))",
               paddingLeft:
-                side === "left" ? "env(safe-area-inset-left)" : undefined,
+                side === "left" ? "var(--safe-left,env(safe-area-inset-left))" : undefined,
               paddingRight:
-                side === "right" ? "env(safe-area-inset-right)" : undefined,
+                side === "right" ? "var(--safe-right,env(safe-area-inset-right))" : undefined,
             }}
           >
             {children}

@@ -82,7 +82,7 @@ export function MobileNav() {
           {/* Zero-size anchor exactly at the Pay button center: the nav is
               5 equal columns, so column 3 (Pay) is centered at left-1/2.
               Bottom offset lands on the Pay circle center. */}
-          <div className="absolute bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-1/2 h-0 w-0">
+          <div className="absolute bottom-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] left-1/2 h-0 w-0">
             {actions.map(({ to, label, icon: Icon, color, dx, dy }, i) => (
               <div
                 key={to}
@@ -144,7 +144,7 @@ export function MobileNav() {
 
       <nav
         className="fixed inset-x-0 bottom-0 z-[70] border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{ paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))" }}
       >
         <div className="grid grid-cols-5">
           {items.map((item) =>

@@ -238,7 +238,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   return (
     <div className="space-y-4">
       {/* Header row: search + filter button, pinned under the main header. */}
-      <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md md:-mx-6 md:-mt-6">
+      <div className="sticky top-[calc(3.5rem+var(--safe-top,env(safe-area-inset-top)))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md md:-mx-6 md:-mt-6">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input
@@ -395,7 +395,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
               )}
             </div>
           </div>
-          <DrawerFooter className="sticky bottom-0 border-t border-border bg-surface pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <DrawerFooter className="sticky bottom-0 border-t border-border bg-surface pb-[calc(1rem+var(--safe-bottom,env(safe-area-inset-bottom)))]">
             <Button
               onClick={applyDraft}
               className="h-12 w-full rounded-none bg-brand text-sm font-semibold text-white hover:brightness-110"
@@ -506,7 +506,7 @@ export default function Transactions({
           size="icon"
           aria-label="Back to top"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 size-11 rounded-full shadow-lg"
+          className="fixed right-4 bottom-[calc(4.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] z-30 size-11 rounded-full shadow-lg"
         >
           <ArrowUp className="size-5" />
         </Button>

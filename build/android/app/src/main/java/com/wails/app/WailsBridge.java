@@ -562,23 +562,65 @@ public class WailsBridge {
     // MARK: - Mobile features (Phase B)
 
     /**
-     * System-bar insets as JSON {"top","bottom","left","right"} in px.
+     * System-bar insets as JSON {"top","bottom","left","right"} in CSS px
+     * (dp), which is what the WebView expects.
+     *
+     * Only bars the WebView actually draws behind are reported. On Android
+     * 15+ the app is edge-to-edge, so these are the real status/navigation
+     * bar heights; on older releases the window decor already insets the
+     * content, so returning 0 avoids adding the padding twice. The frontend
+     * copies these into CSS variables with env() as the fallback.
      */
     public String getSafeAreaJson() {
         try {
             int top = 0, bottom = 0, left = 0, right = 0;
+            if (webView == null) {
+                return "{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0}";
+            }
+            int[] loc = new int[2];
+            webView.getLocationOnScreen(loc);
+            int viewLeft = loc[0], viewTop = loc[1];
+            int viewRight = viewLeft + webView.getWidth();
+            int viewBottom = viewTop + webView.getHeight();
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets insets = activity.getWindowManager()
-                        .getCurrentWindowMetrics().getWindowInsets()
+                android.view.WindowMetrics wm = activity.getWindowManager()
+                        .getCurrentWindowMetrics();
+                Rect bounds = wm.getBounds();
+                android.graphics.Insets insets = wm.getWindowInsets()
                         .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
-                top = insets.top; bottom = insets.bottom; left = insets.left; right = insets.right;
+                if (viewTop <= bounds.top) top = insets.top;
+                if (viewBottom >= bounds.bottom) bottom = insets.bottom;
+                if (viewLeft <= bounds.left) left = insets.left;
+                if (viewRight >= bounds.right) right = insets.right;
+            } else {
+                // Pre-R fallback: compare the WebView with the visible frame.
+                DisplayMetrics metrics = new DisplayMetrics();
+                activity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+                Rect visible = new Rect();
+                webView.getWindowVisibleDisplayFrame(visible);
+                if (viewTop <= visible.top) top = visible.top;
+                if (viewBottom >= metrics.heightPixels) {
+                    bottom = Math.max(0, metrics.heightPixels - visible.bottom);
+                }
+                if (viewLeft <= visible.left) left = visible.left;
+                if (viewRight >= metrics.widthPixels) {
+                    right = Math.max(0, metrics.widthPixels - visible.right);
+                }
             }
             return new JSONObject()
-                    .put("top", top).put("bottom", bottom)
-                    .put("left", left).put("right", right).toString();
+                    .put("top", dp(top)).put("bottom", dp(bottom))
+                    .put("left", dp(left)).put("right", dp(right)).toString();
         } catch (Exception e) {
+            Log.e(TAG, "getSafeAreaJson failed", e);
             return "{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0}";
         }
+    }
+
+    /** Convert a physical-pixel inset to CSS pixels (dp) for the WebView. */
+    private int dp(int px) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        return density > 0 ? Math.round(px / density) : px;
     }
 
     /**

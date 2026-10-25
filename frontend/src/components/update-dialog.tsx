@@ -11,12 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Updater } from "@/hooks/use-updater";
 import { ReleaseNotes } from "@/components/release-notes";
-
-function formatBytes(n: number): string {
-	if (!Number.isFinite(n) || n <= 0) return "";
-	const mb = n / (1024 * 1024);
-	return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-}
+import { formatBytes } from "@/lib/format";
 
 function ProgressBar({ received, total }: { received: number; total: number }) {
 	const pct =

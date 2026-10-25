@@ -25,6 +25,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { useStatements } from "@/hooks/use-statements";
 import { useSmsEngine } from "@/hooks/use-sms-engine";
 import { useSimNames } from "@/hooks/use-sim-names";
+import { useSafeAreaInsets } from "@/hooks/use-safe-area";
 import { loadInitialMode, saveMode, type DataMode } from "@/lib/data-mode";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
@@ -37,6 +38,7 @@ import Withdraw from "@/pages/Withdraw";
 
 function App() {
   const [mode, setModeState] = useState<DataMode>(loadInitialMode);
+  useSafeAreaInsets();
   const stmts = useStatements();
   // Live grant state for READ_SMS / RECEIVE_SMS / CALL_PHONE. Refreshes on
   // foreground; every SMS path consults it before doing work.
@@ -157,7 +159,7 @@ function App() {
               onSwitchSim={sms.handleSwitchSim}
               onImportSms={sms.startSmsImport}
             />
-            <main className="min-w-0 flex-1 space-y-4 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
+            <main className="min-w-0 flex-1 space-y-4 p-4 pb-[calc(5.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] md:p-6 md:pb-6">
               <Routes>
                 <Route
                   path="/"
