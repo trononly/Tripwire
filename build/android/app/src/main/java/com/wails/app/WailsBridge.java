@@ -1973,6 +1973,60 @@ public class WailsBridge {
         if (initialized) nativeFilePickerDone(callbackID);
     }
 
+    // MARK: - Contacts (Send favourites)
+
+    /**
+     * Open the system contact picker for a phone number. No READ_CONTACTS
+     * permission is involved: ACTION_PICK grants a one-off read of the
+     * picked row. Results flow back through the contactPicker* methods.
+     */
+    public void pickContact() {
+        mainHandler.post(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).launchContactPicker();
+            } else {
+                contactPickerError("contact picker unavailable");
+            }
+        });
+    }
+
+    /** Forward a picked contact to JS (package-private, used by MainActivity). */
+    void contactPickerResult(String name, String phone) {
+        try {
+            emitEvent("common:contact", new JSONObject()
+                    .put("ok", true)
+                    .put("name", name != null ? name : "")
+                    .put("phone", phone != null ? phone : "")
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "contactPickerResult failed", e);
+            contactPickerError("could not read that contact");
+        }
+    }
+
+    /** The user backed out of the picker. */
+    void contactPickerCancelled() {
+        try {
+            emitEvent("common:contact", new JSONObject()
+                    .put("cancelled", true)
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "contactPickerCancelled failed", e);
+        }
+    }
+
+    /** The picker could not be opened or the row had no usable number. */
+    void contactPickerError(String message) {
+        try {
+            emitEvent("common:contact", new JSONObject()
+                    .put("ok", false)
+                    .put("error", message != null ? message : "could not read that contact")
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "contactPickerError failed", e);
+        }
+    }
+
     /** Dialog button callback that no-ops once the Go side is gone. */
     private void dialogCallback(int callbackID, int buttonIndex) {
         if (initialized) nativeDialogCallback(callbackID, buttonIndex);

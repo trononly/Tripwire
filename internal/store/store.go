@@ -73,6 +73,16 @@ type StatementMeta struct {
 	ImportedAt time.Time `json:"importedAt"`
 }
 
+// Favourite is one saved Send recipient. It is a snapshot of the contact
+// the user picked: changing or deleting the contact later does not touch
+// this row, so no contact permission or contact id is needed after saving.
+type Favourite struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Phone     string    `json:"phone"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // schema is applied on every open; every statement is idempotent.
 const schema = `
 CREATE TABLE IF NOT EXISTS statements (
@@ -105,6 +115,13 @@ CREATE INDEX IF NOT EXISTS idx_transactions_statement_date
 	ON transactions (statement_id, date);
 CREATE INDEX IF NOT EXISTS idx_transactions_receipt
 	ON transactions (id);
+
+CREATE TABLE IF NOT EXISTS favourites (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	phone      TEXT NOT NULL UNIQUE,
+	created_at TEXT NOT NULL
+);
 `
 
 // Store wraps the SQLite database.
@@ -399,6 +416,98 @@ func (s *Store) Rename(id, name string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("no statement with id %q", id)
+	}
+	return nil
+}
+
+// ListFavourites returns the saved Send recipients, alphabetical by name.
+func (s *Store) ListFavourites() ([]Favourite, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query(`
+		SELECT id, name, phone, created_at
+		FROM favourites
+		ORDER BY name COLLATE NOCASE, created_at, rowid`)
+	if err != nil {
+		return nil, fmt.Errorf("could not list favourites: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Favourite, 0, 8)
+	for rows.Next() {
+		var (
+			f       Favourite
+			created string
+		)
+		if err := rows.Scan(&f.ID, &f.Name, &f.Phone, &created); err != nil {
+			return nil, fmt.Errorf("could not read favourite: %w", err)
+		}
+		f.CreatedAt = parseTime(created)
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not list favourites: %w", err)
+	}
+	return out, nil
+}
+
+// AddFavourite inserts a favourite. The caller must pass a canonical phone;
+// a duplicate number is rejected so the UI can name the existing favourite.
+func (s *Store) AddFavourite(name, phone string) (Favourite, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var existing string
+	err := s.db.QueryRow("SELECT name FROM favourites WHERE phone = ?", phone).Scan(&existing)
+	switch {
+	case err == nil:
+		return Favourite{}, fmt.Errorf("that number is already saved as %s", existing)
+	case !errors.Is(err, sql.ErrNoRows):
+		return Favourite{}, fmt.Errorf("could not check favourite: %w", err)
+	}
+
+	fav := Favourite{
+		ID:        NewID(),
+		Name:      name,
+		Phone:     phone,
+		CreatedAt: time.Now().UTC(),
+	}
+	if _, err := s.db.Exec(
+		"INSERT INTO favourites (id, name, phone, created_at) VALUES (?, ?, ?, ?)",
+		fav.ID, fav.Name, fav.Phone, fav.CreatedAt.Format(time.RFC3339Nano),
+	); err != nil {
+		return Favourite{}, fmt.Errorf("could not save favourite: %w", err)
+	}
+	return fav, nil
+}
+
+// RenameFavourite changes the display name of a saved recipient.
+func (s *Store) RenameFavourite(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("UPDATE favourites SET name = ? WHERE id = ?", name, id)
+	if err != nil {
+		return fmt.Errorf("could not rename favourite: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no favourite with id %q", id)
+	}
+	return nil
+}
+
+// DeleteFavourite removes a saved recipient.
+func (s *Store) DeleteFavourite(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("DELETE FROM favourites WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("could not delete favourite: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no favourite with id %q", id)
 	}
 	return nil
 }

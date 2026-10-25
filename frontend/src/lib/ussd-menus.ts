@@ -36,7 +36,16 @@ const DEFAULT_TIMEOUT_SEC = 90;
 /** Normalize KE numbers to 0XXXXXXXXX (07../01..). Returns "" when invalid. */
 export function normalizePhone(raw: string): string {
   let d = raw.replace(/\D/g, "");
-  if (d.startsWith("254") && d.length === 12) d = `0${d.slice(3)}`;
+  if (d.length === 14 && d.startsWith("00254")) {
+    d = `0${d.slice(5)}`;
+  } else if (d.length === 13 && d.startsWith("2540")) {
+    // "+254 (0) 712 …"
+    d = `0${d.slice(4)}`;
+  } else if (d.length === 12 && d.startsWith("254")) {
+    d = `0${d.slice(3)}`;
+  } else if (d.length === 9 && /^[71]/.test(d)) {
+    d = `0${d}`;
+  }
   if (/^0[17]\d{8}$/.test(d)) return d;
   return "";
 }

@@ -237,6 +237,18 @@ public class WailsJSBridge {
     }
 
     /**
+     * Open the system contact picker for a phone number. No contacts
+     * permission is requested: ACTION_PICK hands the app a one-off URI it
+     * may read for the duration of the grant. The result arrives as a
+     * "common:contact" event.
+     * Called from JavaScript: wails.pickContact()
+     */
+    @JavascriptInterface
+    public void pickContact() {
+        executor.execute(bridge::pickContact);
+    }
+
+    /**
      * Check READ_PHONE_STATE without prompting (never requests it).
      * Called from JavaScript: wails.hasPhoneStatePermission()
      *

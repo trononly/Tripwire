@@ -66,6 +66,8 @@ React/TypeScript frontend.
 - `internal/analysis` - totals, categorization, time windows, and insights.
 - `internal/recurring` - the deterministic recurring-bills detector (median-gap
   cadence, MAD regularity).
+- `internal/favourites`, `internal/phone` - saved Send recipients and the
+  Kenyan-mobile normalizer they share with the USSD scripts.
 - `internal/store` - local persistence for imported datasets (pure-Go SQLite,
   CGO disabled).
 - `internal/counterparty`, `internal/txtype` - shared helpers that extract the
@@ -79,6 +81,11 @@ record remembers where a row came from (`statement` or `sms`), and an SMS
 record's `SimID`/`SimLabel` remember which SIM's wallet it is. The SMS parser
 is deliberately strict - only message shapes backed by real samples are
 accepted, and anything else is reported rather than guessed at.
+
+Send favourites are a local snapshot of a name and canonical phone number.
+On Android they can be added through the system contact picker
+(`ACTION_PICK`), which hands the app a one-off row and needs no contacts
+permission; on desktop the same list is managed by typing a number.
 
 ## Running it
 
