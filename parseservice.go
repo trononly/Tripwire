@@ -752,3 +752,60 @@ func (p *ParseService) DeleteFavourite(id string) error {
 	}
 	return favourites.New(s).Delete(id)
 }
+
+// ReorderFavourites persists a new manual order for saved Send recipients.
+func (p *ParseService) ReorderFavourites(ids []string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).Reorder(ids)
+}
+
+// ListLipaFavourites returns the saved Lipa na M-Pesa destinations.
+func (p *ParseService) ListLipaFavourites() ([]store.LipaFavourite, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	return favourites.New(s).ListLipa()
+}
+
+// AddLipaFavourite saves a manually entered paybill or till. The kind,
+// number and account are validated in Go; the name is optional and falls
+// back to the account or the number.
+func (p *ParseService) AddLipaFavourite(name, kind, number, account string) (store.LipaFavourite, error) {
+	s, err := p.statements()
+	if err != nil {
+		return store.LipaFavourite{}, err
+	}
+	return favourites.New(s).AddLipa(name, kind, number, account)
+}
+
+// RenameLipaFavourite changes a saved Lipa destination's display name.
+func (p *ParseService) RenameLipaFavourite(id, name string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).RenameLipa(id, name)
+}
+
+// DeleteLipaFavourite removes a saved Lipa destination.
+func (p *ParseService) DeleteLipaFavourite(id string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).DeleteLipa(id)
+}
+
+// ReorderLipaFavourites persists a new manual order for saved Lipa
+// destinations.
+func (p *ParseService) ReorderLipaFavourites(ids []string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return favourites.New(s).ReorderLipa(ids)
+}

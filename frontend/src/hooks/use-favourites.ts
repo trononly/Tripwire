@@ -7,6 +7,7 @@ import {
 	DeleteFavourite,
 	ListFavourites,
 	RenameFavourite,
+	ReorderFavourites,
 } from "../../bindings/mpesa-analyzer/parseservice";
 import type { Favourite } from "../../bindings/mpesa-analyzer/internal/store/models";
 import {
@@ -118,10 +119,25 @@ export function useFavourites() {
 		[refresh],
 	);
 
+	/** Persist the full list in display order. */
+	const reorder = useCallback(
+		async (ids: string[]) => {
+			try {
+				await ReorderFavourites(ids);
+				await refresh();
+				return true;
+			} catch (e) {
+				toast.error(messageOf(e));
+				return false;
+			}
+		},
+		[refresh],
+	);
+
 	/** Open the system picker on Android; desktop gets a manual-entry hint. */
 	const pickFromContacts = useCallback(() => {
 		if (!canPickContact()) {
-			toast.info("Picking a contact needs the Android app. Add a number below.");
+			toast.info("Picking a contact needs the Android app. Add the number manually.");
 			return;
 		}
 		setPicking(true);
@@ -135,6 +151,7 @@ export function useFavourites() {
 		add,
 		rename,
 		remove,
+		reorder,
 		pickFromContacts,
 		refresh,
 	};

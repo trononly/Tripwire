@@ -66,8 +66,9 @@ React/TypeScript frontend.
 - `internal/analysis` - totals, categorization, time windows, and insights.
 - `internal/recurring` - the deterministic recurring-bills detector (median-gap
   cadence, MAD regularity).
-- `internal/favourites`, `internal/phone` - saved Send recipients and the
-  Kenyan-mobile normalizer they share with the USSD scripts.
+- `internal/favourites`, `internal/phone` - saved Send and Lipa na M-Pesa
+  destinations plus the Kenyan-mobile normalizer they share with the USSD
+  scripts.
 - `internal/store` - local persistence for imported datasets (pure-Go SQLite,
   CGO disabled).
 - `internal/counterparty`, `internal/txtype` - shared helpers that extract the
@@ -85,7 +86,10 @@ accepted, and anything else is reported rather than guessed at.
 Send favourites are a local snapshot of a name and canonical phone number.
 On Android they can be added through the system contact picker
 (`ACTION_PICK`), which hands the app a one-off row and needs no contacts
-permission; on desktop the same list is managed by typing a number.
+permission; on desktop the same list is managed by typing a number. Both Send
+and Lipa na M-Pesa favourites can be renamed, removed and reordered from their
+manage sheets; Lipa favourites (paybill or till, plus the paybill account) are
+always typed by hand because a business number is not a contact.
 
 ## Running it
 

@@ -13,8 +13,10 @@ import {
 } from "@/lib/update-bridge";
 import {
 	fetchLatestRelease,
+	fetchReleaseHistory,
 	isNewerVersion,
 	type ReleaseInfo,
+	type ReleaseNotesInfo,
 } from "@/lib/updater";
 import { cacheChangelog } from "@/lib/changelog";
 
@@ -39,6 +41,8 @@ export interface Updater {
 	/** Installed version name, "" when unknown. */
 	current: string;
 	release: ReleaseInfo | null;
+	/** Every skipped release between `current` and `release`, oldest first. */
+	history: ReleaseNotesInfo[];
 	progress: UpdateProgress | null;
 	error: string | null;
 	/** True when the system install toggle blocks the update. */
@@ -84,11 +88,13 @@ export function useUpdater(): Updater {
 	const [visible, setVisible] = useState(false);
 	const [current, setCurrent] = useState("");
 	const [release, setRelease] = useState<ReleaseInfo | null>(null);
+	const [history, setHistory] = useState<ReleaseNotesInfo[]>([]);
 	const [progress, setProgress] = useState<UpdateProgress | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [needsInstallPermission, setNeedsInstallPermission] = useState(false);
 	const [lastChecked, setLastChecked] = useState<number | null>(null);
 	const checking = useRef(false);
+	const historyFor = useRef("");
 	const unsubscribe = useRef<(() => void) | null>(null);
 
 	useEffect(() => {
@@ -165,6 +171,7 @@ export function useUpdater(): Updater {
 						readSkipped() !== result.release.version
 					) {
 						setRelease(result.release);
+						setHistory([]);
 						setProgress(null);
 						setNeedsInstallPermission(false);
 						setStatus("available");
@@ -176,6 +183,30 @@ export function useUpdater(): Updater {
 							title: result.release.title,
 							notes: result.release.notes,
 							htmlUrl: result.release.htmlUrl,
+						});
+						// When more than one release was skipped, collect the
+						// notes in between too, then let the dialog add version
+						// headers. Failing this leaves the single latest notes.
+						historyFor.current = result.release.version;
+						void fetchReleaseHistory(
+							installed.versionName,
+							result.release.version,
+						).then((historyResult) => {
+							if (
+								!historyResult.ok ||
+								historyFor.current !== result.release?.version
+							) {
+								return;
+							}
+							setHistory(historyResult.releases);
+							for (const entry of historyResult.releases) {
+								cacheChangelog({
+									version: entry.version,
+									title: entry.title,
+									notes: entry.notes,
+									htmlUrl: entry.htmlUrl,
+								});
+							}
 						});
 					} else if (manual) {
 						setStatus("up-to-date");
@@ -281,6 +312,7 @@ export function useUpdater(): Updater {
 		visible,
 		current,
 		release,
+		history,
 		progress,
 		error,
 		needsInstallPermission,

@@ -2,7 +2,7 @@
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 import { Browser } from "@wailsio/runtime";
@@ -27,6 +27,8 @@ import {
 	normalizeVersion,
 	pickApkAsset,
 	releaseTag,
+	selectReleaseHistory,
+	type GithubReleaseApi,
 } from "@/lib/updater";
 import {
 	CHANGELOG_CACHE_KEY,
@@ -46,9 +48,19 @@ import {
 	favouriteInitials,
 	formatFavouritePhone,
 	isActiveFavourite,
+	moveItem,
 	type Favourite,
 } from "@/lib/favourites";
+import {
+	isActiveLipaFavourite,
+	lipaFavouriteDetail,
+	type LipaFavourite,
+} from "@/lib/lipa-favourites";
+import { formatAmountInput, formatPhoneInput } from "@/lib/format";
 import FavouritesRow from "@/components/favourites-row";
+import { FavouritesList } from "@/components/favourites-list";
+import { UpdateDialog } from "@/components/update-dialog";
+import type { Updater } from "@/hooks/use-updater";
 import {
 	PRIVACY_MODE_KEY,
 	getPrivacyModeEnabled,
@@ -244,6 +256,73 @@ describe("releaseTag", () => {
 		expect(releaseTag("")).toBe("");
 	});
 });
+
+describe("selectReleaseHistory", () => {
+	const api = (
+		tag: string,
+		extra: Partial<GithubReleaseApi> = {},
+	): GithubReleaseApi => ({
+		tag_name: tag,
+		name: tag,
+		body: `notes for ${tag}`,
+		html_url: `https://example.test/${tag}`,
+		assets: [],
+		...extra,
+	});
+
+	const releases = [
+		api("tripwire-1.0.0"),
+		api("tripwire-1.2.0"),
+		api("tripwire-1.1.0"),
+		api("tripwire-1.3.0"),
+		api("v1.5.0"),
+		api("tripwire-1.4.0", { prerelease: true }),
+		api("tripwire-2.0.0", { draft: true }),
+	];
+
+	it("returns every skipped release, oldest first", () => {
+		expect(
+			selectReleaseHistory(releases, "1.0.0", "1.3.0").map((r) => r.version),
+		).toEqual(["1.1.0", "1.2.0", "1.3.0"]);
+	});
+
+	it("keeps a one-release jump to a single entry", () => {
+		expect(
+			selectReleaseHistory(releases, "1.2.0", "1.3.0").map((r) => r.version),
+		).toEqual(["1.3.0"]);
+	});
+
+	it("ignores non-tripwire tags, drafts and pre-releases", () => {
+		expect(
+			selectReleaseHistory(releases, "1.3.0", "1.4.0").map((r) => r.version),
+		).toEqual([]);
+	});
+
+	it("returns nothing when either version is unknown", () => {
+		expect(selectReleaseHistory(releases, "", "1.3.0")).toEqual([]);
+		expect(selectReleaseHistory(releases, "1.0.0", "")).toEqual([]);
+	});
+});
+
+// --- input formatting ---
+
+describe("input formatting", () => {
+	it("groups whole-shilling amounts from the right", () => {
+		expect(formatAmountInput("")).toBe("");
+		expect(formatAmountInput("500")).toBe("500");
+		expect(formatAmountInput("1234567")).toBe("1,234,567");
+		expect(formatAmountInput("12,34a56")).toBe("123,456");
+	});
+
+	it("splits a Kenyan mobile number into readable groups", () => {
+		expect(formatPhoneInput("0712")).toBe("0712");
+		expect(formatPhoneInput("07123")).toBe("0712 3");
+		expect(formatPhoneInput("0712345678")).toBe("0712 345 678");
+		expect(formatPhoneInput("+254 712 345 678")).toBe("0712 345 678");
+		expect(formatPhoneInput("071234567899")).toBe("0712 345 678");
+	});
+});
+
 
 // --- changelog cache ---
 
@@ -468,6 +547,7 @@ function favourite(overrides: Partial<Favourite>): Favourite {
 		id: "f1",
 		name: "Mama Jane",
 		phone: "0712345678",
+		sortOrder: 0,
 		createdAt: "2026-01-01T00:00:00Z",
 		...overrides,
 	};
@@ -493,19 +573,58 @@ describe("favourite helpers", () => {
 			isActiveFavourite(favourite({ phone: "0722000001" }), "0712345678"),
 		).toBe(false);
 	});
+
+	it("moves an item to a new position without mutating the list", () => {
+		const items = ["a", "b", "c"];
+		expect(moveItem(items, 0, 2)).toEqual(["b", "c", "a"]);
+		expect(moveItem(items, 2, 0)).toEqual(["c", "a", "b"]);
+		expect(moveItem(items, 1, 1)).toBe(items);
+		expect(moveItem(items, 0, 3)).toBe(items);
+		expect(items).toEqual(["a", "b", "c"]);
+	});
+});
+
+function lipaFavourite(overrides: Partial<LipaFavourite>): LipaFavourite {
+	return {
+		id: "l1",
+		name: "KPLC",
+		kind: "paybill",
+		number: "888880",
+		account: "12345678",
+		sortOrder: 0,
+		createdAt: "2026-01-01T00:00:00Z",
+		...overrides,
+	};
+}
+
+describe("Lipa favourite helpers", () => {
+	it("labels the kind and shows the account only for a paybill", () => {
+		expect(lipaFavouriteDetail(lipaFavourite({}))).toBe(
+			"Paybill 888880 · 12345678",
+		);
+		expect(
+			lipaFavouriteDetail(
+				lipaFavourite({ kind: "till", name: "Java", number: "543210", account: "" }),
+			),
+		).toBe("Till 543210");
+	});
+
+	it("matches the form by kind, number and paybill account", () => {
+		const saved = lipaFavourite({});
+		expect(isActiveLipaFavourite(saved, "paybill", "888 880", "12345678")).toBe(
+			true,
+		);
+		expect(isActiveLipaFavourite(saved, "paybill", "888880", "99999999")).toBe(
+			false,
+		);
+		expect(isActiveLipaFavourite(saved, "till", "888880", "")).toBe(false);
+	});
 });
 
 describe("FavouritesRow", () => {
 	it("prompts to save regulars when empty and opens management", () => {
 		const onManage = vi.fn();
-		render(
-			<FavouritesRow
-				favourites={[]}
-				phone=""
-				onPick={vi.fn()}
-				onManage={onManage}
-			/>,
-		);
+		render(<FavouritesRow items={[]} onManage={onManage} />);
 		fireEvent.click(
 			screen.getByRole("button", { name: /save your regulars/i }),
 		);
@@ -516,16 +635,109 @@ describe("FavouritesRow", () => {
 		const onPick = vi.fn();
 		render(
 			<FavouritesRow
-				favourites={[favourite({})]}
-				phone="+254712345678"
-				onPick={onPick}
+				items={[
+					{
+						id: "f1",
+						name: "Mama Jane",
+						active: true,
+						onPick,
+					},
+				]}
 				onManage={vi.fn()}
 			/>,
 		);
 		const chip = screen.getByRole("button", { name: /mama jane/i });
 		expect(chip).toHaveAttribute("aria-pressed", "true");
 		fireEvent.click(chip);
-		expect(onPick).toHaveBeenCalledWith("0712345678");
+		expect(onPick).toHaveBeenCalledOnce();
+	});
+});
+
+describe("FavouritesList", () => {
+	it("reorders with explicit move buttons and persists the full id order", async () => {
+		const onReorder = vi.fn().mockResolvedValue(true);
+		render(
+			<FavouritesList
+				items={[
+					{ id: "a", name: "Alice" },
+					{ id: "b", name: "Bob" },
+				]}
+				onRename={vi.fn()}
+				onRemove={vi.fn()}
+				onReorder={onReorder}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /^reorder$/i }));
+		fireEvent.click(screen.getByRole("button", { name: /move alice down/i }));
+		await waitFor(() => expect(onReorder).toHaveBeenCalledWith(["b", "a"]));
+	});
+});
+
+// --- update dialog ---
+
+function fakeUpdater(overrides: Partial<Updater> = {}): Updater {
+	return {
+		status: "available",
+		visible: true,
+		current: "1.0.0",
+		release: {
+			tag: "tripwire-1.2.0",
+			version: "1.2.0",
+			title: "Tripwire 1.2.0",
+			notes: "## What's new\n- Latest change",
+			apkUrl: "https://example.test/app.apk",
+			apkName: "Tripwire-1.2.0.apk",
+			apkSize: 1024,
+			htmlUrl: "https://example.test/1.2.0",
+		},
+		history: [],
+		progress: null,
+		error: null,
+		needsInstallPermission: false,
+		lastChecked: null,
+		check: vi.fn(),
+		download: vi.fn(),
+		skip: vi.fn(),
+		dismiss: vi.fn(),
+		reopen: vi.fn(),
+		openReleasePage: vi.fn(),
+		openInstallSettings: vi.fn(),
+		...overrides,
+	};
+}
+
+describe("UpdateDialog", () => {
+	it("keeps the single changelog when only one release was skipped", () => {
+		render(<UpdateDialog updater={fakeUpdater()} />);
+		expect(screen.getByText("Latest change")).toBeInTheDocument();
+		expect(screen.queryByText("Tripwire 1.2.0")).not.toBeInTheDocument();
+	});
+
+	it("adds a version header per skipped release", () => {
+		render(
+			<UpdateDialog
+				updater={fakeUpdater({
+					history: [
+						{
+							version: "1.1.0",
+							title: "Tripwire 1.1.0",
+							notes: "## What's new\n- Older change",
+							htmlUrl: "https://example.test/1.1.0",
+						},
+						{
+							version: "1.2.0",
+							title: "Tripwire 1.2.0",
+							notes: "## What's new\n- Latest change",
+							htmlUrl: "https://example.test/1.2.0",
+						},
+					],
+				})}
+			/>,
+		);
+		expect(screen.getByText("Tripwire 1.1.0")).toBeInTheDocument();
+		expect(screen.getByText("Tripwire 1.2.0")).toBeInTheDocument();
+		expect(screen.getByText("New")).toBeInTheDocument();
+		expect(screen.getByText("Older change")).toBeInTheDocument();
 	});
 });
 

@@ -50,6 +50,12 @@ func (s *Service) Delete(id string) error {
 	return s.store.DeleteFavourite(id)
 }
 
+// Reorder persists a new manual order for saved recipients. ids is the full
+// list in display order; ids[0] ends up first.
+func (s *Service) Reorder(ids []string) error {
+	return s.store.ReorderFavourites(ids)
+}
+
 // Name collapses whitespace, caps the length and falls back to the phone
 // when the contact has no name. A blank fallback means "keep it empty".
 func Name(raw, fallback string) string {
