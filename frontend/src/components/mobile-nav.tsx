@@ -142,8 +142,11 @@ export function MobileNav() {
         }
       `}</style>
 
+      {/* Solid background, not translucent: the safe-area padding below the
+          last row must paint the same colour as the bar itself, otherwise the
+          gesture handle sits on a lighter strip. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-[70] border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-[70] border-t bg-background md:hidden"
         style={{ paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))" }}
       >
         <div className="grid grid-cols-5">

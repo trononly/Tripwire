@@ -1,17 +1,27 @@
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
+import { useModalBack } from "@/hooks/use-modal-back";
+import { isToastPointer } from "@/lib/toast-guard";
 import { cn } from "@/lib/utils";
 
 const Drawer = ({
   shouldScaleBackground = true,
+  open,
+  onOpenChange,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root
-    shouldScaleBackground={shouldScaleBackground}
-    {...props}
-  />
-);
+}: React.ComponentProps<typeof DrawerPrimitive.Root>) => {
+  // Android back closes the drawer instead of navigating the page.
+  useModalBack(Boolean(open), () => onOpenChange?.(false));
+  return (
+    <DrawerPrimitive.Root
+      shouldScaleBackground={shouldScaleBackground}
+      open={open}
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  );
+};
 Drawer.displayName = "Drawer";
 
 const DrawerTrigger = DrawerPrimitive.Trigger;
@@ -35,15 +45,24 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onPointerDownOutside, ...props }, ref) => (
   <DrawerPortal>
     <DrawerOverlay />
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-[90] mt-24 flex h-auto flex-col rounded-none border border-border bg-surface",
+        "fixed inset-x-0 bottom-0 z-[90] mt-24 flex h-auto flex-col rounded-none border border-border bg-surface pb-[var(--safe-bottom,env(safe-area-inset-bottom))]",
         className,
       )}
+      onPointerDownOutside={(event) => {
+        // Toasts win over the drawer: tapping or swiping one must not also
+        // dismiss the drawer it is floating above.
+        if (isToastPointer(event.detail.originalEvent.target)) {
+          event.preventDefault();
+          return;
+        }
+        onPointerDownOutside?.(event);
+      }}
       {...props}
     >
       <div className="mx-auto mt-4 h-2 w-[100px] rounded-none bg-muted" />

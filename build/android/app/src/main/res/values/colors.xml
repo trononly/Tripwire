@@ -2,6 +2,9 @@
 <resources>
     <!-- Tripwire brand palette (see build/tripwire-bg.svg). -->
     <color name="tripwire_bg">#16171B</color>
+    <!-- Solid colour behind the status/navigation bars. Matches --background
+         in the app theme; values-night overrides it for dark mode. -->
+    <color name="tripwire_system_bar">#FFFFFF</color>
     <color name="tripwire_card">#25262E</color>
     <color name="tripwire_red">#F04A48</color>
     <color name="tripwire_red_dark">#B93230</color>

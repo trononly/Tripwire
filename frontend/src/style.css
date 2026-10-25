@@ -152,6 +152,14 @@
 }
 
 html,
+body {
+    /* index.html paints the brand charcoal before the bundle loads; once the
+       theme is known the page (and the system-bar strip behind it) must use
+       the real background, otherwise the gesture/navigation area looks gray. */
+    background-color: var(--background) !important;
+}
+
+html,
 .sidebar-manual {
     /* Top inset is handled by the sticky header (height: var(--safe-top))
        so it can stick to the viewport edge without jumping. Bottom is

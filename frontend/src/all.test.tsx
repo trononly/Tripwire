@@ -58,6 +58,7 @@ import {
 } from "@/lib/lipa-favourites";
 import { formatAmountInput, formatBytes, formatPhoneInput } from "@/lib/format";
 import { applySafeArea, parseSafeArea } from "@/lib/safe-area";
+import { useModalBack } from "@/hooks/use-modal-back";
 import FavouritesRow from "@/components/favourites-row";
 import { FavouritesList } from "@/components/favourites-list";
 import { UpdateDialog } from "@/components/update-dialog";
@@ -739,6 +740,33 @@ describe("FavouritesList", () => {
 				screen.getAllByRole("button", { name: /^Reorder / })[0],
 			).toHaveAccessibleName("Reorder Alice"),
 		);
+	});
+});
+
+describe("modal back handling", () => {
+	function Harness({ open, onClose }: { open: boolean; onClose: () => void }) {
+		useModalBack(open, onClose);
+		return null;
+	}
+
+	it("closes the top modal and consumes the back press", () => {
+		const closeA = vi.fn();
+		const closeB = vi.fn();
+		render(
+			<>
+				<Harness open onClose={closeA} />
+				<Harness open onClose={closeB} />
+			</>,
+		);
+
+		expect(window.__tripwireHandleBack?.()).toBe(true);
+		expect(closeB).toHaveBeenCalledTimes(1);
+		expect(closeA).not.toHaveBeenCalled();
+	});
+
+	it("lets the page handle back when nothing is open", () => {
+		render(<Harness open={false} onClose={vi.fn()} />);
+		expect(window.__tripwireHandleBack?.()).toBe(false);
 	});
 });
 

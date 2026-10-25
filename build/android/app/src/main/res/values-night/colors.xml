@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode system bars: same as the app's --background (#09090b). -->
+    <color name="tripwire_system_bar">#09090B</color>
+</resources>

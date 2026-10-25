@@ -213,16 +213,11 @@ export function FavouritesList({
 	}
 
 	return (
-		<section className="space-y-2">
+		// While reordering, keep the parent drawer out of the gesture: Vaul
+		// otherwise treats a downward item drag as a swipe-to-dismiss.
+		<section className="space-y-2" data-vaul-no-drag={reordering ? "" : undefined}>
 			<div className="flex items-center justify-between">
-				<div className="flex items-baseline gap-2">
-					<span className="text-sm font-medium">Saved</span>
-					{reordering && order.length > 1 && (
-						<span className="text-[11px] text-muted-foreground">
-							Drag the grip, or use ↑ ↓
-						</span>
-					)}
-				</div>
+				<span className="text-sm font-medium">Saved</span>
 				{order.length > 1 && (
 					<button
 						type="button"
