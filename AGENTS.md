@@ -6,17 +6,46 @@ architecture and the dev/test commands.
 
 ## Pull requests
 
-Every PR **must** include a `## What's new` section in its description, and
-the agent must call it out in its final summary.
+Every PR **must** have a user-facing title and include a `## What's new`
+section in its description, and the agent must call it out in its final
+summary. CI checks that the section has at least one bullet. For maintenance
+PRs with no user-facing change, add the `skip-release-notes` label instead.
 
-How the shipped notes are actually built: releases are published from
-`tripwire-*` tags and the workflow runs `generate_release_notes: true`, so
-GitHub builds the notes from the **merged PR titles** (and labels) - not the
-PR body. The line users read in the in-app **What's new** card and the update
-dialog is your **PR title**, so write it as a user-facing sentence rather than
-a commit-style code. The `## What's new` section restates it for reviewers.
+The `## What's new` bullets are the raw material for the release. They are
+not published automatically: the final notes are curated and committed as
+`release-notes/<version>.md` before the tag is pushed.
 
-So a title like `Remember the last Top Counterparties direction`, plus:
+The release flow is:
+
+1. Draft from the merged PRs in the tag range:
+
+   ```
+   node scripts/draft-release-notes.mjs tripwire-1.2.3
+   ```
+
+2. Edit `release-notes/1.2.3.md`. Group related changes, drop duplicates,
+   and order by what users care about. The draft is a starting point, not
+   the final copy.
+
+3. Commit the notes file to `main`, then tag that commit:
+
+   ```
+   git add release-notes/1.2.3.md
+   git commit -m "docs: release notes for 1.2.3"
+   git tag tripwire-1.2.3
+   git push origin main --tags
+   ```
+
+The release workflow publishes `release-notes/<version>.md` verbatim as the
+GitHub Release body, which is exactly what the in-app **What's new** /
+Changelog dialog renders. It fails the release if the file is missing,
+empty, or has no `## What's new` section. Do not publish from the GitHub UI
+and do not re-enable `generate_release_notes`; both bypass this flow.
+
+The PR title still matters: it is the merge line, the fallback when a PR has
+no section, and the text reviewers see first. Write it as a user-facing
+sentence, not a commit-style code. So a title like `Remember the last Top
+Counterparties direction`, plus:
 
 ```text
 ## What's new

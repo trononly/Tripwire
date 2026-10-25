@@ -165,18 +165,29 @@ or copy the APK onto the phone and open it.
 
 # Contributing
 
-Open a PR against `main`. Give the PR a user-facing **title** and include a
-`## What's new` section in the description (see
-`.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). Releases are built from
-`tripwire-*` tags with GitHub's auto-generated notes, and those notes are
-assembled from merged PR **titles** - exactly what the in-app **What's new**
-card shows users - so the title is the line people read after an update. The
-section below it restates the title for reviewers.
+Open a PR against `main`. Every user-facing PR needs a plain-language
+**title** and a `## What's new` section in the description (see
+`.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). CI rejects a PR with no
+bullets in that section; use the `skip-release-notes` label for maintenance
+PRs that have no user-facing change.
+
+The `## What's new` bullets are raw material, not the published copy. Before
+tagging a release, draft the notes:
+
+    node scripts/draft-release-notes.mjs tripwire-0.9.7
+
+Edit `release-notes/0.9.7.md` (group, dedupe, order by user impact), commit
+it to `main`, then tag that commit. The release workflow publishes the file
+verbatim as the GitHub Release body, which is what the in-app **What's new**
+and Changelog dialogs show. It fails if the file is missing, empty, or has no
+`## What's new` section. Do not publish from the GitHub UI and do not use
+`generate_release_notes`; both bypass the committed notes.
 
 Before opening a PR:
 
     go test ./...
     cd frontend && pnpm exec tsc --noEmit && pnpm test
+    node --test scripts/draft-release-notes.test.mjs
 
 # Notes from creator
 

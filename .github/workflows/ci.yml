@@ -9,6 +9,8 @@
 #              WebKitGTK 6.0 development libraries the Wails CGO build needs.
 #   frontend - regenerates the Wails bindings, then type-checks, lints and
 #              tests the React app.
+#   release-notes - tests the release-notes draft script and checks that every
+#              user-facing PR carries a non-empty `## What's new` section.
 #
 # This workflow produces no release artifacts; it only validates the code.
 # Releases are mobile-only (see release.yml): pushing a `tripwire-*` tag
@@ -157,3 +159,30 @@ jobs:
       - name: Unit tests
         working-directory: frontend
         run: pnpm test -- --passWithNoTests
+
+  release-notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Test the draft script
+        run: node --test scripts/draft-release-notes.test.mjs
+
+      # PR bodies are reviewed too: every user-facing PR carries the raw
+      # material for the final release-notes/<version>.md file. Add the
+      # `skip-release-notes` label for maintenance PRs with no user-facing
+      # change (dependency bumps, CI-only work, etc.).
+      - name: Check the PR's What's new section
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: node scripts/check-pr-notes.mjs
