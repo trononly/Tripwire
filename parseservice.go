@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mpesa-analyzer/internal/analysis"
+	"mpesa-analyzer/internal/categories"
 	"mpesa-analyzer/internal/favourites"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
@@ -49,6 +50,15 @@ func (p *ParseService) statements() (*store.Store, error) {
 		p.store = s
 	}
 	return p.store, nil
+}
+
+// categoryService wraps the same store for the user-category layer.
+func (p *ParseService) categoryService() (*categories.Service, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	return categories.New(s), nil
 }
 
 // SmsMessage is one raw SMS record from the Android bridge: metadata only.
@@ -151,17 +161,24 @@ const smsMaxDateMs = int64(4102444800000)
 // TransactionView is a single prepared row for the frontend transaction
 // list: type, category and counterparty are pre-classified here so the UI
 // never re-runs classification and never infers semantics from an amount's
-// sign or a name.
+// sign or a name. CustomCategory* is the user's own label for this row
+// (empty when unassigned); CounterpartyKey is the normalized identity that
+// "apply to similar" matches on, so the UI's preview and the backend's rule
+// agree.
 type TransactionView struct {
-	ID           string `json:"id"`
-	Date         string `json:"date"`
-	Description  string `json:"description"`
-	Status       string `json:"status"`
-	Amount       int64  `json:"amount"`
-	Balance      int64  `json:"balance"`
-	Category     string `json:"category"`
-	Type         string `json:"type"`
-	Counterparty string `json:"counterparty"`
+	ID                  string `json:"id"`
+	Date                string `json:"date"`
+	Description         string `json:"description"`
+	Status              string `json:"status"`
+	Amount              int64  `json:"amount"`
+	Balance             int64  `json:"balance"`
+	Category            string `json:"category"`
+	Type                string `json:"type"`
+	Counterparty        string `json:"counterparty"`
+	CounterpartyKey     string `json:"counterpartyKey"`
+	CustomCategoryID    string `json:"customCategoryId"`
+	CustomCategoryName  string `json:"customCategoryName"`
+	CustomCategoryEmoji string `json:"customCategoryEmoji"`
 }
 
 // DayGroup is one calendar day of transactions, newest first. EndBalance is
@@ -185,7 +202,21 @@ type DayGroup struct {
 // net-position ledger (wallet minus debt, computed in ascending order),
 // never from a single row's Balance: fee rows carry debt while every other
 // row carries wallet cash, so the latest row alone flip-flops ledgers.
-func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
+//
+// User categories resolve here too, at read time: assignments live in their
+// own rules table, so a re-imported statement or a refreshed SMS feed picks
+// them up without rewriting transactions.
+func (p *ParseService) TransactionGroups(txs []parser.Transaction) ([]DayGroup, error) {
+	svc, err := p.categoryService()
+	if err != nil {
+		return nil, err
+	}
+	ix, err := svc.Load()
+	if err != nil {
+		return nil, err
+	}
+	assigned := ix.ResolveAll(txs)
+
 	sorted := make([]parser.Transaction, len(txs))
 	copy(sorted, txs)
 	sort.SliceStable(sorted, func(i, j int) bool {
@@ -210,20 +241,27 @@ func (p *ParseService) TransactionGroups(txs []parser.Transaction) []DayGroup {
 				Txs:        []TransactionView{},
 			})
 		}
+		view := TransactionView{
+			ID:              tx.ID,
+			Date:            tx.Date,
+			Description:     tx.Description,
+			Status:          tx.Status,
+			Amount:          tx.Amount,
+			Balance:         tx.Balance,
+			Category:        analysis.CategoryOf(tx.Description),
+			Type:            string(analysis.TypeOf(tx.Description)),
+			Counterparty:    analysis.CounterpartyLabel(tx.Description),
+			CounterpartyKey: categories.CounterpartyKey(tx.Description),
+		}
+		if c, ok := assigned[tx.ID]; ok {
+			view.CustomCategoryID = c.ID
+			view.CustomCategoryName = c.Name
+			view.CustomCategoryEmoji = c.Emoji
+		}
 		g := &out[len(out)-1]
-		g.Txs = append(g.Txs, TransactionView{
-			ID:           tx.ID,
-			Date:         tx.Date,
-			Description:  tx.Description,
-			Status:       tx.Status,
-			Amount:       tx.Amount,
-			Balance:      tx.Balance,
-			Category:     analysis.CategoryOf(tx.Description),
-			Type:         string(analysis.TypeOf(tx.Description)),
-			Counterparty: analysis.CounterpartyLabel(tx.Description),
-		})
+		g.Txs = append(g.Txs, view)
 	}
-	return out
+	return out, nil
 }
 
 // AnalyzeTransactions computes all dashboard analytics for the given
@@ -244,6 +282,36 @@ func (p *ParseService) TransactionCategories(txs []parser.Transaction) map[strin
 		out[tx.ID] = analysis.CategoryOf(tx.Description)
 	}
 	return out
+}
+
+// ListCategories returns the user's own spending labels in display order.
+func (p *ParseService) ListCategories() ([]store.Category, error) {
+	svc, err := p.categoryService()
+	if err != nil {
+		return nil, err
+	}
+	return svc.List()
+}
+
+// CreateCategory adds a user category. The picker calls this inline when the
+// user labels a transaction with a category that does not exist yet.
+func (p *ParseService) CreateCategory(name, emoji string) (store.Category, error) {
+	svc, err := p.categoryService()
+	if err != nil {
+		return store.Category{}, err
+	}
+	return svc.Create(name, emoji)
+}
+
+// AssignCategory applies one choice from the category picker. applyToSimilar
+// scopes the assignment to the transaction's counterparty (or, when the row
+// names none, its transaction type); categoryID may be empty for "Automatic".
+func (p *ParseService) AssignCategory(txID, txType, counterpartyKey, categoryID string, applyToSimilar bool) error {
+	svc, err := p.categoryService()
+	if err != nil {
+		return err
+	}
+	return svc.Assign(txID, txType, counterpartyKey, categoryID, applyToSimilar)
 }
 
 func (p *ParseService) PickFile() (string, error) {

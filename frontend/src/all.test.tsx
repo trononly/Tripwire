@@ -886,6 +886,10 @@ function row(overrides: Partial<Row>): Row {
 		category: "Buy Goods",
 		type: "till",
 		counterparty: "FAITH NJOKI BACHIA",
+		counterpartyKey: "FAITH NJOKI BACHIA",
+		customCategoryId: "",
+		customCategoryName: "",
+		customCategoryEmoji: "",
 		...overrides,
 	};
 }
@@ -959,6 +963,55 @@ describe("TransactionList", () => {
 	it("renders signed amounts from integer cents without floats", () => {
 		expect(formatAmount(-245000)).toBe("-KES 2,450.00");
 		expect(formatAmount(50000)).toBe("+KES 500.00");
+	});
+
+	it("opens the category picker from the badge without expanding the row", () => {
+		const onSetCategory = vi.fn();
+		render(
+			<TransactionList
+				groups={groups}
+				showPagination={false}
+				onSetCategory={onSetCategory}
+			/>,
+		);
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: /Set category for FAITH NJOKI BACHIA/,
+			}),
+		);
+		expect(onSetCategory).toHaveBeenCalledTimes(1);
+		expect(onSetCategory.mock.calls[0][0].id).toBe("R1");
+		// The badge is a sibling tap target: labelling must not expand details.
+		expect(screen.queryByText("Description")).not.toBeInTheDocument();
+	});
+
+	it("shows an assigned emoji category instead of the type in the row", () => {
+		const assigned: Group[] = [
+			{
+				dayKey: "2026-04-28",
+				endBalance: 1000000,
+				endOwed: 0,
+				txs: [
+					row({
+						customCategoryId: "c1",
+						customCategoryName: "Food",
+						customCategoryEmoji: "🍔",
+					}),
+				],
+			},
+		];
+		render(
+			<TransactionList
+				groups={assigned}
+				showPagination={false}
+				onSetCategory={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText("🍔")).toBeInTheDocument();
+		expect(screen.getByText("Food · 14:22")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /currently Food/ }),
+		).toBeInTheDocument();
 	});
 });
 

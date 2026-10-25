@@ -24,6 +24,8 @@ build/android/app/src/main/jniLibs/
 # Local build output (was accidentally tracked; built by wails3)
 tripwire.exe
 *.exe~
+# Generated from APP_NAME by `wails3 task linux:build`
+build/linux/*.desktop
 
 # Signing keys must never be committed (CI reads them from secrets)
 *.jks
