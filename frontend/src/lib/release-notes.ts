@@ -1,9 +1,9 @@
 // Tiny Markdown reader for the GitHub release notes shown as the Changelog.
-// The notes are auto-generated (`generate_release_notes: true`) and are a
-// narrow GFM subset - ATX headings, `*`/`-` bullets, **bold**, `code`,
-// [links](url) and bare URLs - so a full Markdown engine is not worth the
-// bundle weight. This keeps the parsing pure and testable; the React
-// rendering lives in components/release-notes.tsx.
+// The notes are curated in `release-notes/<version>.md` and are a narrow GFM
+// subset - ATX headings, `*`/`-` bullets, **bold**, `code`, [links](url) and
+// bare URLs - so a full Markdown engine is not worth the bundle weight. This
+// keeps the parsing pure and testable; the React rendering lives in
+// components/release-notes.tsx.
 
 export type InlineNode =
 	| { kind: "text"; value: string }
