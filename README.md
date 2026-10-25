@@ -165,11 +165,11 @@ or copy the APK onto the phone and open it.
 
 # Contributing
 
-Open a PR against `main`. Every user-facing PR needs a plain-language
-**title** and a `## What's new` section in the description (see
-`.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). CI rejects a PR with no
-bullets in that section; use the `skip-release-notes` label for maintenance
-PRs that have no user-facing change.
+`main` is protected: push a branch and open a PR. Every user-facing PR needs
+a plain-language **title** and a `## What's new` section in the description
+(see `.github/PULL_REQUEST_TEMPLATE.md` and `AGENTS.md`). CI rejects a PR with
+no bullets in that section; use the `skip-release-notes` label for
+maintenance PRs that have no user-facing change.
 
 The `## What's new` bullets are raw material, not the published copy. Before
 tagging a release, draft the notes:
@@ -177,11 +177,14 @@ tagging a release, draft the notes:
     node scripts/draft-release-notes.mjs tripwire-0.9.7
 
 Edit `release-notes/0.9.7.md` (group, dedupe, order by user impact), commit
-it to `main`, then tag that commit. The release workflow publishes the file
-verbatim as the GitHub Release body, which is what the in-app **What's new**
-and Changelog dialogs show. It fails if the file is missing, empty, or has no
-`## What's new` section. Do not publish from the GitHub UI and do not use
-`generate_release_notes`; both bypass the committed notes.
+it through a PR, then tag the merge commit. The release workflow publishes
+the file verbatim as the GitHub Release body, which is what the in-app
+**What's new** and Changelog dialogs show. It fails if the file is missing,
+empty, or has no `## What's new` section. Do not publish from the GitHub UI
+and do not use `generate_release_notes`; both bypass the committed notes.
+
+See `RELEASING.md` for the full checklist, versionCode rules, annotated tags
+and the hotfix path.
 
 Before opening a PR:
 

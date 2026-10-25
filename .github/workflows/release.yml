@@ -95,19 +95,29 @@ jobs:
       - name: Export NDK path
         run: echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/26.3.11579264" >> "$GITHUB_ENV"
 
-      # versionName follows the release tag (tripwire-1.2.3 -> 1.2.3);
-      # versionCode is the monotonic run number. Manual builds without a
-      # tripwire-* tag keep the defaults in build/android/app/build.gradle.
-      # The bare version is also exported as APP_VERSION for asset naming.
+      # versionName follows the release tag (tripwire-1.2.3 -> 1.2.3).
+      # versionCode is derived from the same tag, not the workflow run
+      # number: major*1_000_000 + minor*1_000 + patch (1.0.0 -> 1000000).
+      # A run number would let a rebuild of an old tag outrank a newer
+      # release, and it resets if the workflow file is ever recreated.
+      # The `10#` prefix forces base 10 so a leading zero is not octal.
+      # Manual builds without a tripwire-* tag keep the build.gradle
+      # defaults. The bare version is exported as APP_VERSION too.
+      # Do not ship -rc/-beta tags: the suffix is ignored here, so they
+      # would share a versionCode with the final release.
       - name: Derive Android version from tag
         run: |
           TAG="${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}"
-          if [[ "$TAG" =~ ^tripwire-([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
+          if [[ "$TAG" =~ ^tripwire-([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            VERSION="${MAJOR}.${MINOR}.${PATCH}${BASH_REMATCH[4]}"
+            CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
             echo "APP_VERSION=${VERSION}" >> "$GITHUB_ENV"
             echo "ANDROID_VERSION_NAME=${VERSION}" >> "$GITHUB_ENV"
-            echo "ANDROID_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
-            echo "Building Tripwire ${VERSION}"
+            echo "ANDROID_VERSION_CODE=${CODE}" >> "$GITHUB_ENV"
+            echo "Building Tripwire ${VERSION} (versionCode ${CODE})"
           else
             echo "No tripwire-* version tag ($TAG); keeping build.gradle defaults."
           fi
