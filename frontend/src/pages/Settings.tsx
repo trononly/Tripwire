@@ -115,13 +115,11 @@ function MotionSettings() {
   const toggle = (on: boolean, key: string, label: string) => (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm">{label}</span>
-      <OptionButton
-        selected={on}
-        onClick={() => setSetting(key, !on)}
-        className="px-2.5 py-1 text-xs"
-      >
-        {on ? "On" : "Off"}
-      </OptionButton>
+      <Switch
+        checked={on}
+        onCheckedChange={(next) => setSetting(key, next)}
+        label={label}
+      />
     </div>
   );
   return (

@@ -31,8 +31,11 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
+      // The app-wide button rule sets min-height 44px; inline dimensions keep
+      // this the same 44x24 pill as the reminder switch in the payment dialog.
+      style={{ width: 44, height: 24, minWidth: 0, minHeight: 0 }}
       className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+        "relative shrink-0 rounded-full p-0 transition-colors",
         checked ? "bg-primary" : "bg-muted",
         disabled && "opacity-50",
         className,
@@ -40,8 +43,9 @@ export function Switch({
     >
       <span
         aria-hidden
+        style={{ width: 20, height: 20, top: 2 }}
         className={cn(
-          "absolute top-0.5 size-5 rounded-full bg-background shadow transition-all",
+          "absolute rounded-full bg-background shadow transition-all",
           checked ? "left-[22px]" : "left-0.5",
         )}
       />
