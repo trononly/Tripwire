@@ -155,6 +155,33 @@ CREATE TABLE IF NOT EXISTS lipa_favourites (
 	created_at TEXT NOT NULL,
 	UNIQUE (kind, number, account)
 );
+
+CREATE TABLE IF NOT EXISTS categories (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	icon       TEXT NOT NULL,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name
+	ON categories (name COLLATE NOCASE);
+
+-- category_rules maps a stable key to a user category. kind='tx' keys on the
+-- M-Pesa receipt, 'counterparty' on counterparty.GroupKey, and 'type' on
+-- txtype.TransactionType. Rules live outside transactions on purpose: the
+-- statement tables are replaceable snapshots, while an assignment belongs to
+-- the real-world transaction and must survive re-imports and new SMS.
+CREATE TABLE IF NOT EXISTS category_rules (
+	kind        TEXT NOT NULL,
+	key         TEXT NOT NULL,
+	category_id TEXT NOT NULL DEFAULT '',
+	updated_at  TEXT NOT NULL,
+	PRIMARY KEY (kind, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_rules_category
+	ON category_rules (category_id);
 `
 
 // Store wraps the SQLite database.
@@ -215,6 +242,13 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// The categories table was first written with an `emoji` column. Rebuild
+	// it once so the stored symbol has an honest name and new rows can use
+	// an icon key.
+	if err := migrateCategoriesIcon(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	s := &Store{db: db}
 	if err := s.migrateLegacyJSON(path); err != nil {
@@ -260,6 +294,57 @@ func migrateFavouritesKind(db *sql.DB) error {
 	} {
 		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("could not migrate favourites to per-flow lists: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// migrateCategoriesIcon gives the categories table its final shape: an icon
+// key instead of the initial emoji. Databases created by the first categories
+// build still have an `emoji` column, so the table is rebuilt once and the
+// old value is carried over (the frontend maps known emojis to their icons).
+// A no-op on every later open.
+func migrateCategoriesIcon(db *sql.DB) error {
+	var emoji, icon int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name = 'emoji'`,
+	).Scan(&emoji); err != nil {
+		return fmt.Errorf("could not inspect category store: %w", err)
+	}
+	if emoji == 0 {
+		return nil
+	}
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('categories') WHERE name = 'icon'`,
+	).Scan(&icon); err != nil {
+		return fmt.Errorf("could not inspect category store: %w", err)
+	}
+	if icon > 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start category migration: %w", err)
+	}
+	defer tx.Rollback()
+	for _, stmt := range []string{
+		`CREATE TABLE categories_icon_migration (
+			id         TEXT PRIMARY KEY,
+			name       TEXT NOT NULL,
+			icon       TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL
+		)`,
+		`INSERT INTO categories_icon_migration (id, name, icon, sort_order, created_at)
+		 SELECT id, name, emoji, sort_order, created_at FROM categories`,
+		`DROP TABLE categories`,
+		`ALTER TABLE categories_icon_migration RENAME TO categories`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name
+			ON categories (name COLLATE NOCASE)`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("could not migrate categories to icons: %w", err)
 		}
 	}
 	return tx.Commit()

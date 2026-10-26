@@ -77,6 +77,8 @@ React/TypeScript frontend.
 - `internal/counterparty`, `internal/txtype` - shared helpers that extract the
   counterparty and classify a transaction description, used by both analysis
   and the recurring detector.
+- `internal/categories` - the user's own icon categories plus the rule layer
+  that maps a receipt, counterparty or transaction type to one.
 - `frontend/src` - the UI: `App.tsx` shell, `pages/`, `components/`, `lib/`.
 - `frontend/bindings` - generated Wails bindings; do not edit by hand.
 
@@ -95,6 +97,21 @@ saved per flow too (paybills on the Paybill tab, tills on Buy Goods). All of
 them can be renamed, removed and reordered from their manage sheets; Lipa
 favourites (paybill or till, plus the paybill account) are always typed by
 hand because a business number is not a contact.
+
+User categories overlay the built-in M-Pesa ones rather than replacing them.
+An assignment is a rule keyed on the M-Pesa receipt, the normalized
+counterparty, or the transaction type - never on a statement row - so
+re-importing a statement or refreshing the SMS feed keeps every label.
+Resolution is transaction override, then counterparty, then type, then the
+built-in category, and a paired Fuliza fee inherits its parent purchase's
+label.
+
+The dashboard's spending breakdown switches between the built-in M-Pesa
+categories and **My categories**: unlabelled transactions stay visible as one
+gray Uncategorized slice, and tapping any slice opens the matching rows in
+Transactions. Categories themselves are renamed, reordered and deleted on the
+**Categories** page, reachable from Settings, the desktop sidebar and the
+donut's Manage link.
 
 ## Running it
 

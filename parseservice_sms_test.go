@@ -7,9 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"mpesa-analyzer/internal/categories"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/store"
 )
+
+func groupingService(t *testing.T) *ParseService {
+	t.Helper()
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return &ParseService{store: s}
+}
 
 // TestTransactionGroupsFulizaTiebreak locks in that a paired send and its
 // Fuliza fee sharing one second-precision timestamp still end the day in
@@ -21,7 +32,10 @@ func TestTransactionGroupsFulizaTiebreak(t *testing.T) {
 		{ID: "UJFPC9YWQQ", Date: "2026-10-15 14:40:00", Description: "Merchant Payment to - TERESIA WAKERA MUNENE", Status: "Completed", Amount: -6200, Balance: 0},
 		{ID: "UJFPC9YWQQ-F", Date: "2026-10-15 14:40:00", Description: "Fuliza Access Fee", Status: "Completed", Amount: -62, Balance: -29200},
 	}
-	groups := (&ParseService{}).TransactionGroups(txs)
+	groups, err := groupingService(t).TransactionGroups(txs)
+	if err != nil {
+		t.Fatalf("TransactionGroups: %v", err)
+	}
 	if len(groups) != 1 {
 		t.Fatalf("want 1 day group, got %+v", groups)
 	}
@@ -56,7 +70,10 @@ func TestTransactionGroupsFulizaRepayDay(t *testing.T) {
 		{ID: "UJGPCA1WZ6", Date: "2026-10-16 08:45:00", Description: "Customer Transfer to - Erastus Mukula", Status: "Completed", Amount: -4500, Balance: 0},
 		{ID: "UJGPCA1WZ6-F", Date: "2026-10-16 08:45:01", Description: "Fuliza Access Fee", Status: "Completed", Amount: -45, Balance: -38845},
 	}
-	groups := (&ParseService{}).TransactionGroups(txs)
+	groups, err := groupingService(t).TransactionGroups(txs)
+	if err != nil {
+		t.Fatalf("TransactionGroups: %v", err)
+	}
 	if len(groups) != 2 {
 		t.Fatalf("want 2 day groups, got %+v", groups)
 	}
@@ -605,4 +622,69 @@ func TestRefreshSimLabelsKeepsClaimedSlotKeys(t *testing.T) {
 	if bySim["sim-0"] != "New" || bySim["sub-9"] != "New" {
 		t.Errorf("both wallets take the current name, sub-9 keeps its key: %+v", bySim)
 	}
+}
+
+// TestParseServiceCategoryAssignment walks the whole binding path: create a
+// category, assign it to one merchant with "apply to similar", and confirm the
+// prepared rows carry it - then reopen the store and confirm the assignment
+// survives a restart (the promise that rules live outside statement rows).
+func TestParseServiceCategoryAssignment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "statements.db")
+	s, err := store.New(path)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	p := &ParseService{store: s}
+
+	food, err := p.CreateCategory("Food", "utensils")
+	if err != nil {
+		t.Fatalf("CreateCategory: %v", err)
+	}
+	txs := []parser.Transaction{
+		{ID: "R1", Date: "2026-10-15 12:00:00", Description: "Merchant Payment to 7408526 - FAITH NJOKI BACHIA", Status: "Completed", Amount: -100, Balance: 0},
+		{ID: "R2", Date: "2026-10-14 12:00:00", Description: "Merchant Payment to 999 - FAITH NJOKI BACHIA 0712544752", Status: "Completed", Amount: -200, Balance: 0},
+		{ID: "R3", Date: "2026-10-13 12:00:00", Description: "Agent Withdrawal", Status: "Completed", Amount: -300, Balance: 0},
+	}
+	key := categories.CounterpartyKey(txs[0].Description)
+	if err := p.AssignCategory("R1", "till", key, food.ID, true); err != nil {
+		t.Fatalf("AssignCategory: %v", err)
+	}
+
+	assertAssigned := func(groups []DayGroup) {
+		t.Helper()
+		seen := 0
+		for _, g := range groups {
+			for _, tx := range g.Txs {
+				if tx.CustomCategoryID != "" {
+					seen++
+					if tx.CustomCategoryID != food.ID || tx.CustomCategoryIcon != "utensils" {
+						t.Errorf("%s category = %+v", tx.ID, tx)
+					}
+				}
+			}
+		}
+		if seen != 2 {
+			t.Errorf("assigned rows = %d, want R1 and R2 (R3 has no counterparty)", seen)
+		}
+	}
+
+	groups, err := p.TransactionGroups(txs)
+	if err != nil {
+		t.Fatalf("TransactionGroups: %v", err)
+	}
+	assertAssigned(groups)
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	reopened, err := store.New(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { reopened.Close() })
+	groups, err = (&ParseService{store: reopened}).TransactionGroups(txs)
+	if err != nil {
+		t.Fatalf("TransactionGroups after restart: %v", err)
+	}
+	assertAssigned(groups)
 }

@@ -34,6 +34,7 @@ import Settings from "@/pages/Settings";
 import Sms from "@/pages/Sms";
 import Dashboard from "@/pages/Dashboard";
 import Insights from "@/pages/Insights";
+import Categories from "@/pages/Categories";
 import Send from "@/pages/Send";
 import Lipa from "@/pages/Lipa";
 import Withdraw from "@/pages/Withdraw";
@@ -234,6 +235,10 @@ function App() {
                       />
                     </Suspense>
                   }
+                />
+                <Route
+                  path="/categories"
+                  element={<Categories transactions={txs} />}
                 />
                 <Route
                   path="/send"

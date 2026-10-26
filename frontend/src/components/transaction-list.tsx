@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { typeStyle } from "@/lib/transaction-types";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,11 @@ export type Group = {
   endOwed: number;
   txs: TransactionView[];
 };
-type TransactionView = NonNullable<DayGroup["txs"]>[number];
+export type TransactionView = NonNullable<DayGroup["txs"]>[number];
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
+import { CategoryIcon } from "@/components/category-icon";
+import { vibrateIfEnabled } from "@/lib/motion-settings";
+import { useCategoryVersion } from "@/lib/category-refresh";
 
 const BATCH_SIZE = 20;
 
@@ -69,6 +72,9 @@ function dateGroupLabel(dayKey: string): string {
  */
 export function useTransactionGroups(txs: parser.Transaction[]): Group[] {
   const [groups, setGroups] = useState<Group[]>([]);
+  // Category rules are resolved in Go. A revision bump re-runs the grouping
+  // so the row badges update the moment a category is assigned.
+  const categoryVersion = useCategoryVersion();
   useEffect(() => {
     if (txs.length === 0) {
       setGroups([]);
@@ -94,7 +100,7 @@ export function useTransactionGroups(txs: parser.Transaction[]): Group[] {
     return () => {
       cancelled = true;
     };
-  }, [txs]);
+  }, [txs, categoryVersion]);
   return groups;
 }
 
@@ -105,19 +111,24 @@ function TxRow({
   expanded,
   onToggle,
   onVeil,
+  onSetCategory,
 }: {
   tx: TransactionView;
   expanded: boolean;
   onToggle: () => void;
   onVeil: () => void;
+  onSetCategory?: (tx: TransactionView) => void;
 }) {
   // Who: the counterparty extracted in Go, falling back to the type label
   // when the statement names none ("Airtime Purchase", "Fuliza M-Pesa",
   // "Fuliza Access Fee", "Fuliza Repayment ...").
-  // What: the type label + time. The full raw description stays in the
-  // expanded detail.
+  // What: the user's category when set, otherwise the type label, plus time.
+  // The full raw description stays in the expanded detail.
   const { icon: Icon, className: tint, label: typeLabel } = typeStyle(tx.type);
   const title = tx.counterparty || typeLabel;
+  const category = tx.customCategoryId
+    ? { name: tx.customCategoryName, icon: tx.customCategoryIcon }
+    : null;
   const moneyIn = tx.amount >= 0;
   // Long-press (touch) or right-click (mouse) veils the ledger into the
   // receipt dialog. The click after a touch long-press is swallowed.
@@ -129,75 +140,120 @@ function TxRow({
       pressTimer.current = null;
     }
   };
+  const badge = (
+    <span
+      className={`flex size-9 shrink-0 items-center justify-center rounded-full transition-shadow group-hover/badge:ring-2 group-hover/badge:ring-primary/25 ${tint}`}
+      aria-hidden
+    >
+      {category ? (
+        <CategoryIcon icon={category.icon} className="size-4.5" />
+      ) : (
+        <Icon className="size-4.5" strokeWidth={1.75} />
+      )}
+    </span>
+  );
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => {
-          if (veiledPress.current) {
-            veiledPress.current = false;
-            return;
-          }
-          onToggle();
-        }}
-        onTouchStart={() => {
-          veiledPress.current = false;
-          clearPress();
-          pressTimer.current = window.setTimeout(() => {
-            veiledPress.current = true;
-            onVeil();
-          }, 550);
-        }}
-        onTouchMove={clearPress}
-        onTouchEnd={clearPress}
-        onTouchCancel={clearPress}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onVeil();
-        }}
-        aria-expanded={expanded}
-        className="flex w-full touch-manipulation items-center gap-3 px-3 py-2.5 text-left select-none transition-colors [-webkit-touch-callout:none] hover:bg-muted/50"
-      >
-        {/* type badge */}
-        <span
-          className={`flex size-9 shrink-0 items-center justify-center rounded-full ${tint}`}
-          aria-hidden
-        >
-          <Icon className="size-4.5" strokeWidth={1.75} />
-        </span>
-
-        {/* text block */}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-medium leading-5">
-            {title}
-          </span>
-          <span className="block truncate text-[13px] leading-4 text-muted-foreground">
-            {tx.counterparty ? `${typeLabel} · ` : ""}
-            {tx.date.slice(11, 16)}
-          </span>
-        </span>
-
-        {/* amount */}
-        <span className="flex shrink-0 items-center gap-1">
-          <span
-            className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
-              moneyIn
-                ? "text-emerald-600 dark:text-money-in"
-                : "text-rose-600 dark:text-money-out"
-            }`}
+      <div className="flex w-full items-stretch transition-colors hover:bg-muted/50">
+        {/* The badge is its own tap target: the row click expands, the icon
+            labels. A nested button would be invalid HTML, so the row is a
+            container with two sibling buttons. */}
+        {onSetCategory ? (
+          <button
+            type="button"
+            onClick={() => {
+              vibrateIfEnabled(8);
+              onSetCategory(tx);
+            }}
+            className="group/badge flex shrink-0 touch-manipulation items-center justify-center py-2.5 pl-3 [-webkit-touch-callout:none]"
+            aria-label={`${
+              category ? `Change category, currently ${category.name}` : "Set category"
+            } for ${title}`}
           >
-            {formatAmount(tx.amount)}
+            {badge}
+          </button>
+        ) : (
+          <span className="flex shrink-0 items-center justify-center py-2.5 pl-3">
+            {badge}
           </span>
-          <ChevronDown
-            className={`size-3.5 text-muted-foreground transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-          />
-        </span>
-      </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            if (veiledPress.current) {
+              veiledPress.current = false;
+              return;
+            }
+            onToggle();
+          }}
+          onTouchStart={() => {
+            veiledPress.current = false;
+            clearPress();
+            pressTimer.current = window.setTimeout(() => {
+              veiledPress.current = true;
+              onVeil();
+            }, 550);
+          }}
+          onTouchMove={clearPress}
+          onTouchEnd={clearPress}
+          onTouchCancel={clearPress}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onVeil();
+          }}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 touch-manipulation items-center gap-3 py-2.5 pr-3 pl-3 text-left select-none [-webkit-touch-callout:none]"
+        >
+          {/* text block */}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-medium leading-5">
+              {title}
+            </span>
+            <span className="block truncate text-[13px] leading-4 text-muted-foreground">
+              {category
+                ? `${category.name} · `
+                : tx.counterparty
+                  ? `${typeLabel} · `
+                  : ""}
+              {tx.date.slice(11, 16)}
+            </span>
+          </span>
+
+          {/* amount */}
+          <span className="flex shrink-0 items-center gap-1">
+            <span
+              className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
+                moneyIn
+                  ? "text-emerald-600 dark:text-money-in"
+                  : "text-rose-600 dark:text-money-out"
+              }`}
+            >
+              {formatAmount(tx.amount)}
+            </span>
+            <ChevronDown
+              className={`size-3.5 text-muted-foreground transition-transform ${
+                expanded ? "rotate-180" : ""
+              }`}
+            />
+          </span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="space-y-1 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px] select-text">
+          {category && (
+            <DetailRow
+              label="Category"
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  <CategoryIcon icon={category.icon} className="size-4" />
+                  {category.name}
+                </span>
+              }
+            />
+          )}
+          {category && <DetailRow label="Type" value={typeLabel} />}
           <DetailRow label="Description" value={tx.description} wrap />
           <DetailRow label="Reference" value={tx.id} mono wrap />
           <DetailRow
@@ -221,7 +277,7 @@ function DetailRow({
   wrap,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   mono?: boolean;
   wrap?: boolean;
 }) {
@@ -246,6 +302,8 @@ export type TransactionListProps = {
   groups: Group[];
   /** Render the inline load-more footer. Default true. */
   showPagination?: boolean;
+  /** Opens the category picker for a row's badge. Omit for read-only lists. */
+  onSetCategory?: (tx: TransactionView) => void;
 };
 
 /** Slices the first `limit` rows out of the groups, preserving group headers. */
@@ -277,6 +335,7 @@ function sliceGroups(
 export function TransactionList({
   groups,
   showPagination = true,
+  onSetCategory,
 }: TransactionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Long-press inspection veil (receipt dialog over a censored ledger).
@@ -342,6 +401,7 @@ export function TransactionList({
                       setExpandedId((e) => (e === t.id ? null : t.id))
                     }
                     onVeil={() => setVeiled(t)}
+                    onSetCategory={onSetCategory}
                   />
                 ))}
               </div>

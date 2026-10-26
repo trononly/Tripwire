@@ -1,6 +1,28 @@
 import type { Group } from "@/components/transaction-list";
 
 /**
+ * Applies the "My categories" deep link from the dashboard donut. An empty
+ * value or "all" keeps every row; "none" keeps the rows no user category
+ * labels (the gray slice); anything else matches a category id.
+ */
+export function filterByCustomCategory(
+  groups: Group[],
+  customFilter: string,
+): Group[] {
+  if (!customFilter || customFilter === "all") return groups;
+  const out: Group[] = [];
+  for (const g of groups) {
+    const txs = g.txs.filter((t) =>
+      customFilter === "none"
+        ? !t.customCategoryId
+        : t.customCategoryId === customFilter,
+    );
+    if (txs.length > 0) out.push({ ...g, txs });
+  }
+  return out;
+}
+
+/**
  * Applies the page toolbar's filters to the prepared day groups. Lives here
  * rather than in the page so it stays unit-testable and the page module only
  * exports components (React Fast Refresh).

@@ -9,7 +9,11 @@ import { Browser } from "@wailsio/runtime";
 import { TransactionList, formatAmount } from "@/components/transaction-list";
 import type { Group } from "@/components/transaction-list";
 import { typeStyle } from "@/lib/transaction-types";
-import { filterGroups } from "@/lib/transaction-filter";
+import {
+	resolveCategoryIcon,
+	searchCategoryIcons,
+} from "@/components/category-icon";
+import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
@@ -922,6 +926,10 @@ function row(overrides: Partial<Row>): Row {
 		category: "Buy Goods",
 		type: "till",
 		counterparty: "FAITH NJOKI BACHIA",
+		counterpartyKey: "FAITH NJOKI BACHIA",
+		customCategoryId: "",
+		customCategoryName: "",
+		customCategoryIcon: "",
 		...overrides,
 	};
 }
@@ -996,6 +1004,77 @@ describe("TransactionList", () => {
 		expect(formatAmount(-245000)).toBe("-KES 2,450.00");
 		expect(formatAmount(50000)).toBe("+KES 500.00");
 	});
+
+	it("opens the category picker from the badge without expanding the row", () => {
+		const onSetCategory = vi.fn();
+		render(
+			<TransactionList
+				groups={groups}
+				showPagination={false}
+				onSetCategory={onSetCategory}
+			/>,
+		);
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: /Set category for FAITH NJOKI BACHIA/,
+			}),
+		);
+		expect(onSetCategory).toHaveBeenCalledTimes(1);
+		expect(onSetCategory.mock.calls[0][0].id).toBe("R1");
+		// The badge is a sibling tap target: labelling must not expand details.
+		expect(screen.queryByText("Description")).not.toBeInTheDocument();
+	});
+
+	it("shows an assigned category instead of the type in the row", () => {
+		const assigned: Group[] = [
+			{
+				dayKey: "2026-04-28",
+				endBalance: 1000000,
+				endOwed: 0,
+				txs: [
+					row({
+						customCategoryId: "c1",
+						customCategoryName: "Food",
+						customCategoryIcon: "utensils",
+					}),
+				],
+			},
+		];
+		render(
+			<TransactionList
+				groups={assigned}
+				showPagination={false}
+				onSetCategory={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText("Food · 14:22")).toBeInTheDocument();
+		const badge = screen.getByRole("button", { name: /currently Food/ });
+		expect(badge).toBeInTheDocument();
+		// The themed icon replaces the transaction type's icon in the badge.
+		expect(badge.querySelector("svg")).not.toBeNull();
+	});
+});
+
+describe("category icons", () => {
+	it("maps the first-build emojis to their themed icon", () => {
+		expect(resolveCategoryIcon("🍔")).toBe("utensils");
+		expect(resolveCategoryIcon("🛒")).toBe("shopping-cart");
+		// An icon key passes through untouched.
+		expect(resolveCategoryIcon("shopping-cart")).toBe("shopping-cart");
+	});
+
+	it("finds icons by the words people actually type", () => {
+		const names = (query: string) =>
+			searchCategoryIcons(query).map((def) => def.name);
+		expect(names("bangi")).toEqual(
+			expect.arrayContaining(["leaf", "cigarette", "cannabis"]),
+		);
+		expect(names("weed")).toContain("cannabis");
+		expect(names("matatu")).toContain("bus");
+		expect(names("pombe")).toContain("beer");
+		expect(names("chama").length).toBeGreaterThan(0);
+		expect(names("zzzz")).toHaveLength(0);
+	});
 });
 
 describe("counterparty display names", () => {
@@ -1048,6 +1127,51 @@ describe("transactions search", () => {
 		expect(
 			filterGroups(g(), "Absa Equity", "all", "all", "", ""),
 		).toHaveLength(0);
+	});
+});
+
+describe("custom category filter", () => {
+	const customGroups = (): Group[] => [
+		{
+			dayKey: "2026-04-28",
+			endBalance: 0,
+			endOwed: 0,
+			txs: [
+				row({
+					id: "R1",
+					customCategoryId: "c-food",
+					customCategoryName: "Food",
+					customCategoryIcon: "🍔",
+				}),
+				row({ id: "R2" }),
+				row({
+					id: "R3",
+					customCategoryId: "c-travel",
+					customCategoryName: "Travel",
+					customCategoryIcon: "🚌",
+				}),
+			],
+		},
+	];
+
+	it("keeps only the requested category, preserving the day header", () => {
+		const out = filterByCustomCategory(customGroups(), "c-food");
+		expect(out).toHaveLength(1);
+		expect(out[0].dayKey).toBe("2026-04-28");
+		expect(out[0].txs.map((t) => t.id)).toEqual(["R1"]);
+	});
+
+	it("treats none as the unlabelled rows and all as no filter", () => {
+		expect(
+			filterByCustomCategory(customGroups(), "none")[0].txs.map((t) => t.id),
+		).toEqual(["R2"]);
+		expect(filterByCustomCategory(customGroups(), "all")[0].txs).toHaveLength(
+			3,
+		);
+	});
+
+	it("drops a whole day when nothing in it matches", () => {
+		expect(filterByCustomCategory(customGroups(), "c-gone")).toHaveLength(0);
 	});
 });
 
