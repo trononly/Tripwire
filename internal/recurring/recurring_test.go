@@ -568,3 +568,30 @@ func TestMedianAbsoluteDeviationEmpty(t *testing.T) {
 		t.Error("MAD(nil) should report !ok")
 	}
 }
+
+func TestDetectRecurringPaymentsSplitsByPaymentMethod(t *testing.T) {
+	// One person, two genuinely different payments: a monthly send-money
+	// transfer and a monthly merchant (till) payment. Grouping by
+	// counterparty alone merged them into a single row whose amount range
+	// spanned both.
+	txs := append(
+		spaced(4, 30, "Customer Transfer to - WALTER KAGUCHIA", -10000),
+		spaced(4, 30, "Merchant Payment to - WALTER KAGUCHIA", -1500000)...,
+	)
+
+	got := DetectRecurringPayments(txs)
+	if len(got) != 2 {
+		t.Fatalf("want 2 groups (one per payment method), got %d: %+v", len(got), got)
+	}
+	if got[0].Counterparty != "WALTER KAGUCHIA" || got[1].Counterparty != "WALTER KAGUCHIA" {
+		t.Fatalf("both groups should keep the counterparty: %+v", got)
+	}
+	if got[0].Type == got[1].Type {
+		t.Fatalf("groups should have distinct types: %+v", got)
+	}
+	for _, p := range got {
+		if p.AmountMin != p.AmountMax {
+			t.Fatalf("each method keeps its own fixed amount, got %+v", p)
+		}
+	}
+}

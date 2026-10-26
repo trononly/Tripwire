@@ -17,6 +17,10 @@
          transact button. Sender-checked and queue-only. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- Payment reminders: runtime permission on Android 13+, requested when a
+         reminder is saved. Alarms are re-armed after a reboot. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- In-app updates: lets the app hand a downloaded Tripwire-x.y.z APK to
          the system package installer. The user still approves every install;
          on Android 8+ they must also enable "Install unknown apps" for
@@ -94,6 +98,20 @@
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Payment reminders: explicit alarms from the app, plus the system
+             boot/update broadcasts that need to re-arm them. -->
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".ReminderBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
     </application>

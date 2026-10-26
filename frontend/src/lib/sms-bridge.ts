@@ -15,6 +15,8 @@ interface WailsAndroidBridge {
 	isUssdAutomationEnabled?(): boolean;
 	openUssdAutomationSettings?(): void;
 	startUssdQuickEntry?(scriptJson: string, simKey?: string): void;
+	scheduleReminders?(json: string): void;
+	requestNotificationPermission?(): void;
 	drainPendingSms?(): string;
 	hasSmsReceivePermission?(): boolean;
 	// In-app updates (WailsBridge.java update section). All optional so
@@ -151,6 +153,28 @@ export function startUssdQuickEntry(
 		JSON.stringify(script),
 		simKey ?? "",
 	);
+}
+
+export interface ReminderAlarm {
+	id: string;
+	planId: string;
+	title: string;
+	body: string;
+	/** Epoch milliseconds. */
+	at: number;
+}
+
+/**
+ * Replace the native reminder alarms. The native side cancels the previous
+ * batch first, so this is safe to call whenever plans or payments change.
+ */
+export function scheduleReminders(items: ReminderAlarm[]): void {
+	window.wails?.scheduleReminders?.(JSON.stringify({ items }));
+}
+
+/** Ask for POST_NOTIFICATIONS before saving the first reminder. */
+export function requestNotificationPermission(): void {
+	window.wails?.requestNotificationPermission?.();
 }
 
 /** Read and clear messages the catcher queued since the last drain. */

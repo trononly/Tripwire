@@ -18,6 +18,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SponsorCard } from "@/components/sponsor-card";
 import { useAdsEnabled } from "@/lib/ads";
 import { RecurringPayments } from "@/components/recurring-payments";
+import { usePlanReminders } from "@/hooks/use-plan-reminders";
+import { useRecurringPlans } from "@/hooks/use-recurring-plans";
+import {
+  amountBands,
+  billKey,
+  lastPaidOf,
+  toPlanLike,
+  type AmountBand,
+  type LastPaid,
+  type PlanDraft,
+} from "@/lib/recurring-plans";
 import { formatMoney } from "@/lib/format";
 import { maxDayOf } from "@/lib/date-window";
 import { cn } from "@/lib/utils";
@@ -45,9 +56,25 @@ function TileEmpty({ children }: { children: React.ReactNode }) {
 function BillsTile({
   result,
   month,
+  plans,
+  lastPaid,
+  bands,
+  plansLoading,
+  simKey,
+  onSavePlan,
+  onDeletePlan,
+  onSkipPlan,
 }: {
   result: analysis.AnalysisResult | null;
   month: string;
+  plans: store.RecurringPlan[];
+  lastPaid: Record<string, LastPaid | null>;
+  bands: Record<string, AmountBand[]>;
+  plansLoading: boolean;
+  simKey?: string | null;
+  onSavePlan: (draft: PlanDraft, id: string | null) => Promise<boolean>;
+  onDeletePlan: (id: string) => Promise<boolean>;
+  onSkipPlan: (id: string, due: string) => Promise<boolean>;
 }) {
   const payments = useMemo(() => {
     const all = result?.recurringPayments ?? [];
@@ -73,20 +100,18 @@ function BillsTile({
       return lastMs + p.medianGapDays * 86400000 + graceMs >= nowMs;
     });
   }, [result, month]);
-  if (payments.length > 0) {
-    return <RecurringPayments payments={payments} />;
-  }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Bills &amp; subscriptions</CardTitle>
-      </CardHeader>
-      <TileEmpty>
-        {month === "all"
-          ? "No recent recurring payments. Import a statement covering a few months of activity."
-          : `No recurring payments were active in ${monthLabel(month)}.`}
-      </TileEmpty>
-    </Card>
+    <RecurringPayments
+      payments={payments}
+      plans={plans}
+      lastPaid={lastPaid}
+      bands={bands}
+      loading={plansLoading}
+      simKey={simKey}
+      onSavePlan={onSavePlan}
+      onDeletePlan={onDeletePlan}
+      onSkipPlan={onSkipPlan}
+    />
   );
 }
 
@@ -279,13 +304,46 @@ export default function Insights({
   loading,
   error,
   activeStatement,
+  simKey,
 }: {
   transactions: parser.Transaction[];
   result: analysis.AnalysisResult | null;
   loading: boolean;
   error: string | null;
   activeStatement: store.StatementMeta | null;
+  /** Header wallet SIM, for the Play button's dial. */
+  simKey?: string | null;
 }) {
+  const {
+    plans,
+    loading: plansLoading,
+    add,
+    update,
+    remove,
+    setSkipped,
+  } = useRecurringPlans();
+  const lastPaid = useMemo(() => {
+    const out: Record<string, LastPaid | null> = {};
+    for (const plan of plans) out[plan.id] = lastPaidOf(toPlanLike(plan), transactions);
+    return out;
+  }, [plans, transactions]);
+
+  // Split a detected payee's amounts (a KES 69 bundle and a KES 16,500
+  // transfer to the same person) so each pattern can become its own plan.
+  const bands = useMemo(() => {
+    const out: Record<string, AmountBand[]> = {};
+    for (const payment of result?.recurringPayments ?? []) {
+      out[billKey(payment)] = amountBands(transactions, payment);
+    }
+    return out;
+  }, [result, transactions]);
+
+  usePlanReminders(plans, lastPaid, plansLoading);
+
+  const savePlan = async (draft: PlanDraft, id: string | null) => {
+    if (id) return update(id, draft);
+    return add(draft);
+  };
   // Per-month window over the active dataset. The pick persists across
   // sessions; without one, start at the newest month (not All) when there
   // is more than one.
@@ -497,7 +555,18 @@ export default function Insights({
         </div>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
-          <BillsTile result={result} month={month} />
+          <BillsTile
+            result={result}
+            month={month}
+            plans={plans}
+            lastPaid={lastPaid}
+            bands={bands}
+            plansLoading={plansLoading}
+            simKey={simKey}
+            onSavePlan={savePlan}
+            onDeletePlan={remove}
+            onSkipPlan={setSkipped}
+          />
           <FeeRadarTile result={displayResult} />
           {showSponsor && <SponsorCard />}
           <VsLastMonthTile

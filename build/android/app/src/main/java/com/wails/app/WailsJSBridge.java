@@ -323,6 +323,18 @@ public class WailsJSBridge {
      * simKey is the active wallet's SIM ("sim-0" / "sub-12"); null or ""
      * lets the bridge choose a line itself.
      */
+    /** Replace the native reminder schedule (JSON, see ReminderScheduler). */
+    @JavascriptInterface
+    public void scheduleReminders(String json) {
+        bridge.scheduleReminders(json);
+    }
+
+    /** Request POST_NOTIFICATIONS before the first reminder is saved. */
+    @JavascriptInterface
+    public void requestNotificationPermission() {
+        bridge.requestNotificationPermission();
+    }
+
     @JavascriptInterface
     public void startUssdQuickEntry(String scriptJson, String simKey) {
         final String script = scriptJson;
