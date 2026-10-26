@@ -9,7 +9,6 @@ import {
   MessageSquareText,
   Smartphone,
   Sun,
-  Tags,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +32,7 @@ import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Updater } from "@/hooks/use-updater";
 import { ChangelogButton } from "@/components/changelog-dialog";
+import { ResetData } from "../../bindings/mpesa-analyzer/parseservice";
 import {
   Card,
   CardContent,
@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { OptionButton } from "@/components/ui/option-button";
+import { Switch } from "@/components/ui/switch";
 
 const themes = [
   { value: "light", label: "Light", icon: Sun },
@@ -138,13 +139,11 @@ function PrivacySetting() {
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm">Privacy Mode</span>
-        <OptionButton
-          selected={on}
-          onClick={() => setPrivacyMode(!on)}
-          className="px-2.5 py-1 text-xs"
-        >
-          {on ? "On" : "Off"}
-        </OptionButton>
+        <Switch
+          checked={on}
+          onCheckedChange={(next) => setPrivacyMode(next)}
+          label="Privacy Mode"
+        />
       </div>
       <p className="text-xs text-muted-foreground">
         Blurs balances and chart figures. Tap a card or figure to reveal it.
@@ -324,24 +323,6 @@ export default function Settings({
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Categories</CardTitle>
-          <CardDescription>
-            Label transactions with your own icons and names, on top of the
-            M-Pesa categories.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link to="/categories">
-              <Tags />
-              Manage categories
-              <ArrowRight />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
           <CardTitle>Appearance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -450,6 +431,65 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
+      <ResetSetting />
     </div>
+  );
+}
+
+/** Destructive escape hatch: wipe the store if the data has gone bad. */
+function ResetSetting() {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function reset() {
+    if (!confirm) {
+      setConfirm(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await ResetData();
+      try {
+        const keys: string[] = [];
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("mpesa-analyzer.") || key === "theme")) {
+            keys.push(key);
+          }
+        }
+        keys.forEach((key) => localStorage.removeItem(key));
+      } catch {
+        /* private mode: the store reset still happened */
+      }
+      window.location.reload();
+    } catch {
+      setBusy(false);
+      toast.error("Could not reset the app.");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reset app</CardTitle>
+        <CardDescription>
+          Deletes statements, SMS imports, favourites, categories and recurring
+          payments. Your settings reset too. This cannot be undone.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          variant={confirm ? "destructive" : "outline"}
+          onClick={reset}
+          disabled={busy}
+        >
+          {busy
+            ? "Erasing…"
+            : confirm
+              ? "Tap again to erase everything"
+              : "Reset app"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

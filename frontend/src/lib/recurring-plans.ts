@@ -9,6 +9,7 @@
 import type { RecurringPayment } from "../../bindings/mpesa-analyzer/internal/recurring/models";
 import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Transaction } from "../../bindings/mpesa-analyzer/internal/parser/models";
+import { formatMoney } from "@/lib/format";
 import {
   buildPaybillScript,
   buildSendScript,
@@ -31,6 +32,9 @@ export interface PlanDraft {
   anchorDay: number;
   anchorWeekday: number;
   dueTime: string;
+  /** Day offsets: positive before, 0 on the day, negative after. */
+  reminders: number[];
+  /** First offset, kept for older callers. */
   leadDays: number;
   remind: boolean;
   simId: string;
@@ -60,6 +64,10 @@ export function toPlanLike(plan: RecurringPlan): PlanLike {
     anchorDay: plan.anchorDay,
     anchorWeekday: plan.anchorWeekday,
     dueTime: plan.dueTime,
+    reminders:
+      plan.reminders && plan.reminders.length > 0
+        ? plan.reminders
+        : [plan.leadDays],
     leadDays: plan.leadDays,
     remind: plan.remind,
     simId: plan.simId,
@@ -236,13 +244,21 @@ export function dueLabel(due: Date, now: Date = new Date()): string {
   })}`;
 }
 
+export function reminderPhrase(days: number): string {
+  if (days === 0) return "on the day";
+  const count = Math.abs(days);
+  return `${count} ${count === 1 ? "day" : "days"} ${days > 0 ? "before" : "after"}`;
+}
+
 export function reminderLabel(plan: PlanDraft): string {
   if (!plan.remind) return "Reminders off";
-  const time = plan.dueTime;
-  if (plan.leadDays === 0) return `Remind ${time} that day`;
-  const days = Math.abs(plan.leadDays);
-  const when = plan.leadDays > 0 ? "before" : "after";
-  return `Remind ${days} ${days === 1 ? "day" : "days"} ${when}, ${time}`;
+  const list = plan.reminders?.length ? plan.reminders : [plan.leadDays];
+  const phrases = list.map(reminderPhrase);
+  const joined =
+    phrases.length === 1
+      ? phrases[0]
+      : `${phrases.slice(0, -1).join(", ")} and ${phrases[phrases.length - 1]}`;
+  return `Remind ${joined}, ${plan.dueTime}`;
 }
 
 function digits(raw: string): string {
@@ -361,6 +377,7 @@ export function emptyPlan(now: Date = new Date()): PlanDraft {
     anchorDay: now.getDate(),
     anchorWeekday: now.getDay(),
     dueTime: "09:00",
+    reminders: [1],
     leadDays: 1,
     remind: true,
     simId: "",
@@ -606,4 +623,82 @@ export function saveExpandedBills(keys: string[]): void {
   } catch {
     /* private mode: session-only */
   }
+}
+
+export interface ReminderItem {
+  id: string;
+  planId: string;
+  title: string;
+  body: string;
+  /** Epoch milliseconds. */
+  at: number;
+}
+
+function paidForOccurrence(
+  lastPaidDate: string,
+  occurrence: Date,
+  cadence: PlanCadence,
+): boolean {
+  const paid = new Date(lastPaidDate.replace(" ", "T"));
+  if (Number.isNaN(paid.getTime())) return false;
+  const halfCycleDays =
+    cadence === "weekly"
+      ? 3
+      : cadence === "bi-weekly"
+        ? 7
+        : cadence === "monthly"
+          ? 15
+          : 45;
+  const start = occurrence.getTime() - halfCycleDays * DAY_MS;
+  // A payment from the middle of the cycle to the day after it counts for
+  // this occurrence. The previous cycle's payment is older than that window.
+  return paid.getTime() >= start && paid.getTime() <= occurrence.getTime() + DAY_MS;
+}
+
+/**
+ * Fire times for every enabled reminder on every plan, ready for the native
+ * scheduler. Occurrences already paid for are skipped, so a receipt silences
+ * the reminder even when the app never sent it. Capped at 100 items, six
+ * occurrences per plan, which covers half a year of monthly reminders.
+ */
+export function buildReminderItems(
+  plans: RecurringPlan[],
+  lastPaid: Record<string, LastPaid | null>,
+  now: Date = new Date(),
+  privacy = false,
+): ReminderItem[] {
+  const items: ReminderItem[] = [];
+
+  for (const plan of plans) {
+    if (!plan.remind) continue;
+    const like = toPlanLike(plan);
+    const offsets = like.reminders.length > 0 ? like.reminders : [like.leadDays];
+    const paid = lastPaid[plan.id] ?? null;
+
+    for (const occurrence of upcoming(like, 6, now)) {
+      if (paid && paidForOccurrence(paid.date, occurrence, like.cadence)) continue;
+
+      const when = dueLabel(occurrence, now).replace(/^Due /, "");
+      const amount = plan.amount > 0 ? plan.amount : paid?.amount ?? 0;
+      const body = privacy
+        ? `Payment due ${when}`
+        : amount > 0
+          ? `${formatMoney(amount)} due ${when}`
+          : `Payment due ${when}`;
+
+      for (const offset of offsets) {
+        const at = new Date(occurrence.getTime() - offset * DAY_MS);
+        if (at.getTime() <= now.getTime() + 60_000) continue;
+        items.push({
+          id: `${plan.id}:${dayKey(occurrence)}:${offset}`,
+          planId: plan.id,
+          title: plan.name,
+          body,
+          at: at.getTime(),
+        });
+      }
+    }
+  }
+
+  return items.sort((a, b) => a.at - b.at).slice(0, 100);
 }

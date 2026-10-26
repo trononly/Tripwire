@@ -8,6 +8,7 @@ package plans
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,6 +57,7 @@ type Input struct {
 	AnchorWeekday int    `json:"anchorWeekday"`
 	DueTime       string `json:"dueTime"`
 	LeadDays      int    `json:"leadDays"`
+	Reminders     []int  `json:"reminders"`
 	Remind        bool   `json:"remind"`
 	SimID         string `json:"simId"`
 }
@@ -202,9 +204,29 @@ func normalize(in Input) (store.RecurringPlan, error) {
 	if _, err := time.Parse("15:04", out.DueTime); err != nil {
 		return out, fmt.Errorf("choose a valid reminder time")
 	}
-	if out.LeadDays < -MaxLeadDays || out.LeadDays > MaxLeadDays {
-		return out, fmt.Errorf("remind up to %d days before or after", MaxLeadDays)
+	reminders := in.Reminders
+	if len(reminders) == 0 {
+		reminders = []int{in.LeadDays}
 	}
+	if len(reminders) > 5 {
+		return out, fmt.Errorf("use up to five reminders")
+	}
+	seen := make(map[int]bool, len(reminders))
+	clean := make([]int, 0, len(reminders))
+	for _, days := range reminders {
+		if days < -MaxLeadDays || days > MaxLeadDays {
+			return out, fmt.Errorf("remind up to %d days before or after", MaxLeadDays)
+		}
+		if seen[days] {
+			continue
+		}
+		seen[days] = true
+		clean = append(clean, days)
+	}
+	// Earliest first: 7 days before, 1 day before, on the day, then after.
+	sort.Sort(sort.Reverse(sort.IntSlice(clean)))
+	out.Reminders = clean
+	out.LeadDays = clean[0]
 	if len(out.SimID) > 64 {
 		return out, fmt.Errorf("invalid wallet")
 	}

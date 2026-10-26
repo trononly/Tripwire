@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   WEEKDAYS,
   emptyPlan,
   planTarget,
+  reminderPhrase,
   samePlanTarget,
   toPlanLike,
   type PlanCadence,
@@ -27,6 +28,10 @@ import {
   type PlanKind,
 } from "@/lib/recurring-plans";
 import { formatMoney } from "@/lib/format";
+import {
+  isAndroidBridge,
+  requestNotificationPermission,
+} from "@/lib/sms-bridge";
 import {
   isValidAccount,
   isValidAmount,
@@ -93,8 +98,7 @@ export function RecurringPlanSheet({
   const [anchorDay, setAnchorDay] = useState(1);
   const [anchorWeekday, setAnchorWeekday] = useState(0);
   const [dueTime, setDueTime] = useState("09:00");
-  const [leadDays, setLeadDays] = useState(1);
-  const [leadAfter, setLeadAfter] = useState(false);
+  const [reminders, setReminders] = useState<number[]>([1]);
   const [remind, setRemind] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -114,6 +118,10 @@ export function RecurringPlanSheet({
           anchorDay: plan.anchorDay,
           anchorWeekday: plan.anchorWeekday,
           dueTime: plan.dueTime,
+          reminders:
+            plan.reminders && plan.reminders.length > 0
+              ? plan.reminders
+              : [plan.leadDays],
           leadDays: plan.leadDays,
           remind: plan.remind,
           simId: plan.simId,
@@ -132,8 +140,9 @@ export function RecurringPlanSheet({
     setAnchorDay(source.anchorDay);
     setAnchorWeekday(source.anchorWeekday);
     setDueTime(source.dueTime || "09:00");
-    setLeadDays(Math.abs(source.leadDays));
-    setLeadAfter(source.leadDays < 0);
+    const loaded =
+      source.reminders?.length > 0 ? source.reminders : [source.leadDays];
+    setReminders(loaded.length > 0 ? loaded : [0]);
     setRemind(source.remind);
     setSaving(false);
     setConfirmDelete(false);
@@ -217,7 +226,8 @@ export function RecurringPlanSheet({
       anchorDay,
       anchorWeekday,
       dueTime,
-      leadDays: leadAfter ? -leadDays : leadDays,
+      reminders,
+      leadDays: reminders[0] ?? 0,
       remind,
       simId: "",
     };
@@ -225,7 +235,10 @@ export function RecurringPlanSheet({
     setSaving(true);
     const ok = await onSave(draft, plan?.id ?? null);
     setSaving(false);
-    if (ok) onOpenChange(false);
+    if (ok) {
+      if (remind && isAndroidBridge()) requestNotificationPermission();
+      onOpenChange(false);
+    }
   }
 
   async function handleDelete() {
@@ -440,63 +453,109 @@ export function RecurringPlanSheet({
 
             {remind && (
               <div className="space-y-3 border-t border-border p-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="plan-time" className="text-xs">
-                      Time
-                    </Label>
-                    <Input
-                      id="plan-time"
-                      type="time"
-                      value={dueTime}
-                      onChange={(e) => setDueTime(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="plan-lead" className="text-xs">
-                      Days
-                    </Label>
-                    <Input
-                      id="plan-lead"
-                      type="number"
-                      min={0}
-                      max={30}
-                      value={leadDays}
-                      onChange={(e) => {
-                        const next = Math.floor(Number(e.target.value));
-                        setLeadDays(
-                          Number.isFinite(next)
-                            ? Math.min(30, Math.max(0, next))
-                            : 0,
-                        );
-                      }}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="plan-time" className="text-xs">
+                    Time
+                  </Label>
+                  <Input
+                    id="plan-time"
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                  />
                 </div>
 
-                {leadDays > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <OptionButton
-                      selected={!leadAfter}
-                      onClick={() => setLeadAfter(false)}
-                      className="text-xs"
+                <div className="space-y-2">
+                  <Label className="text-xs">Reminders</Label>
+                  {reminders.map((value, index) => (
+                    <div key={index} className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={30}
+                        aria-label="Days"
+                        value={Math.abs(value)}
+                        onChange={(e) => {
+                          const raw = Math.floor(Number(e.target.value));
+                          const magnitude = Number.isFinite(raw)
+                            ? Math.min(30, Math.max(0, raw))
+                            : 0;
+                          setReminders((list) =>
+                            list.map((item, i) =>
+                              i === index
+                                ? item < 0
+                                  ? -magnitude
+                                  : magnitude
+                                : item,
+                            ),
+                          );
+                        }}
+                        className="w-16"
+                      />
+                      <OptionButton
+                        selected={value > 0}
+                        onClick={() =>
+                          setReminders((list) =>
+                            list.map((item, i) =>
+                              i === index ? Math.max(1, Math.abs(item)) : item,
+                            ),
+                          )
+                        }
+                        className="flex-1 px-2 py-1 text-xs"
+                      >
+                        Before
+                      </OptionButton>
+                      <OptionButton
+                        selected={value < 0}
+                        onClick={() =>
+                          setReminders((list) =>
+                            list.map((item, i) =>
+                              i === index ? -Math.max(1, Math.abs(item)) : item,
+                            ),
+                          )
+                        }
+                        className="flex-1 px-2 py-1 text-xs"
+                      >
+                        After
+                      </OptionButton>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove reminder"
+                        disabled={reminders.length === 1}
+                        onClick={() =>
+                          setReminders((list) => list.filter((_, i) => i !== index))
+                        }
+                        className="size-8 shrink-0"
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {reminders.length < 5 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setReminders((list) => {
+                          const candidate = [0, 1, 2, 3, 7].find(
+                            (value) => !list.includes(value),
+                          );
+                          return [...list, candidate ?? 0];
+                        })
+                      }
+                      className="w-full gap-1.5"
                     >
-                      Before
-                    </OptionButton>
-                    <OptionButton
-                      selected={leadAfter}
-                      onClick={() => setLeadAfter(true)}
-                      className="text-xs"
-                    >
-                      After
-                    </OptionButton>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {leadDays === 0
-                    ? "On the day"
-                    : `${leadDays} ${leadDays === 1 ? "day" : "days"} ${leadAfter ? "after" : "before"}`}
-                </p>
+                      <Plus className="size-4" aria-hidden />
+                      Add another reminder
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {reminders.map(reminderPhrase).join(", ")}
+                  </p>
+                </div>
               </div>
             )}
           </div>

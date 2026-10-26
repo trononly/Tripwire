@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SponsorCard } from "@/components/sponsor-card";
 import { useAdsEnabled } from "@/lib/ads";
 import { RecurringPayments } from "@/components/recurring-payments";
+import { usePlanReminders } from "@/hooks/use-plan-reminders";
 import { useRecurringPlans } from "@/hooks/use-recurring-plans";
 import {
   amountBands,
@@ -336,6 +337,8 @@ export default function Insights({
     }
     return out;
   }, [result, transactions]);
+
+  usePlanReminders(plans, lastPaid, plansLoading);
 
   const savePlan = async (draft: PlanDraft, id: string | null) => {
     if (id) return update(id, draft);

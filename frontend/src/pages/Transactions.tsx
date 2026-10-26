@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowDown, ArrowUp, Loader2, SlidersHorizontal, Tags, X } from "lucide-react";
 import {
   TransactionList,
   useTransactionGroups,
@@ -363,6 +363,16 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
               </Button>
             )}
           </div>
+          <Button
+            asChild
+            variant="outline"
+            size="icon"
+            className="size-8 shrink-0"
+          >
+            <Link to="/categories" aria-label="Manage categories">
+              <Tags className="size-4" />
+            </Link>
+          </Button>
           <Button
             variant="outline"
             size="icon"

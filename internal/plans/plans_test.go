@@ -159,6 +159,28 @@ func TestInvalidFields(t *testing.T) {
 	}
 }
 
+func TestMultipleRemindersAreSortedAndDeduped(t *testing.T) {
+	svc := New(newStore(t))
+
+	plan := sendPlan()
+	plan.Reminders = []int{0, 2, -1, 2}
+	got, err := svc.Add(plan)
+	if err != nil {
+		t.Fatalf("add with multiple reminders: %v", err)
+	}
+	if len(got.Reminders) != 3 || got.Reminders[0] != 2 || got.Reminders[1] != 0 || got.Reminders[2] != -1 {
+		t.Fatalf("reminders = %v, want [2 0 -1]", got.Reminders)
+	}
+	if got.LeadDays != 2 {
+		t.Fatalf("leadDays = %d, want the first reminder (2)", got.LeadDays)
+	}
+
+	plan.Reminders = []int{0, 1, 2, 3, 4, 5}
+	if _, err := svc.Add(plan); err == nil {
+		t.Fatal("expected the five-reminder limit")
+	}
+}
+
 func TestReminderCanBeAfterTheDueDate(t *testing.T) {
 	svc := New(newStore(t))
 

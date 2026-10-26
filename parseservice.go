@@ -872,6 +872,17 @@ func (p *ParseService) ReorderFavourites(ids []string) error {
 	return favourites.New(s).Reorder(ids)
 }
 
+// ResetData erases every stored statement, recipient, recurring plan and
+// custom category. Settings calls it behind a two-step confirmation; the
+// frontend clears its local preferences and reloads afterwards.
+func (p *ParseService) ResetData() error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return s.Reset()
+}
+
 // ListRecurringPlans returns the recurring payments the user set up
 // themselves. These are merged with the detector's output in the UI; they
 // are not transactions and never affect the statement history.

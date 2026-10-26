@@ -53,9 +53,11 @@ import type { RecurringPayment } from "../bindings/mpesa-analyzer/internal/recur
 import type { Transaction } from "../bindings/mpesa-analyzer/internal/parser/models";
 import {
 	amountBands,
+	buildReminderItems,
 	emptyPlan,
 	planCoversDetected,
 	planFromDetected,
+	reminderLabel,
 	lastPaidOf,
 	nextDue,
 	planScript,
@@ -1425,6 +1427,47 @@ describe("recurring plans", () => {
 			{ id: "1", date: "2026-02-03 08:00:00", description: "Customer Transfer to - AGNES MUIRURI 0712***678", status: "Success", amount: -25_000, balance: 0 },
 		];
 		expect(lastPaidOf(plan(), txs)?.date).toBe("2026-02-03 08:00:00");
+	});
+
+	it("schedules every reminder and silences a cycle already paid", () => {
+		const base = plan({
+			anchorDay: 1,
+			reminders: [1, 0],
+			dueTime: "09:00",
+		});
+		const now = new Date(2026, 9, 26, 12, 0);
+		const items = buildReminderItems([base as never], {}, now);
+		// Six monthly occurrences, two reminders each.
+		expect(items).toHaveLength(12);
+		expect(new Date(items[0].at).getDate()).toBe(31);
+		expect(new Date(items[1].at).getDate()).toBe(1);
+		expect(items[0].body).toContain("250.00");
+
+		// A payment made the day before the occurrence covers that cycle:
+		// November's two alarms are gone, December's remain.
+		const paid = {
+			"plan-1": { date: "2026-10-31 18:00:00", amount: 25_000 },
+		};
+		const afterPaid = buildReminderItems([base as never], paid, now);
+		expect(afterPaid).toHaveLength(10);
+		expect(afterPaid[0].body).toContain("Dec");
+		expect(new Date(afterPaid[0].at).getMonth()).toBe(10);
+
+		// An older payment, from the previous cycle, does not.
+		const old = {
+			"plan-1": { date: "2026-10-01 18:00:00", amount: 25_000 },
+		};
+		expect(buildReminderItems([base as never], old, now)).toHaveLength(12);
+	});
+
+	it("describes several reminders in order", () => {
+		expect(reminderLabel(plan({ reminders: [2, 0, -1] }))).toBe(
+			"Remind 2 days before, on the day and 1 day after, 09:00",
+		);
+		expect(reminderLabel(plan({ reminders: [0], leadDays: 0 }))).toBe(
+			"Remind on the day, 09:00",
+		);
+		expect(reminderLabel(plan({ remind: false }))).toBe("Reminders off");
 	});
 
 	it("steps over a skipped occurrence", () => {

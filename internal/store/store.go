@@ -124,8 +124,12 @@ type RecurringPlan struct {
 	AnchorWeekday int    `json:"anchorWeekday"`
 	DueTime       string `json:"dueTime"` // "HH:MM" local
 	LeadDays      int    `json:"leadDays"`
-	Remind        bool   `json:"remind"`
-	SimID         string `json:"simId"`
+	// Reminders are day offsets relative to the due date: positive before,
+	// 0 on the day, negative after. The plan's time applies to each one.
+	// LeadDays is the first offset, kept for older rows and clients.
+	Reminders []int  `json:"reminders"`
+	Remind    bool   `json:"remind"`
+	SimID     string `json:"simId"`
 	// SkippedFor is the "YYYY-MM-DD" occurrence the user marked as handled
 	// without a recorded payment (paid in cash, or not paying this time).
 	// Empty when nothing is skipped. The schedule advances past it and no
@@ -227,6 +231,7 @@ CREATE TABLE IF NOT EXISTS recurring_plans (
 	anchor_weekday INTEGER NOT NULL DEFAULT 0,
 	due_time       TEXT NOT NULL DEFAULT '09:00',
 	lead_days      INTEGER NOT NULL DEFAULT 0,
+	reminders      TEXT NOT NULL DEFAULT '',
 	remind         INTEGER NOT NULL DEFAULT 1,
 	sim_id         TEXT NOT NULL DEFAULT '',
 	skipped_for    TEXT NOT NULL DEFAULT '',
@@ -279,6 +284,7 @@ func New(path string) (*Store, error) {
 		`ALTER TABLE statements ADD COLUMN sim_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE favourites ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE recurring_plans ADD COLUMN skipped_for TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE recurring_plans ADD COLUMN reminders TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -396,6 +402,36 @@ func migrateCategoriesIcon(db *sql.DB) error {
 	} {
 		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("could not migrate categories to icons: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// Reset removes all user data: statements and their transactions, saved
+// recipients, recurring plans and custom categories. The schema stays, so the
+// app can keep running; the next read simply sees an empty store. It runs in
+// one transaction so a failure cannot leave half a dataset behind.
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start reset: %w", err)
+	}
+	defer tx.Rollback()
+
+	// transactions go with statements through ON DELETE CASCADE.
+	for _, table := range []string{
+		"statements",
+		"favourites",
+		"lipa_favourites",
+		"recurring_plans",
+		"category_rules",
+		"categories",
+	} {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("could not clear %s: %w", table, err)
 		}
 	}
 	return tx.Commit()
@@ -960,8 +996,8 @@ func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
 
 	rows, err := s.db.Query(`
 		SELECT id, name, kind, number, account, amount, cadence,
-		       anchor_day, anchor_weekday, due_time, lead_days, remind,
-		       sim_id, skipped_for, created_at
+		       anchor_day, anchor_weekday, due_time, lead_days, reminders,
+		       remind, sim_id, skipped_for, created_at
 		FROM recurring_plans
 		ORDER BY name COLLATE NOCASE, created_at, rowid`)
 	if err != nil {
@@ -973,16 +1009,18 @@ func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
 	for rows.Next() {
 		var (
 			p       RecurringPlan
+			raw     string
 			remind  int
 			created string
 		)
 		if err := rows.Scan(
 			&p.ID, &p.Name, &p.Kind, &p.Number, &p.Account, &p.Amount,
 			&p.Cadence, &p.AnchorDay, &p.AnchorWeekday, &p.DueTime,
-			&p.LeadDays, &remind, &p.SimID, &p.SkippedFor, &created,
+			&p.LeadDays, &raw, &remind, &p.SimID, &p.SkippedFor, &created,
 		); err != nil {
 			return nil, fmt.Errorf("could not read recurring plan: %w", err)
 		}
+		p.Reminders = decodeReminders(raw, p.LeadDays)
 		p.Remind = remind != 0
 		p.CreatedAt = parseTime(created)
 		out = append(out, p)
@@ -1017,11 +1055,11 @@ func (s *Store) UpdateRecurringPlan(p RecurringPlan) error {
 		UPDATE recurring_plans SET
 			name = ?, kind = ?, number = ?, account = ?, amount = ?,
 			cadence = ?, anchor_day = ?, anchor_weekday = ?, due_time = ?,
-			lead_days = ?, remind = ?, sim_id = ?
+			lead_days = ?, reminders = ?, remind = ?, sim_id = ?
 		WHERE id = ?`,
 		p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
-		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays, boolInt(p.Remind),
-		p.SimID, p.ID,
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays,
+		encodeReminders(p.Reminders), boolInt(p.Remind), p.SimID, p.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("could not update recurring plan: %w", err)
@@ -1074,16 +1112,42 @@ func insertRecurringPlan(
 	if _, err := exec(`
 		INSERT INTO recurring_plans
 			(id, name, kind, number, account, amount, cadence, anchor_day,
-			 anchor_weekday, due_time, lead_days, remind, sim_id, skipped_for,
-			 created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 anchor_weekday, due_time, lead_days, reminders, remind, sim_id,
+			 skipped_for, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
-		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays, boolInt(p.Remind),
-		p.SimID, p.SkippedFor, p.CreatedAt.UTC().Format(time.RFC3339Nano),
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays,
+		encodeReminders(p.Reminders), boolInt(p.Remind), p.SimID,
+		p.SkippedFor, p.CreatedAt.UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("could not save recurring plan: %w", err)
 	}
 	return nil
+}
+
+// decodeReminders reads the stored JSON offsets. Rows written before the
+// reminders column existed fall back to their single LeadDays value.
+func decodeReminders(raw string, fallback int) []int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []int{fallback}
+	}
+	var out []int
+	if err := json.Unmarshal([]byte(raw), &out); err != nil || len(out) == 0 {
+		return []int{fallback}
+	}
+	return out
+}
+
+func encodeReminders(reminders []int) string {
+	if len(reminders) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(reminders)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func boolInt(v bool) int {
