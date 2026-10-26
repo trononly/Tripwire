@@ -903,6 +903,17 @@ func (p *ParseService) UpdateRecurringPlan(id string, plan plans.Input) error {
 	return plans.New(s).Update(id, plan)
 }
 
+// SetRecurringPlanSkipped marks one due date as handled without a recorded
+// payment, or clears the skip with an empty date. Used for cash payments and
+// for cycles the user decides not to pay, so reminders stay quiet.
+func (p *ParseService) SetRecurringPlanSkipped(id, due string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return plans.New(s).SetSkipped(id, due)
+}
+
 // DeleteRecurringPlan removes a user-defined recurring payment. Only the
 // plan row is deleted; detected payments and statements are untouched.
 func (p *ParseService) DeleteRecurringPlan(id string) error {

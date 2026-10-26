@@ -5,6 +5,7 @@ import {
   AddRecurringPlan,
   DeleteRecurringPlan,
   ListRecurringPlans,
+  SetRecurringPlanSkipped,
   UpdateRecurringPlan,
 } from "../../bindings/mpesa-analyzer/parseservice";
 import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store/models";
@@ -80,6 +81,23 @@ export function useRecurringPlans() {
 		[refresh],
 	);
 
+	/** Mark one due date as handled (cash paid, or skipped this time). An
+	 * empty date undoes it. */
+	const setSkipped = useCallback(
+		async (id: string, due: string) => {
+			try {
+				await SetRecurringPlanSkipped(id, due);
+				await refresh();
+				toast.success(due ? "Skipped this cycle." : "Skip undone.");
+				return true;
+			} catch (e) {
+				toast.error(messageOf(e));
+				return false;
+			}
+		},
+		[refresh],
+	);
+
 	const remove = useCallback(
 		async (id: string) => {
 			try {
@@ -95,5 +113,5 @@ export function useRecurringPlans() {
 		[refresh],
 	);
 
-	return { plans, loading, add, update, remove, refresh };
+	return { plans, loading, add, update, remove, setSkipped, refresh };
 }

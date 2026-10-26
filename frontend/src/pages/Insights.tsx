@@ -62,6 +62,7 @@ function BillsTile({
   simKey,
   onSavePlan,
   onDeletePlan,
+  onSkipPlan,
 }: {
   result: analysis.AnalysisResult | null;
   month: string;
@@ -72,6 +73,7 @@ function BillsTile({
   simKey?: string | null;
   onSavePlan: (draft: PlanDraft, id: string | null) => Promise<boolean>;
   onDeletePlan: (id: string) => Promise<boolean>;
+  onSkipPlan: (id: string, due: string) => Promise<boolean>;
 }) {
   const payments = useMemo(() => {
     const all = result?.recurringPayments ?? [];
@@ -107,6 +109,7 @@ function BillsTile({
       simKey={simKey}
       onSavePlan={onSavePlan}
       onDeletePlan={onDeletePlan}
+      onSkipPlan={onSkipPlan}
     />
   );
 }
@@ -310,7 +313,14 @@ export default function Insights({
   /** Header wallet SIM, for the Play button's dial. */
   simKey?: string | null;
 }) {
-  const { plans, loading: plansLoading, add, update, remove } = useRecurringPlans();
+  const {
+    plans,
+    loading: plansLoading,
+    add,
+    update,
+    remove,
+    setSkipped,
+  } = useRecurringPlans();
   const lastPaid = useMemo(() => {
     const out: Record<string, LastPaid | null> = {};
     for (const plan of plans) out[plan.id] = lastPaidOf(toPlanLike(plan), transactions);
@@ -552,6 +562,7 @@ export default function Insights({
             simKey={simKey}
             onSavePlan={savePlan}
             onDeletePlan={remove}
+            onSkipPlan={setSkipped}
           />
           <FeeRadarTile result={displayResult} />
           {showSponsor && <SponsorCard />}

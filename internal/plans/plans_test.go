@@ -158,3 +158,46 @@ func TestInvalidFields(t *testing.T) {
 		})
 	}
 }
+
+func TestSkipMarksAndClearsOneOccurrence(t *testing.T) {
+	svc := New(newStore(t))
+
+	added, err := svc.Add(sendPlan())
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := svc.SetSkipped(added.ID, "2026-11-05"); err != nil {
+		t.Fatalf("skip: %v", err)
+	}
+	all, err := svc.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(all) != 1 || all[0].SkippedFor != "2026-11-05" {
+		t.Fatalf("skip not saved: %+v", all)
+	}
+
+	// Editing the plan keeps the skip, so a small change does not make the
+	// reminder fire again for a cycle the user already handled.
+	edited := sendPlan()
+	edited.Name = "Mum"
+	if err := svc.Update(added.ID, edited); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	all, _ = svc.List()
+	if all[0].SkippedFor != "2026-11-05" {
+		t.Fatalf("update cleared the skip: %+v", all)
+	}
+
+	if err := svc.SetSkipped(added.ID, ""); err != nil {
+		t.Fatalf("undo skip: %v", err)
+	}
+	all, _ = svc.List()
+	if all[0].SkippedFor != "" {
+		t.Fatalf("skip not cleared: %+v", all)
+	}
+
+	if err := svc.SetSkipped(added.ID, "tomorrow"); err == nil {
+		t.Fatal("expected invalid skip date error")
+	}
+}

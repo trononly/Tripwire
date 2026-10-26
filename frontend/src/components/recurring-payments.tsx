@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Check, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
+import { Banknote, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { RecurringPlanSheet } from "@/components/recurring-plan-sheet";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
 import {
   billKey,
+  dayKey,
   dueLabel,
   loadDismissedBills,
   nextDue,
@@ -93,6 +94,12 @@ function byRelevance(a: RecurringPayment, b: RecurringPayment): number {
   return a.counterparty.localeCompare(b.counterparty);
 }
 
+function shortDay(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  const parsed = new Date(year, (month ?? 1) - 1, date ?? 1);
+  return parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 const STATUS_TEXT: Record<string, string> = {
   starting: "Opening the M-PESA menu…",
   step: "Filling the menu…",
@@ -115,6 +122,8 @@ export interface RecurringPaymentsProps {
   simKey?: string | null;
   onSavePlan: (draft: PlanDraft, id: string | null) => Promise<boolean>;
   onDeletePlan: (id: string) => Promise<boolean>;
+  /** Mark one due date as handled (cash paid or skipped); "" undoes it. */
+  onSkipPlan: (id: string, due: string) => Promise<boolean>;
 }
 
 /**
@@ -132,8 +141,11 @@ export function RecurringPayments({
   simKey,
   onSavePlan,
   onDeletePlan,
+  onSkipPlan,
 }: RecurringPaymentsProps) {
   const [dismissed, setDismissed] = useState<string[]>(() => loadDismissedBills());
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
+  const [expandedBills, setExpandedBills] = useState<string[]>([]);
 
   const planRows = useMemo(
     () =>
@@ -235,6 +247,17 @@ export function RecurringPayments({
     saveDismissedBills(next);
   }
 
+  function toggleBill(key: string) {
+    setExpandedBills((open) =>
+      open.includes(key) ? open.filter((k) => k !== key) : [...open, key],
+    );
+  }
+
+  /** Skip the occurrence the card is showing; the next one moves up. */
+  async function skipCycle(plan: RecurringPlan) {
+    await onSkipPlan(plan.id, dayKey(nextDue(toPlanLike(plan))));
+  }
+
   function openPay(plan: RecurringPlan) {
     setPaying(plan);
     setPayError(null);
@@ -316,6 +339,8 @@ export function RecurringPayments({
                       busy={busy}
                       onPlay={() => openPay(row.plan)}
                       onEdit={() => openEdit(row.plan)}
+                      onSkip={() => void skipCycle(row.plan)}
+                      onUnskip={() => void onSkipPlan(row.plan.id, "")}
                     />
                   </div>
                 ))}
@@ -373,20 +398,44 @@ export function RecurringPayments({
         )}
 
         {suggestions.length > 0 && (
-          <div className="mt-5 space-y-2 border-t border-border pt-4">
-            <p className="text-xs font-medium text-muted-foreground">
-              From your statements
-            </p>
-            {suggestions.map((payment) => (
-              <SuggestionRow
-                key={billKey(payment)}
-                payment={payment}
-                plans={plans}
-                bands={bands[billKey(payment)] ?? []}
-                onTrack={(amount) => openTrack(payment, amount)}
-                onDismiss={() => dismiss(payment)}
-              />
-            ))}
+          <div className="mt-5 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={() => setSuggestionsOpen((open) => !open)}
+              aria-expanded={suggestionsOpen}
+              className="flex w-full items-center justify-between gap-2 py-1 text-left"
+            >
+              <span className="text-xs font-medium text-muted-foreground">
+                From your statements
+              </span>
+              <span className="flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                {suggestions.length}
+                <ChevronDown
+                  className={`size-4 transition-transform ${suggestionsOpen ? "rotate-180" : ""}`}
+                  aria-hidden
+                />
+              </span>
+            </button>
+
+            {suggestionsOpen && (
+              <div className="space-y-2 pt-2">
+                {suggestions.map((payment) => {
+                  const key = billKey(payment);
+                  return (
+                    <SuggestionRow
+                      key={key}
+                      payment={payment}
+                      plans={plans}
+                      bands={bands[key] ?? []}
+                      expanded={expandedBills.includes(key)}
+                      onToggle={() => toggleBill(key)}
+                      onTrack={(amount) => openTrack(payment, amount)}
+                      onDismiss={() => dismiss(payment)}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -455,6 +504,8 @@ function PlanPage({
   busy,
   onPlay,
   onEdit,
+  onSkip,
+  onUnskip,
 }: {
   plan: RecurringPlan;
   lastPaid: LastPaid | null;
@@ -463,6 +514,8 @@ function PlanPage({
   busy: boolean;
   onPlay: () => void;
   onEdit: () => void;
+  onSkip: () => void;
+  onUnskip: () => void;
 }) {
   const Icon = planIcon(plan.kind);
   const cadence = cadenceStyle(plan.cadence);
@@ -517,17 +570,41 @@ function PlanPage({
         <div>
           <p className="text-xs text-muted-foreground">{dueLabel(due)}</p>
           <p className="truncate">{reminderLabel(toPlanLike(plan))}</p>
+          {plan.skippedFor && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Skipped {shortDay(plan.skippedFor)}
+              {" · "}
+              <button
+                type="button"
+                onClick={onUnskip}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Undo
+              </button>
+            </p>
+          )}
         </div>
       </div>
 
-      <Button onClick={onPlay} disabled={busy} className="w-full">
-        {busy ? (
-          <Loader2 className="size-4 animate-spin" aria-hidden />
-        ) : (
-          <Smartphone className="size-4" aria-hidden />
-        )}
-        {busy ? "Paying…" : "Pay now"}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={onPlay} disabled={busy} className="flex-1">
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <Smartphone className="size-4" aria-hidden />
+          )}
+          {busy ? "Paying…" : "Pay now"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onSkip}
+          disabled={busy}
+          aria-label="Skip this cycle"
+          className="shrink-0"
+        >
+          Skip
+        </Button>
+      </div>
       {status && <p className="text-xs text-muted-foreground">{status}</p>}
     </div>
   );
@@ -537,12 +614,16 @@ function SuggestionRow({
   payment,
   plans,
   bands,
+  expanded,
+  onToggle,
   onTrack,
   onDismiss,
 }: {
   payment: RecurringPayment;
   plans: RecurringPlan[];
   bands: AmountBand[];
+  expanded: boolean;
+  onToggle: () => void;
   onTrack: (amount?: number) => void;
   onDismiss: () => void;
 }) {
@@ -550,27 +631,70 @@ function SuggestionRow({
   const cadence = cadenceStyle(payment.cadence);
   const variable = payment.amountMin !== payment.amountMax;
   const isTracked = (amount?: number) =>
-    plans.some((plan) =>
-      planCoversDetected(toPlanLike(plan), payment, amount),
-    );
+    plans.some((plan) => planCoversDetected(toPlanLike(plan), payment, amount));
+
+  // Fixed and wide ranges use the same row component, so "add this amount"
+  // looks the same everywhere instead of one band buttons and one big button.
+  const rows =
+    bands.length > 1
+      ? bands.map((band) => ({
+          key: `${band.min}-${band.max}`,
+          amount: band.amount,
+          label:
+            band.min === band.max
+              ? formatMoneyShort(band.amount)
+              : `${formatMoneyShort(band.min)}-${formatMoneyShort(band.max)}`,
+          detail: `${band.count} ${band.count === 1 ? "payment" : "payments"} around ${formatMoneyShort(band.amount)}`,
+        }))
+      : [
+          {
+            key: "fixed",
+            amount: payment.amount,
+            label: formatMoneyShort(payment.amount),
+            detail: variable ? "About this amount" : "Fixed amount",
+          },
+        ];
 
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="flex items-start gap-2">
-        <Icon
-          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-          strokeWidth={1.75}
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={payment.counterparty}>
-            {payment.counterparty}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {method} · {payment.count} {payment.count === 1 ? "payment" : "payments"} ·{" "}
-            {cadence.label}
-          </p>
-        </div>
+    <div className="rounded-lg border border-border">
+      <div className="flex items-start gap-1 p-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+        >
+          <Icon
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium" title={payment.counterparty}>
+              {payment.counterparty}
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {method} · {payment.count} {payment.count === 1 ? "payment" : "payments"} ·{" "}
+              {cadence.label}
+            </span>
+            <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
+              <span className="tabular-nums">
+                {variable
+                  ? `${formatMoneyShort(payment.amountMin)}-${formatMoneyShort(payment.amountMax)}`
+                  : formatMoneyShort(payment.amount)}
+              </span>
+              <span className="text-muted-foreground">
+                last paid {formatFullDate(payment.lastDate)}
+              </span>
+            </span>
+          </span>
+          <ChevronDown
+            className={`mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            aria-hidden
+          />
+        </button>
         <Button
           variant="ghost"
           size="icon"
@@ -582,68 +706,56 @@ function SuggestionRow({
         </Button>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-sm tabular-nums">
-          {variable
-            ? `${formatMoneyShort(payment.amountMin)}–${formatMoneyShort(payment.amountMax)}`
-            : formatMoneyShort(payment.amount)}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          last paid {formatFullDate(payment.lastDate)}
-        </span>
-      </div>
-
-      {bands.length > 1 ? (
-        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {bands.map((band) => {
-            const tracked = isTracked(band.amount);
-            return (
-              <button
-                key={`${band.min}-${band.max}`}
-                type="button"
-                onClick={() => onTrack(band.amount)}
-                disabled={tracked}
-                className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
-                  tracked
-                    ? "border-border/60 text-muted-foreground"
-                    : "border-border hover:bg-muted/60"
-                }`}
-              >
-                <span className="text-xs tabular-nums">
-                  {band.min === band.max
-                    ? formatMoneyShort(band.amount)
-                    : `${formatMoneyShort(band.min)}–${formatMoneyShort(band.max)}`}
-                  <span className="text-muted-foreground"> · {band.count}</span>
-                </span>
-                {tracked ? (
-                  <Check className="size-3.5 shrink-0" aria-label="Tracked" />
-                ) : (
-                  <Plus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                )}
-              </button>
-            );
-          })}
+      {expanded && (
+        <div className="space-y-1.5 border-t border-border p-2">
+          {rows.map((row) => (
+            <TrackAmountRow
+              key={row.key}
+              label={row.label}
+              detail={row.detail}
+              tracked={isTracked(row.amount)}
+              onAdd={() => onTrack(row.amount)}
+            />
+          ))}
         </div>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onTrack()}
-          className="mt-2 w-full gap-1.5"
-        >
-          {isTracked() ? (
-            <>
-              <Check className="size-4" aria-hidden />
-              Tracked - add another
-            </>
-          ) : (
-            <>
-              <Plus className="size-4" aria-hidden />
-              Track this
-            </>
-          )}
-        </Button>
       )}
     </div>
+  );
+}
+
+function TrackAmountRow({
+  label,
+  detail,
+  tracked,
+  onAdd,
+}: {
+  label: string;
+  detail: string;
+  tracked: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onAdd}
+      disabled={tracked}
+      className={`flex w-full items-center justify-between gap-3 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+        tracked
+          ? "border-border/60 text-muted-foreground"
+          : "border-border hover:bg-muted/60"
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-xs tabular-nums">{label}</span>
+        <span className="block truncate text-[11px] text-muted-foreground">
+          {detail}
+        </span>
+      </span>
+      {tracked ? (
+        <Check className="size-3.5 shrink-0" aria-label="Tracked" />
+      ) : (
+        <Plus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      )}
+    </button>
   );
 }

@@ -39,6 +39,8 @@ export interface PlanDraft {
 export interface PlanLike extends PlanDraft {
   id: string;
   createdAt: string;
+  /** "YYYY-MM-DD" occurrence marked as handled (cash paid or skipped). */
+  skippedFor?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export function toPlanLike(plan: RecurringPlan): PlanLike {
     remind: plan.remind,
     simId: plan.simId,
     createdAt: plan.createdAt,
+    skippedFor: plan.skippedFor,
   };
 }
 
@@ -118,8 +121,27 @@ export function clampedDay(year: number, month: number, day: number): number {
   return Math.min(Math.max(1, day), daysInMonth(year, month));
 }
 
-/** The next time this plan is due at or after `from` (local time). */
+/** Local "YYYY-MM-DD", the form the store keeps for a skipped occurrence. */
+export function dayKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * The next time this plan is due at or after `from` (local time). A skipped
+ * occurrence is stepped over: after "Skip this cycle" the card shows the
+ * following date and the reminder for that cycle cannot fire.
+ */
 export function nextDue(plan: PlanDraft, from: Date = new Date()): Date {
+  const due = computeDue(plan, from);
+  const skipped = "skippedFor" in plan ? String(plan.skippedFor ?? "").trim() : "";
+  if (skipped && dayKey(due) === skipped) {
+    return computeDue(plan, new Date(due.getTime() + 60_000));
+  }
+  return due;
+}
+
+function computeDue(plan: PlanDraft, from: Date): Date {
   const created = "createdAt" in plan ? new Date(String(plan.createdAt)) : from;
   const base = Number.isNaN(created.getTime()) ? from : created;
 

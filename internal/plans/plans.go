@@ -98,6 +98,22 @@ func (s *Service) Update(id string, in Input) error {
 	return s.store.UpdateRecurringPlan(clean)
 }
 
+// SetSkipped marks one occurrence as handled without a recorded payment (paid
+// in cash, or deliberately skipped), so the reminder for that cycle stops and
+// the schedule moves on. An empty date undoes the skip.
+func (s *Service) SetSkipped(id, due string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("missing plan id")
+	}
+	clean := strings.TrimSpace(due)
+	if clean != "" {
+		if _, err := time.Parse("2006-01-02", clean); err != nil {
+			return fmt.Errorf("invalid skip date")
+		}
+	}
+	return s.store.SetRecurringPlanSkipped(id, clean)
+}
+
 // Delete removes a plan.
 func (s *Service) Delete(id string) error {
 	if strings.TrimSpace(id) == "" {

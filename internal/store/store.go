@@ -113,20 +113,25 @@ type LipaFavourite struct {
 // with its account, or a till. SimID pins the payment to one wallet; empty
 // follows the wallet selected in the header, which is the usual case.
 type RecurringPlan struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Kind          string    `json:"kind"` // "send", "pochi", "paybill" or "till"
-	Number        string    `json:"number"`
-	Account       string    `json:"account"`
-	Amount        int64     `json:"amount"`
-	Cadence       string    `json:"cadence"` // weekly, bi-weekly, monthly, quarterly
-	AnchorDay     int       `json:"anchorDay"`
-	AnchorWeekday int       `json:"anchorWeekday"`
-	DueTime       string    `json:"dueTime"` // "HH:MM" local
-	LeadDays      int       `json:"leadDays"`
-	Remind        bool      `json:"remind"`
-	SimID         string    `json:"simId"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Kind          string `json:"kind"` // "send", "pochi", "paybill" or "till"
+	Number        string `json:"number"`
+	Account       string `json:"account"`
+	Amount        int64  `json:"amount"`
+	Cadence       string `json:"cadence"` // weekly, bi-weekly, monthly, quarterly
+	AnchorDay     int    `json:"anchorDay"`
+	AnchorWeekday int    `json:"anchorWeekday"`
+	DueTime       string `json:"dueTime"` // "HH:MM" local
+	LeadDays      int    `json:"leadDays"`
+	Remind        bool   `json:"remind"`
+	SimID         string `json:"simId"`
+	// SkippedFor is the "YYYY-MM-DD" occurrence the user marked as handled
+	// without a recorded payment (paid in cash, or not paying this time).
+	// Empty when nothing is skipped. The schedule advances past it and no
+	// reminder is sent for that cycle.
+	SkippedFor string    `json:"skippedFor"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // schema is applied on every open; every statement is idempotent.
@@ -224,6 +229,7 @@ CREATE TABLE IF NOT EXISTS recurring_plans (
 	lead_days      INTEGER NOT NULL DEFAULT 0,
 	remind         INTEGER NOT NULL DEFAULT 1,
 	sim_id         TEXT NOT NULL DEFAULT '',
+	skipped_for    TEXT NOT NULL DEFAULT '',
 	created_at     TEXT NOT NULL
 );
 `
@@ -272,6 +278,7 @@ func New(path string) (*Store, error) {
 		`ALTER TABLE statements ADD COLUMN sim_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE statements ADD COLUMN sim_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE favourites ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE recurring_plans ADD COLUMN skipped_for TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -954,7 +961,7 @@ func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, kind, number, account, amount, cadence,
 		       anchor_day, anchor_weekday, due_time, lead_days, remind,
-		       sim_id, created_at
+		       sim_id, skipped_for, created_at
 		FROM recurring_plans
 		ORDER BY name COLLATE NOCASE, created_at, rowid`)
 	if err != nil {
@@ -972,7 +979,7 @@ func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
 		if err := rows.Scan(
 			&p.ID, &p.Name, &p.Kind, &p.Number, &p.Account, &p.Amount,
 			&p.Cadence, &p.AnchorDay, &p.AnchorWeekday, &p.DueTime,
-			&p.LeadDays, &remind, &p.SimID, &created,
+			&p.LeadDays, &remind, &p.SimID, &p.SkippedFor, &created,
 		); err != nil {
 			return nil, fmt.Errorf("could not read recurring plan: %w", err)
 		}
@@ -1025,6 +1032,26 @@ func (s *Store) UpdateRecurringPlan(p RecurringPlan) error {
 	return nil
 }
 
+// SetRecurringPlanSkipped records the occurrence the user marked as handled,
+// or clears it with an empty string. It deliberately does not touch the
+// schedule: the frontend advances past the skipped date, so undoing is just
+// clearing the field.
+func (s *Store) SetRecurringPlanSkipped(id, skippedFor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec(
+		"UPDATE recurring_plans SET skipped_for = ? WHERE id = ?", skippedFor, id,
+	)
+	if err != nil {
+		return fmt.Errorf("could not skip recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", id)
+	}
+	return nil
+}
+
 // DeleteRecurringPlan removes a plan. Detected payments are analysis output,
 // not rows, so deleting a plan can never touch the statements.
 func (s *Store) DeleteRecurringPlan(id string) error {
@@ -1047,11 +1074,12 @@ func insertRecurringPlan(
 	if _, err := exec(`
 		INSERT INTO recurring_plans
 			(id, name, kind, number, account, amount, cadence, anchor_day,
-			 anchor_weekday, due_time, lead_days, remind, sim_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 anchor_weekday, due_time, lead_days, remind, sim_id, skipped_for,
+			 created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
 		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays, boolInt(p.Remind),
-		p.SimID, p.CreatedAt.UTC().Format(time.RFC3339Nano),
+		p.SimID, p.SkippedFor, p.CreatedAt.UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("could not save recurring plan: %w", err)
 	}

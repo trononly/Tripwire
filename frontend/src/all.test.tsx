@@ -1427,6 +1427,17 @@ describe("recurring plans", () => {
 		expect(lastPaidOf(plan(), txs)?.date).toBe("2026-02-03 08:00:00");
 	});
 
+	it("steps over a skipped occurrence", () => {
+		const skipped = plan({ anchorDay: 5, skippedFor: "2026-11-05" });
+		const due = nextDue(skipped, new Date(2026, 9, 26));
+		expect(due.getMonth()).toBe(11);
+		expect(due.getDate()).toBe(5);
+
+		// A skip from a past cycle does not affect the next date.
+		const old = plan({ anchorDay: 5, skippedFor: "2026-01-05" });
+		expect(nextDue(old, new Date(2026, 9, 26)).getMonth()).toBe(10);
+	});
+
 	it("recognises another plan for the same contact", () => {
 		expect(samePlanTarget(plan(), "send", "254712345678", "")).toBe(true);
 		expect(samePlanTarget(plan(), "pochi", "0712345678", "")).toBe(false);
