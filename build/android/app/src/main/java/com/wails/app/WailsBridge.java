@@ -42,8 +42,11 @@ import android.os.Vibrator;
 import android.provider.Settings;
 import android.provider.Telephony;
 import android.speech.tts.TextToSpeech;
+import android.telecom.PhoneAccountHandle;
+import android.telecom.TelecomManager;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
@@ -128,6 +131,9 @@ public class WailsBridge {
     // Quick entry: same wait, but carrying an armed-step script for the
     // automation service instead of a bare dial code.
     private String pendingQuickEntry = null;
+    // Which SIM wallet the pending quick entry should dial on ("sim-0" /
+    // "sub-12"); null lets the bridge pick the phone's M-PESA SIM.
+    private String pendingQuickEntrySim = null;
 
     // Native methods - implemented in Go
     private static native void nativeInit(WailsBridge bridge);
@@ -1050,15 +1056,17 @@ public class WailsBridge {
             boolean shouldResume = pendingSessionRequest;
             String code = pendingUssdCode;
             String script = pendingQuickEntry;
+            String simKey = pendingQuickEntrySim;
             pendingSessionRequest = false;
             pendingUssdCode = null;
             pendingQuickEntry = null;
+            pendingQuickEntrySim = null;
             if (!shouldResume) {
                 return;
             }
             if (script != null) {
                 if (hasCallPermission()) {
-                    launchQuickEntry(script);
+                    launchQuickEntry(script, simKey);
                 } else {
                     emitUssdError("call permission denied");
                 }
@@ -1068,7 +1076,7 @@ public class WailsBridge {
                 code = "*334#";
             }
             if (hasCallPermission()) {
-                placeUssdCall(code);
+                placeUssdCall(code, null);
             } else {
                 emitUssdError("call permission denied");
             }
@@ -1217,17 +1225,194 @@ public class WailsBridge {
         }
     }
 
-    private void placeUssdCall(String ussd) {
+    /**
+     * Dial the USSD code on one specific SIM. On a dual-SIM phone a plain
+     * ACTION_CALL either uses the default call line or shows a "Call with
+     * SIM 1 / SIM 2" chooser, and the armed automation never gets past that
+     * chooser - so no *334# menu ever opens. The wallet switcher already
+     * names the line the user means, so resolve that subscription's
+     * PhoneAccount and pass it with the call.
+     *
+     * <p>*334# opens whichever wallet answers the line (M-PESA on
+     * Safaricom, Airtel Money on Airtel, T-Kash on Telkom), so following the
+     * chosen wallet keeps the menu and the wallet in sync even before the
+     * other carriers' menu scripts exist. When the account cannot be
+     * resolved (no phone-state permission, pre-API-23, or an OEM without
+     * phone accounts) this falls back to the old default-SIM behaviour.
+     */
+    private void placeUssdCall(String ussd, String simKey) {
+        placeUssdCall(ussd, simKey, true);
+    }
+
+    private void placeUssdCall(String ussd, String simKey, boolean allowPin) {
+        PhoneAccountHandle account = null;
         try {
             Intent intent = new Intent(
                     Intent.ACTION_CALL,
                     Uri.parse("tel:" + Uri.encode(ussd)));
+            account = allowPin ? phoneAccountForSimKey(simKey) : null;
+            if (account != null) {
+                intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account);
+            }
             activity.startActivity(intent);
             emitEvent("common:ussd", new JSONObject().put("ok", true).toString());
         } catch (Exception e) {
+            if (account != null) {
+                // An OEM refused the pinned account. A default-SIM dial is
+                // still better than no dial at all, so try once more.
+                Log.w(TAG, "pinned ussd call failed, retrying unpinned", e);
+                placeUssdCall(ussd, simKey, false);
+                return;
+            }
             Log.e(TAG, "placeUssdCall failed", e);
             emitUssdError("ussd call failed");
         }
+    }
+
+    /** Active subscriptions, or null when permissions/OEM block the read. */
+    private java.util.List<SubscriptionInfo> activeSubscriptions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) {
+            return null;
+        }
+        try {
+            SubscriptionManager sm = (SubscriptionManager) activity.getSystemService(
+                    Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+            return sm != null ? sm.getActiveSubscriptionInfoList() : null;
+        } catch (SecurityException e) {
+            return null; // READ_PHONE_STATE missing
+        } catch (Exception e) {
+            Log.w(TAG, "activeSubscriptions failed", e);
+            return null;
+        }
+    }
+
+    /** A Safaricom line, preferred when the wallet's own SIM is unknown. */
+    private static boolean isSafaricomSim(SubscriptionInfo info) {
+        if (info == null) return false;
+        String carrier = "";
+        String label = "";
+        try {
+            CharSequence c = info.getCarrierName();
+            if (c != null) carrier = c.toString();
+        } catch (Exception ignored) {
+        }
+        try {
+            CharSequence d = info.getDisplayName();
+            if (d != null) label = d.toString();
+        } catch (Exception ignored) {
+        }
+        return (carrier + " " + label).toLowerCase(Locale.ROOT).contains("safaricom");
+    }
+
+    /**
+     * The subscription a guided payment should dial on. The wallet switcher
+     * is the user's own line choice, so its SIM wins whatever the carrier
+     * label says. Without a usable key (statements mode, stale record,
+     * phone-state denied) prefer a Safaricom line, then the only SIM on the
+     * phone; anything else stays unpinned rather than guessing between two
+     * lines. Returns INVALID_SUBSCRIPTION_ID when the choice is ambiguous.
+     */
+    private int ussdSubscription(String simKey) {
+        java.util.List<SubscriptionInfo> infos = activeSubscriptions();
+        if (infos == null || infos.isEmpty()) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+        int wanted = subscriptionForKey(infos, simKey);
+        if (wanted != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            return wanted;
+        }
+        for (SubscriptionInfo info : infos) {
+            if (isSafaricomSim(info)) return info.getSubscriptionId();
+        }
+        if (infos.size() == 1 && infos.get(0) != null) {
+            return infos.get(0).getSubscriptionId();
+        }
+        return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    /** Map "sim-<slot>" / "sub-<id>" (the stored wallet key) to a subscription. */
+    private static int subscriptionForKey(
+            java.util.List<SubscriptionInfo> infos, String simKey) {
+        if (simKey == null) return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        String key = simKey.trim();
+        if (key.isEmpty()) return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        try {
+            if (key.startsWith("sub-")) {
+                int id = Integer.parseInt(key.substring(4));
+                for (SubscriptionInfo info : infos) {
+                    if (info != null && info.getSubscriptionId() == id) return id;
+                }
+            } else if (key.startsWith("sim-")) {
+                int slot = Integer.parseInt(key.substring(4));
+                for (SubscriptionInfo info : infos) {
+                    if (info != null && info.getSimSlotIndex() == slot) {
+                        return info.getSubscriptionId();
+                    }
+                }
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    /**
+     * The PhoneAccountHandle for the payment SIM, or null when it cannot be
+     * matched. API 30 maps handles back through TelephonyManager; older
+     * releases match the handle id against the ICCID, which is how AOSP
+     * names SIM accounts (with the subscription id as an OEM fallback).
+     */
+    private PhoneAccountHandle phoneAccountForSimKey(String simKey) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
+        int subId = ussdSubscription(simKey);
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return null;
+        java.util.List<PhoneAccountHandle> accounts;
+        try {
+            TelecomManager tm = (TelecomManager) activity.getSystemService(
+                    Context.TELECOM_SERVICE);
+            accounts = tm != null ? tm.getCallCapablePhoneAccounts() : null;
+        } catch (SecurityException e) {
+            return null; // READ_PHONE_STATE missing
+        } catch (Exception e) {
+            Log.w(TAG, "getCallCapablePhoneAccounts failed", e);
+            return null;
+        }
+        if (accounts == null || accounts.isEmpty()) return null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            TelephonyManager tel = (TelephonyManager) activity.getSystemService(
+                    Context.TELEPHONY_SERVICE);
+            if (tel != null) {
+                for (PhoneAccountHandle handle : accounts) {
+                    try {
+                        if (tel.getSubscriptionId(handle) == subId) return handle;
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+        String iccid = iccidForSubscription(subId);
+        for (PhoneAccountHandle handle : accounts) {
+            String id = handle.getId();
+            if (id == null) continue;
+            if (id.equals(String.valueOf(subId))) return handle;
+            if (!iccid.isEmpty() && id.equals(iccid)) return handle;
+        }
+        return null;
+    }
+
+    /** ICCID for a subscription, "" when unreadable (pre-API-30 fallback). */
+    private String iccidForSubscription(int subId) {
+        java.util.List<SubscriptionInfo> infos = activeSubscriptions();
+        if (infos == null) return "";
+        for (SubscriptionInfo info : infos) {
+            if (info == null || info.getSubscriptionId() != subId) continue;
+            try {
+                String iccid = info.getIccId();
+                return iccid != null ? iccid.trim() : "";
+            } catch (Exception ignored) {
+                return "";
+            }
+        }
+        return "";
     }
 
     private void emitUssdError(String msg) {
@@ -1264,7 +1449,7 @@ public class WailsBridge {
                 }
                 emitEvent("common:ussd",
                         new JSONObject().put("ok", true).put("listening", true).toString());
-                placeUssdCall(ussd);
+                placeUssdCall(ussd, null);
             } catch (Exception e) {
                 Log.e(TAG, "startUssdSession failed", e);
                 emitUssdError("ussd session failed");
@@ -1320,10 +1505,12 @@ public class WailsBridge {
      * so the service walks the live menus instead (stops at the PIN screen;
      * the user finishes with PIN + confirm in the phone dialog). Progress
      * arrives as "common:ussd-auto" events; the call itself reuses the
-     * "common:ussd" result path.
+     * "common:ussd" result path. simKey is the active wallet's SIM
+     * ("sim-0" / "sub-12"), or null to let the bridge pick a line.
      */
-    public void startUssdQuickEntry(String scriptJson) {
+    public void startUssdQuickEntry(String scriptJson, String simKey) {
         final String script = scriptJson;
+        final String sim = simKey;
         mainHandler.post(() -> {
             try {
                 if (!isUssdAutomationEnabled()) {
@@ -1341,15 +1528,23 @@ public class WailsBridge {
                 if (!hasSmsReceivePermission()) {
                     missing.add("android.permission.RECEIVE_SMS");
                 }
+                // Pinning the call to the wallet's SIM needs the phone's
+                // subscription list; without it the SIM chooser comes back.
+                // Optional: a denial only leaves the dial unpinned, it never
+                // blocks the payment.
+                if (!hasPhoneStatePermission()) {
+                    missing.add("android.permission.READ_PHONE_STATE");
+                }
                 if (!missing.isEmpty()) {
                     pendingSessionRequest = true;
                     pendingUssdCode = null;
                     pendingQuickEntry = script;
+                    pendingQuickEntrySim = sim;
                     activity.requestPermissions(
                             missing.toArray(new String[0]), USSD_SESSION_PERMISSION_REQUEST);
                     return;
                 }
-                launchQuickEntry(script);
+                launchQuickEntry(script, sim);
             } catch (Exception e) {
                 Log.e(TAG, "startUssdQuickEntry failed", e);
                 emitUssdError("quick entry failed");
@@ -1358,7 +1553,7 @@ public class WailsBridge {
     }
 
     /** Arm the service and dial. Assumes permissions + valid script. */
-    private void launchQuickEntry(String scriptJson) {
+    private void launchQuickEntry(String scriptJson, String simKey) {
         UssdSession session = UssdSession.parse(scriptJson);
         if (session == null) {
             emitUssdError("invalid script");
@@ -1368,7 +1563,7 @@ public class WailsBridge {
             MpesaUssdService.arm(session);
             emitEvent("common:ussd",
                     new JSONObject().put("ok", true).put("listening", true).toString());
-            placeUssdCall("*334#");
+            placeUssdCall("*334#", simKey);
         } catch (Exception e) {
             Log.e(TAG, "launchQuickEntry failed", e);
             MpesaUssdService.disarm();

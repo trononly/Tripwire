@@ -14,7 +14,7 @@ interface WailsAndroidBridge {
 	startUssdSession?(code: string): void;
 	isUssdAutomationEnabled?(): boolean;
 	openUssdAutomationSettings?(): void;
-	startUssdQuickEntry?(scriptJson: string): void;
+	startUssdQuickEntry?(scriptJson: string, simKey?: string): void;
 	drainPendingSms?(): string;
 	hasSmsReceivePermission?(): boolean;
 	// In-app updates (WailsBridge.java update section). All optional so
@@ -133,14 +133,24 @@ export function openUssdAutomationSettings(): void {
 /**
  * Start a guided payment: the service fills the *334# menus from the script
  * and stops at the PIN screen. Progress arrives as common:ussd-auto.
+ *
+ * simKey pins the call to the active wallet's SIM, which is also the line
+ * the user picked in the SIM switcher. Omit it and the native side picks a
+ * line itself.
  */
-export function startUssdQuickEntry(script: {
-	version: 1;
-	kind: string;
-	timeoutSec: number;
-	steps: { match: string[]; input: string }[];
-}): void {
-	window.wails?.startUssdQuickEntry?.(JSON.stringify(script));
+export function startUssdQuickEntry(
+	script: {
+		version: 1;
+		kind: string;
+		timeoutSec: number;
+		steps: { match: string[]; input: string }[];
+	},
+	simKey?: string | null,
+): void {
+	window.wails?.startUssdQuickEntry?.(
+		JSON.stringify(script),
+		simKey ?? "",
+	);
 }
 
 /** Read and clear messages the catcher queued since the last drain. */

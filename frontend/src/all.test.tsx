@@ -44,6 +44,7 @@ import {
 	buildTillScript,
 	normalizePhone,
 } from "@/lib/ussd-menus";
+import { paySimKey } from "@/lib/pay-sim";
 import {
 	favouriteInitials,
 	formatFavouritePhone,
@@ -539,6 +540,41 @@ describe("ussd-menus", () => {
 
 	it("rejects USSD control chars in account names", () => {
 		expect(buildPaybillScript("123456", "a*b#c", "100")).toBeNull();
+	});
+});
+
+// --- pay-sim ---
+describe("pay-sim", () => {
+	it("pins any SMS wallet's SIM, whatever the carrier label", () => {
+		expect(
+			paySimKey({ source: "sms", simId: "sim-0", simLabel: "Safaricom" }),
+		).toBe("sim-0");
+		expect(
+			paySimKey({ source: "sms", simId: "sim-1", simLabel: "Safaricom" }),
+		).toBe("sim-1");
+		expect(
+			paySimKey({ source: "sms", simId: "sim-1", simLabel: "Airtel" }),
+		).toBe("sim-1");
+		expect(
+			paySimKey({ source: "sms", simId: "sub-12", simLabel: "Telkom" }),
+		).toBe("sub-12");
+	});
+
+	it("trusts a wallet with no carrier label", () => {
+		expect(paySimKey({ source: "sms", simId: "sim-0", simLabel: "" })).toBe(
+			"sim-0",
+		);
+		expect(paySimKey({ source: "sms", simId: "sim-1", simLabel: "SIM 2" })).toBe(
+			"sim-1",
+		);
+	});
+
+	it("leaves statements and key-less records unpinned", () => {
+		expect(paySimKey(null)).toBeNull();
+		expect(
+			paySimKey({ source: "statements", simId: "sim-0", simLabel: "Safaricom" }),
+		).toBeNull();
+		expect(paySimKey({ source: "sms", simId: " " })).toBeNull();
 	});
 });
 

@@ -35,7 +35,7 @@ export function useQuickEntry() {
   useEffect(() => cleanup, [cleanup]);
 
   const start = useCallback(
-    (script: QuickEntryScript) => {
+    (script: QuickEntryScript, simKey?: string | null) => {
       cleanup();
       setStatus("starting");
       setStep(0);
@@ -64,7 +64,7 @@ export function useQuickEntry() {
             break;
         }
       });
-      startUssdQuickEntry(script);
+      startUssdQuickEntry(script, simKey);
     },
     [cleanup],
   );
