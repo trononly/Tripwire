@@ -28,6 +28,7 @@ import { useSimNames } from "@/hooks/use-sim-names";
 import { useSafeAreaInsets } from "@/hooks/use-safe-area";
 import { useSystemBars } from "@/hooks/use-system-bars";
 import { loadInitialMode, saveMode, type DataMode } from "@/lib/data-mode";
+import { paySimKey } from "@/lib/pay-sim";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
 import Sms from "@/pages/Sms";
@@ -79,6 +80,12 @@ function App() {
   // SMS records are one-per-SIM: the switcher lists them and the active one
   // feeds SMS mode. Newest import first, same order as History.
   const smsMetas = stmts.statements.filter((s) => s.source === "sms");
+  // Guided payments dial the wallet's own SIM: otherwise Android's default
+  // call line, or its "Call with" chooser, decides which wallet's *334# menu
+  // opens. Null (statements mode) lets the bridge pick a line.
+  const paySim = paySimKey(
+    mode === "sms" ? smsMetas.find((s) => s.id === sms.smsRecordId) : null,
+  );
 
   // Run analysis once per statement and keep the result in App state so
   // navigating away and back does not remount/remount the Dashboard.
@@ -235,11 +242,11 @@ function App() {
                 />
                 <Route
                   path="/send"
-                  element={<Send />}
+                  element={<Send simKey={paySim} />}
                 />
                 <Route
                   path="/lipa"
-                  element={<Lipa />}
+                  element={<Lipa simKey={paySim} />}
                 />
                 <Route
                   path="/withdraw"

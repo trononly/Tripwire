@@ -319,12 +319,15 @@ public class WailsJSBridge {
      * Start a guided payment: the automation service fills the *334# menus
      * from the step script (JSON, see UssdSession) and stops at the PIN.
      * Progress arrives as "common:ussd-auto" events.
-     * Called from JavaScript: wails.startUssdQuickEntry(scriptJson)
+     * Called from JavaScript: wails.startUssdQuickEntry(scriptJson, simKey)
+     * simKey is the active wallet's SIM ("sim-0" / "sub-12"); null or ""
+     * lets the bridge choose a line itself.
      */
     @JavascriptInterface
-    public void startUssdQuickEntry(String scriptJson) {
+    public void startUssdQuickEntry(String scriptJson, String simKey) {
         final String script = scriptJson;
-        executor.execute(() -> bridge.startUssdQuickEntry(script));
+        final String sim = simKey;
+        executor.execute(() -> bridge.startUssdQuickEntry(script, sim));
     }
 
     /**

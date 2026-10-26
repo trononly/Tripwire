@@ -45,7 +45,10 @@ I'll try to get the app on Play Store but I don't have a developer account, you 
   SIM (physical slot + carrier name, falling back to the subscription id when
   `READ_PHONE_STATE` is unavailable). A SIM switcher in the SMS-mode header
   picks which wallet the analysis uses. Records imported before SIM tracking
-  appear as a single untagged wallet.
+  appear as a single untagged wallet. Guided payments dial `*334#` on the
+  active wallet's SIM, whatever its carrier label, so the phone never falls
+  back to its default call line or a "Call with" chooser; if that SIM cannot
+  be resolved the call prefers the phone's Safaricom line, then the only SIM.
 - No fee radar by-type breakdown in v1: no Fuliza sample so no Fuliza breakdown.
 
 ## Architecture

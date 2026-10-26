@@ -38,8 +38,11 @@ const TABS: { id: SendKind; label: string; icon: typeof SendIcon }[] = [
 /**
  * Send Money / Pochi La Biashara - number + amount. The automation service
  * fills the *334# menus step by step; the PIN stays in the phone dialog.
+ *
+ * simKey pins the dial to the active wallet's SIM so the phone does not
+ * show its call-SIM chooser; null lets the native bridge pick a line.
  */
-export default function Send() {
+export default function Send({ simKey }: { simKey?: string | null }) {
   const [tab, setTab] = useState<SendKind>("send");
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
@@ -95,7 +98,7 @@ export default function Send() {
         );
       }
     });
-    qe.start(script);
+    qe.start(script, simKey);
   }
 
   return (

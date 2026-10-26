@@ -38,8 +38,12 @@ const TABS: { id: LipaTab; label: string; icon: typeof ReceiptText }[] = [
   { id: "till", label: "Buy Goods", icon: ShoppingCart },
 ];
 
-/** Lipa na M-PESA - Paybill (paybill + account + amount) / Buy Goods (till + amount). */
-export default function Lipa() {
+/**
+ * Lipa na M-PESA - Paybill (paybill + account + amount) / Buy Goods (till +
+ * amount). simKey pins the dial to the active wallet's SIM so the phone does
+ * not show its call-SIM chooser; null lets the native bridge pick a line.
+ */
+export default function Lipa({ simKey }: { simKey?: string | null }) {
   const [tab, setTab] = useState<LipaTab>("paybill");
   const [paybill, setPaybill] = useState("");
   const [account, setAccount] = useState("");
@@ -118,7 +122,7 @@ export default function Lipa() {
         );
       }
     });
-    qe.start(script);
+    qe.start(script, simKey);
   }
 
   return (
