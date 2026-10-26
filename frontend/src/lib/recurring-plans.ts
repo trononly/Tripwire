@@ -546,7 +546,7 @@ export function amountBands(
 
   // Greedy ratio split, then fold small clusters into their closest
   // neighbour until every band has at least two payments.
-  let clusters: number[][] = [];
+  const clusters: number[][] = [];
   for (const amount of amounts) {
     const last = clusters[clusters.length - 1];
     if (!last || amount <= last[last.length - 1] * 3) {

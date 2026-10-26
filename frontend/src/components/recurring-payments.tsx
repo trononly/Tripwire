@@ -44,7 +44,6 @@ import {
   type AmountBand,
   type LastPaid,
   type PlanDraft,
-  type PlanLike,
 } from "@/lib/recurring-plans";
 import { formatMoney, formatMoneyShort, formatFullDate } from "@/lib/format";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
