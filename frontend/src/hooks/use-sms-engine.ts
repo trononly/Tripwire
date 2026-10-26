@@ -109,6 +109,9 @@ export function useSmsEngine(deps: {
 						return;
 					}
 					applySmsRefresh(refresh, bridgeCount, announce);
+					// Let payment screens know a real transaction landed, so
+					// they can clear the form they just used.
+					window.dispatchEvent(new CustomEvent("mpesa:transactions"));
 					resolve(true);
 				})
 				.catch((e) => {

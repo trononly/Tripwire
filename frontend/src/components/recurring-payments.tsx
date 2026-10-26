@@ -206,8 +206,18 @@ export function RecurringPayments({
       toast.error(qe.reason ? `Payment stopped: ${qe.reason}` : "Payment stopped.");
       setRunningPlan(null);
     }
-    if (qe.status === "complete") setRunningPlan(null);
+    if (qe.status === "complete" || qe.status === "idle") {
+      setRunningPlan(null);
+    }
   }, [qe.status, qe.reason]);
+
+  // A receipt landing means the run is over, even if the automation event
+  // never reached the WebView.
+  useEffect(() => {
+    const onTransaction = () => setRunningPlan(null);
+    window.addEventListener("mpesa:transactions", onTransaction);
+    return () => window.removeEventListener("mpesa:transactions", onTransaction);
+  }, []);
 
   function goTo(i: number) {
     const el = scroller.current;

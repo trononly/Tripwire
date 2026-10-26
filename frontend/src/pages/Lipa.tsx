@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 import { ReceiptText, ShoppingCart } from "lucide-react";
@@ -51,6 +51,20 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
   const [amount, setAmount] = useState("");
   const [touched, setTouched] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
+  const startedAt = useRef(0);
+
+  useEffect(() => {
+    const onTransaction = () => {
+      if (Date.now() - startedAt.current > 180_000) return;
+      setPaybill("");
+      setAccount("");
+      setTill("");
+      setAmount("");
+      setTouched(false);
+    };
+    window.addEventListener("mpesa:transactions", onTransaction);
+    return () => window.removeEventListener("mpesa:transactions", onTransaction);
+  }, []);
   const auto = useAutomationAvailable();
   const qe = useQuickEntry();
   const fav = useLipaFavourites(tab);
@@ -122,6 +136,7 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
         );
       }
     });
+    startedAt.current = Date.now();
     qe.start(script, simKey);
   }
 

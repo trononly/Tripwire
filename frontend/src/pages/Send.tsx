@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 import { Send as SendIcon, Store } from "lucide-react";
@@ -48,6 +48,20 @@ export default function Send({ simKey }: { simKey?: string | null }) {
   const [amount, setAmount] = useState("");
   const [touched, setTouched] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
+  // Clearing is safe only for the payment just made, not a random receipt
+  // hours later.
+  const startedAt = useRef(0);
+
+  useEffect(() => {
+    const onTransaction = () => {
+      if (Date.now() - startedAt.current > 180_000) return;
+      setPhone("");
+      setAmount("");
+      setTouched(false);
+    };
+    window.addEventListener("mpesa:transactions", onTransaction);
+    return () => window.removeEventListener("mpesa:transactions", onTransaction);
+  }, []);
   const auto = useAutomationAvailable();
   const qe = useQuickEntry();
   const fav = useFavourites(tab);
@@ -98,6 +112,7 @@ export default function Send({ simKey }: { simKey?: string | null }) {
         );
       }
     });
+    startedAt.current = Date.now();
     qe.start(script, simKey);
   }
 
