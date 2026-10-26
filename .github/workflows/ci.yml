@@ -40,7 +40,7 @@ env:
   GO_VERSION: "1.27"
   NODE_VERSION: "26"
   PNPM_VERSION: "11"
-  WAILS3_VERSION: latest
+  WAILS3_VERSION: v3.0.0-beta.17
 
 jobs:
   go:
@@ -71,6 +71,11 @@ jobs:
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Install Wails v3 CLI
+        # The module's latest tag resolves to a v3.0.0 go.mod that the
+        # checksum database rejects, even when installing a pinned version.
+        # This step only fetches a build tool, so skip the checksum lookup.
+        env:
+          GOSUMDB: "off"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
       # main.go embeds `all:frontend/dist`, which is git-ignored. A placeholder
@@ -116,6 +121,11 @@ jobs:
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Install Wails v3 CLI
+        # The module's latest tag resolves to a v3.0.0 go.mod that the
+        # checksum database rejects, even when installing a pinned version.
+        # This step only fetches a build tool, so skip the checksum lookup.
+        env:
+          GOSUMDB: "off"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
       # frontend/bindings is generated output and may not be committed, so it
