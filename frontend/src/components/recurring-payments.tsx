@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
+import { Banknote, Check, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   loadDismissedBills,
   nextDue,
   planAmountShillings,
+  planCoversDetected,
   planFromDetected,
   planScript,
   planTarget,
@@ -100,26 +101,6 @@ const STATUS_TEXT: Record<string, string> = {
   aborted: "Payment stopped.",
 };
 
-/** One page of the pager: a user plan with its absorbed detection, or a
- * detected bill on its own. */
-type Row =
-  | {
-      key: string;
-      type: "plan";
-      plan: RecurringPlan;
-      lastPaid: LastPaid | null;
-      due: Date;
-    }
-  | { key: string; type: "detected"; payment: RecurringPayment; due: Date };
-
-function Chip({ children, className }: { children: React.ReactNode; className: string }) {
-  return (
-    <span className={`rounded-full px-2 py-[3px] text-[11px] font-medium ${className}`}>
-      {children}
-    </span>
-  );
-}
-
 export interface RecurringPaymentsProps {
   /** Detector output, already scoped by the Insights month filter. */
   payments: RecurringPayment[];
@@ -137,11 +118,10 @@ export interface RecurringPaymentsProps {
 }
 
 /**
- * Recurring payments card. Detected bills and the user's own plans share one
- * swipeable pager, so "what I pay" is a single list instead of two features.
- * A plan absorbs the detected bill with the same payee: the detection's stats
- * move onto the plan row and the plan's reminder/Play replace the read-only
- * view. Deleting the plan brings the detected row back.
+ * Recurring payments: the payments you set up are the card, with Play and
+ * reminders. Detected bills are suggestions below them, not another kind of
+ * payment page — they either become a plan or get dismissed. No "Yours" /
+ * "Detected" badges: where a row sits already says what it is.
  */
 export function RecurringPayments({
   payments,
@@ -155,61 +135,49 @@ export function RecurringPayments({
 }: RecurringPaymentsProps) {
   const [dismissed, setDismissed] = useState<string[]>(() => loadDismissedBills());
 
-  const rows = useMemo<Row[]>(() => {
-    const planRows: Row[] = plans
-      .map((plan) => ({
-        key: `plan:${plan.id}`,
-        type: "plan" as const,
-        plan,
-        lastPaid: lastPaid[plan.id] ?? null,
-        due: nextDue(toPlanLike(plan)),
-      }))
-      .sort((a, b) => a.due.getTime() - b.due.getTime());
+  const planRows = useMemo(
+    () =>
+      plans
+        .map((plan) => ({
+          plan,
+          lastPaid: lastPaid[plan.id] ?? null,
+          due: nextDue(toPlanLike(plan)),
+        }))
+        .sort((a, b) => a.due.getTime() - b.due.getTime()),
+    [plans, lastPaid],
+  );
 
-    const detectedRows: Row[] = payments
-      .filter((payment) => !dismissed.includes(billKey(payment)))
-      .slice()
-      .sort(byRelevance)
-      .map((payment) => ({
-        key: `detected:${billKey(payment)}`,
-        type: "detected" as const,
-        payment,
-        due: new Date(),
-      }));
-
-    return [...planRows, ...detectedRows];
-  }, [payments, plans, lastPaid, dismissed]);
-
-  function dismiss(payment: RecurringPayment) {
-    const next = [...dismissed, billKey(payment)];
-    setDismissed(next);
-    saveDismissedBills(next);
-    toast.success("Hidden. Add a plan any time with Add.");
-  }
+  const suggestions = useMemo(
+    () =>
+      payments
+        .filter((payment) => !dismissed.includes(billKey(payment)))
+        .slice()
+        .sort(byRelevance),
+    [payments, dismissed],
+  );
 
   const reduceMotion = useReduceMotionEnabled();
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  const [pageHeight, setPageHeight] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringPlan | null>(null);
   const [prefill, setPrefill] = useState<PlanDraft | null>(null);
-  const [paying, setPaying] = useState<Extract<Row, { type: "plan" }> | null>(null);
+  const [paying, setPaying] = useState<RecurringPlan | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payError, setPayError] = useState<string | null>(null);
   const [runningPlan, setRunningPlan] = useState<string | null>(null);
-  const [pageHeight, setPageHeight] = useState<number | null>(null);
   const qe = useQuickEntry();
 
-  // A plan added or removed changes the page count; start from the first.
+  // Adding or removing a plan changes the page count; start from the first.
   useEffect(() => {
     setIndex(0);
     scroller.current?.scrollTo({ left: 0, behavior: "auto" });
-  }, [rows.length]);
+  }, [planRows.length]);
 
   // The scroller is a flex row, so by default it is as tall as the tallest
-  // page (which leaves a large hole under a short plan page). Match the
-  // active page's height instead; ResizeObserver keeps it in step when a
-  // page grows (a band list, the Pay progress line).
+  // page. Match the active page's height instead; ResizeObserver keeps it in
+  // step when a page grows (the Pay progress line).
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -222,7 +190,7 @@ export function RecurringPayments({
     const observer = new ResizeObserver(measure);
     slides.forEach((slide) => observer.observe(slide));
     return () => observer.disconnect();
-  }, [index, rows]);
+  }, [index, planRows]);
 
   useEffect(() => {
     if (qe.status === "aborted") {
@@ -235,7 +203,7 @@ export function RecurringPayments({
   function goTo(i: number) {
     const el = scroller.current;
     if (!el) return;
-    const next = Math.max(0, Math.min(rows.length - 1, i));
+    const next = Math.max(0, Math.min(planRows.length - 1, i));
     el.scrollTo({
       left: next * el.clientWidth,
       behavior: reduceMotion ? "auto" : "smooth",
@@ -249,8 +217,8 @@ export function RecurringPayments({
     setSheetOpen(true);
   }
 
-  function openEdit(row: Extract<Row, { type: "plan" }>) {
-    setEditing(row.plan);
+  function openEdit(plan: RecurringPlan) {
+    setEditing(plan);
     setPrefill(null);
     setSheetOpen(true);
   }
@@ -261,14 +229,17 @@ export function RecurringPayments({
     setSheetOpen(true);
   }
 
-  function openPay(row: Extract<Row, { type: "plan" }>) {
-    setPaying(row);
+  function dismiss(payment: RecurringPayment) {
+    const next = [...dismissed, billKey(payment)];
+    setDismissed(next);
+    saveDismissedBills(next);
+  }
+
+  function openPay(plan: RecurringPlan) {
+    setPaying(plan);
     setPayError(null);
     setPayAmount(
-      planAmountShillings(
-        toPlanLike(row.plan),
-        row.lastPaid?.amount ?? 0,
-      ),
+      planAmountShillings(toPlanLike(plan), lastPaid[plan.id]?.amount ?? 0),
     );
   }
 
@@ -278,19 +249,19 @@ export function RecurringPayments({
       setPayError("Enter a whole-shilling amount between 1 and 500,000.");
       return;
     }
-    const script = planScript(toPlanLike(paying.plan), payAmount.trim());
+    const script = planScript(toPlanLike(paying), payAmount.trim());
     if (!script) {
       setPayError("This payment's details are incomplete. Edit it first.");
       return;
     }
-    setRunningPlan(paying.plan.id);
+    setRunningPlan(paying.id);
     setPaying(null);
     setPayError(null);
     qe.start(script, simKey);
   }
 
-  const activeStatus = runningPlan ? STATUS_TEXT[qe.status] ?? null : null;
   const busy = runningPlan !== null;
+  const activeStatus = runningPlan ? STATUS_TEXT[qe.status] ?? null : null;
 
   return (
     <Card>
@@ -303,67 +274,54 @@ export function RecurringPayments({
       </CardHeader>
 
       <CardContent>
-        {loading && rows.length === 0 ? (
+        {loading && planRows.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden />
             Loading your payments…
           </p>
-        ) : rows.length === 0 ? (
-          <div className="space-y-3 py-6 text-center">
+        ) : planRows.length === 0 ? (
+          <div className="space-y-3 py-5 text-center">
             <p className="text-sm text-muted-foreground">
-              No recurring payments yet.
-            </p>
-            <p className="mx-auto max-w-sm text-xs text-muted-foreground">
-              Set up rent, tokens or a fixed transfer yourself. We also add
-              bills we detect once your statements show enough history.
+              Nothing set up yet.
             </p>
             <Button size="sm" onClick={openAdd} className="gap-1.5">
               <Plus className="size-4" aria-hidden />
-              Add your first payment
+              Add a payment
             </Button>
           </div>
         ) : (
           <>
             <div className="relative">
-              {/* Swipeable pages: one per payment, snapped by CSS. The pager
-                  arrows stay for keyboard and desktop pointer users. */}
               <div
                 ref={scroller}
+                style={pageHeight ? { height: pageHeight } : undefined}
                 onScroll={(e) => {
                   const el = e.currentTarget;
                   if (el.clientWidth === 0) return;
                   const next = Math.round(el.scrollLeft / el.clientWidth);
                   if (next !== index) setIndex(next);
                 }}
-                style={pageHeight ? { height: pageHeight } : undefined}
                 className={`flex items-start snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   reduceMotion ? "" : "transition-[height] duration-200 ease-out"
                 }`}
                 aria-live="polite"
               >
-                {rows.map((row) => (
-                  <div key={row.key} className="min-w-full snap-center">
-                    {row.type === "plan" ? (
-                      <PlanPage
-                        row={row}
-                        status={runningPlan === row.plan.id ? activeStatus : null}
-                        busy={busy}
-                        onPlay={() => openPay(row)}
-                        onEdit={() => openEdit(row)}
-                      />
-                    ) : (
-                      <DetectedPage
-                        payment={row.payment}
-                        bands={bands[billKey(row.payment)] ?? []}
-                        onTrack={(amount) => openTrack(row.payment, amount)}
-                        onDismiss={() => dismiss(row.payment)}
-                      />
-                    )}
+                {planRows.map((row) => (
+                  <div key={row.plan.id} className="min-w-full snap-center">
+                    <PlanPage
+                      plan={row.plan}
+                      lastPaid={row.lastPaid}
+                      due={row.due}
+                      status={runningPlan === row.plan.id ? activeStatus : null}
+                      busy={busy}
+                      onPlay={() => openPay(row.plan)}
+                      onEdit={() => openEdit(row.plan)}
+                    />
                   </div>
                 ))}
               </div>
 
-              {rows.length > 1 && (
+              {planRows.length > 1 && (
                 <>
                   <Button
                     variant="ghost"
@@ -379,7 +337,7 @@ export function RecurringPayments({
                     variant="ghost"
                     size="icon"
                     aria-label="Next payment"
-                    disabled={index >= rows.length - 1}
+                    disabled={index >= planRows.length - 1}
                     onClick={() => goTo(index + 1)}
                     className="absolute top-1/2 right-0 hidden size-8 -translate-y-1/2 md:inline-flex"
                   >
@@ -389,33 +347,47 @@ export function RecurringPayments({
               )}
             </div>
 
-            {rows.length > 1 && (
+            {planRows.length > 1 && (
               <div className="flex flex-wrap items-center justify-center gap-1.5 pt-4">
-                {rows.map((row, i) => {
-                  const label =
-                    row.type === "plan" ? row.plan.name : row.payment.counterparty;
-                  return (
-                    <button
-                      key={row.key}
-                      type="button"
-                      onClick={() => goTo(i)}
-                      aria-label={`${label}, ${i + 1} of ${rows.length}`}
-                      aria-current={i === index ? "true" : undefined}
-                      className="group -m-2 p-2"
-                    >
-                      <span
-                        className={`block h-1.5 rounded-full transition-all ${
-                          i === index
-                            ? "w-5 bg-foreground"
-                            : "w-1.5 bg-muted-foreground/30 group-hover:bg-muted-foreground/50"
-                        }`}
-                      />
-                    </button>
-                  );
-                })}
+                {planRows.map((row, i) => (
+                  <button
+                    key={row.plan.id}
+                    type="button"
+                    onClick={() => goTo(i)}
+                    aria-label={`${row.plan.name}, ${i + 1} of ${planRows.length}`}
+                    aria-current={i === index ? "true" : undefined}
+                    className="group -m-2 p-2"
+                  >
+                    <span
+                      className={`block h-1.5 rounded-full transition-all ${
+                        i === index
+                          ? "w-5 bg-foreground"
+                          : "w-1.5 bg-muted-foreground/30 group-hover:bg-muted-foreground/50"
+                      }`}
+                    />
+                  </button>
+                ))}
               </div>
             )}
           </>
+        )}
+
+        {suggestions.length > 0 && (
+          <div className="mt-5 space-y-2 border-t border-border pt-4">
+            <p className="text-xs font-medium text-muted-foreground">
+              From your statements
+            </p>
+            {suggestions.map((payment) => (
+              <SuggestionRow
+                key={billKey(payment)}
+                payment={payment}
+                plans={plans}
+                bands={bands[billKey(payment)] ?? []}
+                onTrack={(amount) => openTrack(payment, amount)}
+                onDismiss={() => dismiss(payment)}
+              />
+            ))}
+          </div>
         )}
       </CardContent>
 
@@ -436,9 +408,9 @@ export function RecurringPayments({
       <Drawer open={paying !== null} onOpenChange={(open) => !open && setPaying(null)}>
         <DrawerContent>
           <DrawerHeader className="text-left">
-            <DrawerTitle>{paying?.plan.name ?? "Pay"}</DrawerTitle>
+            <DrawerTitle>{paying?.name ?? "Pay"}</DrawerTitle>
             <DrawerDescription>
-              {paying ? planTarget(toPlanLike(paying.plan)) : ""}
+              {paying ? planTarget(toPlanLike(paying)) : ""}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -457,8 +429,8 @@ export function RecurringPayments({
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
-                Dials *334# on the wallet selected in the header. You enter
-                your M-PESA PIN in the phone dialog.
+                *334# opens on the selected wallet; enter your PIN in the phone
+                dialog.
               </p>
               {payError && <p className="text-sm text-destructive">{payError}</p>}
             </div>
@@ -476,21 +448,25 @@ export function RecurringPayments({
 }
 
 function PlanPage({
-  row,
+  plan,
+  lastPaid,
+  due,
   status,
   busy,
   onPlay,
   onEdit,
 }: {
-  row: Extract<Row, { type: "plan" }>;
+  plan: RecurringPlan;
+  lastPaid: LastPaid | null;
+  due: Date;
   status: string | null;
   busy: boolean;
   onPlay: () => void;
   onEdit: () => void;
 }) {
-  const Icon = planIcon(row.plan.kind);
-  const cadence = cadenceStyle(row.plan.cadence);
-  const amount = row.plan.amount > 0 ? row.plan.amount : row.lastPaid?.amount ?? null;
+  const Icon = planIcon(plan.kind);
+  const cadence = cadenceStyle(plan.cadence);
+  const amount = plan.amount > 0 ? plan.amount : lastPaid?.amount ?? null;
 
   return (
     <div className="space-y-4 px-1 py-1">
@@ -499,20 +475,17 @@ function PlanPage({
           <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-sm font-medium" title={row.plan.name}>
-              {row.plan.name}
-            </p>
-            <Chip className="bg-primary/10 text-primary">Yours</Chip>
-          </div>
+          <p className="truncate text-sm font-medium" title={plan.name}>
+            {plan.name}
+          </p>
           <p className="truncate text-xs text-muted-foreground">
-            {planTarget(toPlanLike(row.plan))}
+            {planTarget(toPlanLike(plan))}
           </p>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Edit ${row.plan.name}`}
+          aria-label={`Edit ${plan.name}`}
           onClick={onEdit}
           className="size-8 shrink-0"
         >
@@ -524,8 +497,10 @@ function PlanPage({
         <p className="text-2xl font-semibold tabular-nums tracking-tight">
           {amount !== null ? formatMoney(amount) : "Variable amount"}
         </p>
-        <Chip className={cadence.className}>{cadence.label}</Chip>
-        {row.plan.amount === 0 && (
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cadence.className}`}>
+          {cadence.label}
+        </span>
+        {plan.amount === 0 && (
           <span className="text-xs text-muted-foreground">asked each time</span>
         )}
       </div>
@@ -534,35 +509,39 @@ function PlanPage({
         <div>
           <p className="text-xs text-muted-foreground">Last paid</p>
           <p className="truncate">
-            {row.lastPaid
-              ? `${formatFullDate(row.lastPaid.date)} · ${formatMoney(row.lastPaid.amount)}`
+            {lastPaid
+              ? `${formatFullDate(lastPaid.date)} · ${formatMoney(lastPaid.amount)}`
               : "Not paid yet"}
           </p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">{dueLabel(row.due)}</p>
-          <p className="truncate">{reminderLabel(toPlanLike(row.plan))}</p>
+          <p className="text-xs text-muted-foreground">{dueLabel(due)}</p>
+          <p className="truncate">{reminderLabel(toPlanLike(plan))}</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button onClick={onPlay} disabled={busy} className="flex-1">
-          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Smartphone className="size-4" aria-hidden />}
-          {busy ? "Paying…" : "Pay now"}
-        </Button>
-      </div>
+      <Button onClick={onPlay} disabled={busy} className="w-full">
+        {busy ? (
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+        ) : (
+          <Smartphone className="size-4" aria-hidden />
+        )}
+        {busy ? "Paying…" : "Pay now"}
+      </Button>
       {status && <p className="text-xs text-muted-foreground">{status}</p>}
     </div>
   );
 }
 
-function DetectedPage({
+function SuggestionRow({
   payment,
+  plans,
   bands,
   onTrack,
   onDismiss,
 }: {
   payment: RecurringPayment;
+  plans: RecurringPlan[];
   bands: AmountBand[];
   onTrack: (amount?: number) => void;
   onDismiss: () => void;
@@ -570,22 +549,26 @@ function DetectedPage({
   const { icon: Icon, label: method } = typeStyle(payment.type);
   const cadence = cadenceStyle(payment.cadence);
   const variable = payment.amountMin !== payment.amountMax;
+  const isTracked = (amount?: number) =>
+    plans.some((plan) =>
+      planCoversDetected(toPlanLike(plan), payment, amount),
+    );
 
   return (
-    <div className="space-y-4 px-1 py-1">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />
-        </span>
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-start gap-2">
+        <Icon
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          strokeWidth={1.75}
+          aria-hidden
+        />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-sm font-medium" title={payment.counterparty}>
-              {payment.counterparty}
-            </p>
-            <Chip className="bg-muted text-muted-foreground">Detected</Chip>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {method} · {payment.count} {payment.count === 1 ? "payment" : "payments"}
+          <p className="truncate text-sm font-medium" title={payment.counterparty}>
+            {payment.counterparty}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {method} · {payment.count} {payment.count === 1 ? "payment" : "payments"} ·{" "}
+            {cadence.label}
           </p>
         </div>
         <Button
@@ -593,67 +576,74 @@ function DetectedPage({
           size="icon"
           aria-label={`Hide ${payment.counterparty}`}
           onClick={onDismiss}
-          className="size-8 shrink-0 text-muted-foreground"
+          className="-mt-1 -mr-1 size-8 shrink-0 text-muted-foreground"
         >
           <X className="size-4" />
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p className="text-2xl font-semibold tabular-nums tracking-tight">
-          {formatMoney(payment.amount)}
-        </p>
-        <Chip className={cadence.className}>{cadence.label}</Chip>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-sm tabular-nums">
+          {variable
+            ? `${formatMoneyShort(payment.amountMin)}–${formatMoneyShort(payment.amountMax)}`
+            : formatMoneyShort(payment.amount)}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          last paid {formatFullDate(payment.lastDate)}
+        </span>
       </div>
 
-      <div className="grid gap-3 text-sm sm:grid-cols-2">
-        <div>
-          <p className="text-xs text-muted-foreground">Last paid</p>
-          <p className="truncate">{formatFullDate(payment.lastDate)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Amounts</p>
-          <p className="truncate tabular-nums">
-            {variable
-              ? `${formatMoneyShort(payment.amountMin)}–${formatMoneyShort(payment.amountMax)}`
-              : "Same every time"}
-          </p>
-        </div>
-      </div>
-
-      {bands.length > 1 && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            This looks like more than one payment. Track each one separately:
-          </p>
-          {bands.map((band) => (
-            <button
-              key={`${band.min}-${band.max}`}
-              type="button"
-              onClick={() => onTrack(band.amount)}
-              className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted/60"
-            >
-              <span className="min-w-0">
-                <span className="block text-sm tabular-nums">
+      {bands.length > 1 ? (
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {bands.map((band) => {
+            const tracked = isTracked(band.amount);
+            return (
+              <button
+                key={`${band.min}-${band.max}`}
+                type="button"
+                onClick={() => onTrack(band.amount)}
+                disabled={tracked}
+                className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                  tracked
+                    ? "border-border/60 text-muted-foreground"
+                    : "border-border hover:bg-muted/60"
+                }`}
+              >
+                <span className="text-xs tabular-nums">
                   {band.min === band.max
                     ? formatMoneyShort(band.amount)
                     : `${formatMoneyShort(band.min)}–${formatMoneyShort(band.max)}`}
+                  <span className="text-muted-foreground"> · {band.count}</span>
                 </span>
-                <span className="block text-xs text-muted-foreground">
-                  {band.count} {band.count === 1 ? "payment" : "payments"} · about{" "}
-                  {formatMoneyShort(band.amount)}
-                </span>
-              </span>
-              <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            </button>
-          ))}
+                {tracked ? (
+                  <Check className="size-3.5 shrink-0" aria-label="Tracked" />
+                ) : (
+                  <Plus className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+              </button>
+            );
+          })}
         </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onTrack()}
+          className="mt-2 w-full gap-1.5"
+        >
+          {isTracked() ? (
+            <>
+              <Check className="size-4" aria-hidden />
+              Tracked — add another
+            </>
+          ) : (
+            <>
+              <Plus className="size-4" aria-hidden />
+              Track this
+            </>
+          )}
+        </Button>
       )}
-
-      <Button variant="outline" onClick={() => onTrack()} className="w-full gap-1.5">
-        <Plus className="size-4" aria-hidden />
-        {bands.length > 1 ? "Track another amount" : "Track & set a reminder"}
-      </Button>
     </div>
   );
 }

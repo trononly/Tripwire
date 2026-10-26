@@ -54,6 +54,7 @@ import type { Transaction } from "../bindings/mpesa-analyzer/internal/parser/mod
 import {
 	amountBands,
 	emptyPlan,
+	planCoversDetected,
 	planFromDetected,
 	lastPaidOf,
 	nextDue,
@@ -1501,6 +1502,27 @@ describe("recurring plans", () => {
 			balance: 0,
 		}));
 		expect(amountBands(txs, payment)).toEqual([]);
+	});
+
+	it("marks the detected amount as tracked once a plan covers it", () => {
+		const payment = {
+			counterparty: "WALTER KAGUCHIA 0715448705",
+			count: 9,
+			type: "send_money",
+			amount: 38_700,
+			amountMin: 6_900,
+			amountMax: 1_650_000,
+			cadence: "monthly",
+			medianGapDays: 30,
+			firstDate: "2026-03-27 12:30:32",
+			lastDate: "2026-10-05 07:59:33",
+		} satisfies RecurringPayment;
+
+		const walter = plan({ name: "WALTER KAGUCHIA", amount: 38_500 });
+		expect(planCoversDetected(walter, payment, 38_500)).toBe(true);
+		expect(planCoversDetected(walter, payment, 1_525_000)).toBe(false);
+		expect(planCoversDetected(walter, payment)).toBe(true);
+		expect(planCoversDetected(plan({ name: "KPLC", amount: 38_500 }), payment)).toBe(false);
 	});
 
 	it("prefills a tracked send payment's phone and clean name", () => {

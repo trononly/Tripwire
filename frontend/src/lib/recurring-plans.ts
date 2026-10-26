@@ -519,3 +519,27 @@ export function amountBands(
     count: band.length,
   }));
 }
+
+/** True when a saved plan already covers this detected payment (or amount). */
+export function planCoversDetected(
+  plan: PlanLike,
+  payment: RecurringPayment,
+  amount?: number,
+): boolean {
+  const kind = detectedKind(payment.type);
+  if (!kind) return false;
+  const compatible =
+    plan.kind === kind ||
+    (plan.kind === "pochi" && kind === "send") ||
+    (plan.kind === "send" && kind === "till");
+  if (!compatible) return false;
+
+  // The detected counterparty often carries the phone; the plan name usually
+  // does not, so containment in either direction is the practical match.
+  const a = normalizedName(plan.name);
+  const b = normalizedName(payment.counterparty);
+  if (a.length < 3 || !(b.includes(a) || a.includes(b))) return false;
+
+  if (amount === undefined) return true;
+  return plan.amount > 0 && plan.amount === amount;
+}

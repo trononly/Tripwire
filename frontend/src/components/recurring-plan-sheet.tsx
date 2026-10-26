@@ -370,10 +370,6 @@ export function RecurringPlanSheet({
                 Ask each time
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Fixed amounts pay in one tap. “Ask each time” is for tokens and
-              other bills that change.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -442,12 +438,7 @@ export function RecurringPlanSheet({
               aria-pressed={remind}
               className="flex w-full items-center justify-between gap-3 p-3 text-left"
             >
-              <span>
-                <span className="block text-sm font-medium">Reminder</span>
-                <span className="block text-xs text-muted-foreground">
-                  {remind ? "Notify me before it is due." : "Tap to turn reminders on."}
-                </span>
-              </span>
+              <span className="text-sm font-medium">Reminder</span>
               <span
                 aria-hidden
                 className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
