@@ -139,6 +139,11 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wails v3 CLI
+        # The module's latest tag resolves to a v3.0.0 go.mod that the
+        # checksum database rejects, even when installing a pinned version.
+        # This step only fetches a build tool, so skip the checksum lookup.
+        env:
+          GOSUMDB: "off"
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
       - name: Setup pnpm
