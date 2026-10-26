@@ -38,7 +38,7 @@ const (
 // cents for the amount the user can pre-fill.
 const (
 	MaxAmountCents = 25_000_000
-	MaxLeadDays    = 14
+	MaxLeadDays    = 30
 )
 
 // Input is the editable part of a plan - exactly what the setup dialog sends.
@@ -202,8 +202,8 @@ func normalize(in Input) (store.RecurringPlan, error) {
 	if _, err := time.Parse("15:04", out.DueTime); err != nil {
 		return out, fmt.Errorf("choose a valid reminder time")
 	}
-	if out.LeadDays < 0 || out.LeadDays > MaxLeadDays {
-		return out, fmt.Errorf("remind between 0 and %d days before", MaxLeadDays)
+	if out.LeadDays < -MaxLeadDays || out.LeadDays > MaxLeadDays {
+		return out, fmt.Errorf("remind up to %d days before or after", MaxLeadDays)
 	}
 	if len(out.SimID) > 64 {
 		return out, fmt.Errorf("invalid wallet")

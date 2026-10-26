@@ -240,7 +240,9 @@ export function reminderLabel(plan: PlanDraft): string {
   if (!plan.remind) return "Reminders off";
   const time = plan.dueTime;
   if (plan.leadDays === 0) return `Remind ${time} that day`;
-  return `Remind ${plan.leadDays} ${plan.leadDays === 1 ? "day" : "days"} before, ${time}`;
+  const days = Math.abs(plan.leadDays);
+  const when = plan.leadDays > 0 ? "before" : "after";
+  return `Remind ${days} ${days === 1 ? "day" : "days"} ${when}, ${time}`;
 }
 
 function digits(raw: string): string {
@@ -564,4 +566,44 @@ export function planCoversDetected(
 
   if (amount === undefined) return true;
   return plan.amount > 0 && plan.amount === amount;
+}
+
+const SUGGESTIONS_OPEN_KEY = "mpesa-analyzer.suggestions-open";
+const EXPANDED_BILLS_KEY = "mpesa-analyzer.expanded-bills";
+
+/** Whether the statement-suggestion list was left open. */
+export function loadSuggestionsOpen(): boolean {
+  try {
+    return localStorage.getItem(SUGGESTIONS_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export function saveSuggestionsOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SUGGESTIONS_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* private mode: session-only */
+  }
+}
+
+/** Suggestion rows the user left expanded. */
+export function loadExpandedBills(): string[] {
+  try {
+    const raw = localStorage.getItem(EXPANDED_BILLS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveExpandedBills(keys: string[]): void {
+  try {
+    localStorage.setItem(EXPANDED_BILLS_KEY, JSON.stringify(keys));
+  } catch {
+    /* private mode: session-only */
+  }
 }

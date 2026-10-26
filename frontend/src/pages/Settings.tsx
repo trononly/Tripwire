@@ -41,6 +41,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { OptionButton } from "@/components/ui/option-button";
 
 const themes = [
   { value: "light", label: "Light", icon: Sun },
@@ -54,14 +55,15 @@ function ThemeSelector() {
   return (
     <div className="flex gap-2">
       {themes.map(({ value, label, icon: Icon }) => (
-        <Button
+        <OptionButton
           key={value}
-          variant={theme === value ? "default" : "outline"}
+          selected={theme === value}
           onClick={() => setTheme(value)}
+          className="flex flex-1 items-center justify-center gap-2"
         >
-          <Icon />
+          <Icon className="size-4" />
           {label}
-        </Button>
+        </OptionButton>
       ))}
     </div>
   );
@@ -92,19 +94,15 @@ function ModeSelector({
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {options.map(({ value, label, icon: Icon }) => (
-        <button
+        <OptionButton
           key={value}
-          type="button"
-          aria-pressed={mode === value}
+          selected={mode === value}
           onClick={() => onModeChange(value)}
-          className={cn(
-            "flex min-h-14 min-w-0 items-center gap-3 rounded-md border p-3 text-left transition-colors hover:bg-accent/50",
-            mode === value && "border-primary bg-accent",
-          )}
+          className="flex min-h-14 min-w-0 items-center justify-start gap-3 p-3 text-left"
         >
           <Icon className="size-5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 text-sm font-medium">{label}</span>
-        </button>
+        </OptionButton>
       ))}
     </div>
   );
@@ -116,14 +114,13 @@ function MotionSettings() {
   const toggle = (on: boolean, key: string, label: string) => (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm">{label}</span>
-      <Button
-        variant={on ? "default" : "outline"}
-        size="sm"
-        aria-pressed={on}
+      <OptionButton
+        selected={on}
         onClick={() => setSetting(key, !on)}
+        className="px-2.5 py-1 text-xs"
       >
         {on ? "On" : "Off"}
-      </Button>
+      </OptionButton>
     </div>
   );
   return (
@@ -141,14 +138,13 @@ function PrivacySetting() {
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm">Privacy Mode</span>
-        <Button
-          variant={on ? "default" : "outline"}
-          size="sm"
-          aria-pressed={on}
+        <OptionButton
+          selected={on}
           onClick={() => setPrivacyMode(!on)}
+          className="px-2.5 py-1 text-xs"
         >
           {on ? "On" : "Off"}
-        </Button>
+        </OptionButton>
       </div>
       <p className="text-xs text-muted-foreground">
         Blurs balances and chart figures. Tap a card or figure to reveal it.

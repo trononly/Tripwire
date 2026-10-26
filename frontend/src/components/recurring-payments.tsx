@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
+import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,15 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAutomationAvailable } from "@/components/automation-gate";
 import { RecurringPlanSheet } from "@/components/recurring-plan-sheet";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
 import {
   billKey,
   dayKey,
   dueLabel,
+  loadExpandedBills,
+  loadSuggestionsOpen,
   loadDismissedBills,
   nextDue,
   planAmountShillings,
@@ -34,6 +38,8 @@ import {
   planTarget,
   reminderLabel,
   saveDismissedBills,
+  saveExpandedBills,
+  saveSuggestionsOpen,
   toPlanLike,
   type AmountBand,
   type LastPaid,
@@ -42,6 +48,10 @@ import {
 } from "@/lib/recurring-plans";
 import { formatMoney, formatMoneyShort, formatFullDate } from "@/lib/format";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
+import {
+  isAndroidBridge,
+  openUssdAutomationSettings,
+} from "@/lib/sms-bridge";
 import { isValidAmount } from "@/lib/ussd-menus";
 import { typeStyle } from "@/lib/transaction-types";
 import type { RecurringPayment } from "../../bindings/mpesa-analyzer/internal/recurring/models";
@@ -144,8 +154,13 @@ export function RecurringPayments({
   onSkipPlan,
 }: RecurringPaymentsProps) {
   const [dismissed, setDismissed] = useState<string[]>(() => loadDismissedBills());
-  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
-  const [expandedBills, setExpandedBills] = useState<string[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(() =>
+    loadSuggestionsOpen(),
+  );
+  const [expandedBills, setExpandedBills] = useState<string[]>(() =>
+    loadExpandedBills(),
+  );
+  const auto = useAutomationAvailable();
 
   const planRows = useMemo(
     () =>
@@ -171,7 +186,6 @@ export function RecurringPayments({
   const reduceMotion = useReduceMotionEnabled();
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
-  const [pageHeight, setPageHeight] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringPlan | null>(null);
   const [prefill, setPrefill] = useState<PlanDraft | null>(null);
@@ -186,23 +200,6 @@ export function RecurringPayments({
     setIndex(0);
     scroller.current?.scrollTo({ left: 0, behavior: "auto" });
   }, [planRows.length]);
-
-  // The scroller is a flex row, so by default it is as tall as the tallest
-  // page. Match the active page's height instead; ResizeObserver keeps it in
-  // step when a page grows (the Pay progress line).
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const slides = Array.from(el.children) as HTMLElement[];
-    const measure = () => {
-      const slide = slides[Math.min(index, slides.length - 1)];
-      if (slide) setPageHeight(slide.offsetHeight);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    slides.forEach((slide) => observer.observe(slide));
-    return () => observer.disconnect();
-  }, [index, planRows]);
 
   useEffect(() => {
     if (qe.status === "aborted") {
@@ -247,10 +244,21 @@ export function RecurringPayments({
     saveDismissedBills(next);
   }
 
+  function toggleSuggestions() {
+    setSuggestionsOpen((open) => {
+      saveSuggestionsOpen(!open);
+      return !open;
+    });
+  }
+
   function toggleBill(key: string) {
-    setExpandedBills((open) =>
-      open.includes(key) ? open.filter((k) => k !== key) : [...open, key],
-    );
+    setExpandedBills((open) => {
+      const next = open.includes(key)
+        ? open.filter((k) => k !== key)
+        : [...open, key];
+      saveExpandedBills(next);
+      return next;
+    });
   }
 
   /** Skip the occurrence the card is showing; the next one moves up. */
@@ -258,7 +266,13 @@ export function RecurringPayments({
     await onSkipPlan(plan.id, dayKey(nextDue(toPlanLike(plan))));
   }
 
+  /** Open the amount prompt only for "ask each time" plans. A fixed plan
+   * dials straight away: Pay now means pay now. */
   function openPay(plan: RecurringPlan) {
+    if (plan.amount > 0) {
+      startPlanPayment(plan, String(Math.round(plan.amount / 100)));
+      return;
+    }
     setPaying(plan);
     setPayError(null);
     setPayAmount(
@@ -266,21 +280,48 @@ export function RecurringPayments({
     );
   }
 
-  function startPayment() {
-    if (!paying) return;
-    if (!isValidAmount(payAmount)) {
+  function startPlanPayment(plan: RecurringPlan, amountShillings: string) {
+    if (!isValidAmount(amountShillings)) {
       setPayError("Enter a whole-shilling amount between 1 and 500,000.");
       return;
     }
-    const script = planScript(toPlanLike(paying), payAmount.trim());
+    const script = planScript(toPlanLike(plan), amountShillings.trim());
     if (!script) {
       setPayError("This payment's details are incomplete. Edit it first.");
       return;
     }
-    setRunningPlan(paying.id);
+    if (!isAndroidBridge()) {
+      toast.info("Guided payments need the Android app.");
+      return;
+    }
+    if (!auto.available) {
+      auto.recheck();
+      toast.error("Turn on M-Pesa automation first.", {
+        action: { label: "Open settings", onClick: openUssdAutomationSettings },
+      });
+      return;
+    }
+    Events.Once("common:ussd", (ev) => {
+      const data = ev.data as { ok: boolean; error?: string };
+      if (!data?.ok) {
+        toast.error(
+          data?.error === "call permission denied"
+            ? "Call permission was denied."
+            : data?.error === "automation disabled"
+              ? "Automation was switched off."
+              : "Could not start the transaction.",
+        );
+      }
+    });
+    setRunningPlan(plan.id);
     setPaying(null);
     setPayError(null);
     qe.start(script, simKey);
+  }
+
+  function startPayment() {
+    if (!paying) return;
+    startPlanPayment(paying, payAmount);
   }
 
   const busy = runningPlan !== null;
@@ -317,16 +358,13 @@ export function RecurringPayments({
             <div className="relative">
               <div
                 ref={scroller}
-                style={pageHeight ? { height: pageHeight } : undefined}
                 onScroll={(e) => {
                   const el = e.currentTarget;
                   if (el.clientWidth === 0) return;
                   const next = Math.round(el.scrollLeft / el.clientWidth);
                   if (next !== index) setIndex(next);
                 }}
-                className={`flex items-start snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-                  reduceMotion ? "" : "transition-[height] duration-200 ease-out"
-                }`}
+                className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 aria-live="polite"
               >
                 {planRows.map((row) => (
@@ -401,7 +439,7 @@ export function RecurringPayments({
           <div className="mt-5 border-t border-border pt-3">
             <button
               type="button"
-              onClick={() => setSuggestionsOpen((open) => !open)}
+              onClick={toggleSuggestions}
               aria-expanded={suggestionsOpen}
               className="flex w-full items-center justify-between gap-2 py-1 text-left"
             >
@@ -477,17 +515,13 @@ export function RecurringPayments({
                 autoComplete="off"
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground">
-                *334# opens on the selected wallet; enter your PIN in the phone
-                dialog.
-              </p>
               {payError && <p className="text-sm text-destructive">{payError}</p>}
             </div>
           </div>
 
           <DrawerFooter>
             <Button type="button" onClick={startPayment} className="w-full">
-              Open *334#
+              Pay now
             </Button>
           </DrawerFooter>
         </DrawerContent>
@@ -570,21 +604,23 @@ function PlanPage({
         <div>
           <p className="text-xs text-muted-foreground">{dueLabel(due)}</p>
           <p className="truncate">{reminderLabel(toPlanLike(plan))}</p>
-          {plan.skippedFor && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Skipped {shortDay(plan.skippedFor)}
-              {" · "}
-              <button
-                type="button"
-                onClick={onUnskip}
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                Undo
-              </button>
-            </p>
-          )}
         </div>
       </div>
+
+      {plan.skippedFor && (
+        <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
+          <span className="text-muted-foreground">
+            Skipped {shortDay(plan.skippedFor)}
+          </span>
+          <button
+            type="button"
+            onClick={onUnskip}
+            className="font-medium underline underline-offset-2 hover:text-foreground"
+          >
+            Undo
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <Button onClick={onPlay} disabled={busy} className="flex-1">

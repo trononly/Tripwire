@@ -3,6 +3,7 @@ import { Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OptionButton } from "@/components/ui/option-button";
 import { Label } from "@/components/ui/label";
 import {
   Drawer,
@@ -16,7 +17,6 @@ import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store
 import {
   CADENCE_LABELS,
   KIND_LABELS,
-  REMIND_LEAD_OPTIONS,
   WEEKDAYS,
   emptyPlan,
   planTarget,
@@ -94,6 +94,7 @@ export function RecurringPlanSheet({
   const [anchorWeekday, setAnchorWeekday] = useState(0);
   const [dueTime, setDueTime] = useState("09:00");
   const [leadDays, setLeadDays] = useState(1);
+  const [leadAfter, setLeadAfter] = useState(false);
   const [remind, setRemind] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -131,7 +132,8 @@ export function RecurringPlanSheet({
     setAnchorDay(source.anchorDay);
     setAnchorWeekday(source.anchorWeekday);
     setDueTime(source.dueTime || "09:00");
-    setLeadDays(source.leadDays);
+    setLeadDays(Math.abs(source.leadDays));
+    setLeadAfter(source.leadDays < 0);
     setRemind(source.remind);
     setSaving(false);
     setConfirmDelete(false);
@@ -215,7 +217,7 @@ export function RecurringPlanSheet({
       anchorDay,
       anchorWeekday,
       dueTime,
-      leadDays,
+      leadDays: leadAfter ? -leadDays : leadDays,
       remind,
       simId: "",
     };
@@ -262,19 +264,13 @@ export function RecurringPlanSheet({
             <Label>Pay with</Label>
             <div className="grid grid-cols-2 gap-2">
               {KINDS.map((k) => (
-                <button
+                <OptionButton
                   key={k}
-                  type="button"
+                  selected={kind === k}
                   onClick={() => chooseKind(k)}
-                  aria-pressed={kind === k}
-                  className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    kind === k
-                      ? "border-primary bg-primary/10 font-medium text-foreground"
-                      : "border-border text-muted-foreground hover:bg-muted/60"
-                  }`}
                 >
                   {KIND_LABELS[k]}
-                </button>
+                </OptionButton>
               ))}
             </div>
           </div>
@@ -354,21 +350,16 @@ export function RecurringPlanSheet({
                 disabled={askAmount}
                 autoComplete="off"
               />
-              <button
-                type="button"
+              <OptionButton
+                selected={askAmount}
                 onClick={() => {
                   setAskAmount((v) => !v);
                   setError(null);
                 }}
-                aria-pressed={askAmount}
-                className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                  askAmount
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted/60"
-                }`}
+                className="shrink-0 text-xs"
               >
                 Ask each time
-              </button>
+              </OptionButton>
             </div>
           </div>
 
@@ -376,19 +367,13 @@ export function RecurringPlanSheet({
             <Label>How often</Label>
             <div className="grid grid-cols-2 gap-2">
               {CADENCES.map((c) => (
-                <button
+                <OptionButton
                   key={c}
-                  type="button"
+                  selected={cadence === c}
                   onClick={() => setCadence(c)}
-                  aria-pressed={cadence === c}
-                  className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    cadence === c
-                      ? "border-primary bg-primary/10 font-medium text-foreground"
-                      : "border-border text-muted-foreground hover:bg-muted/60"
-                  }`}
                 >
                   {CADENCE_LABELS[c]}
-                </button>
+                </OptionButton>
               ))}
             </div>
           </div>
@@ -454,35 +439,64 @@ export function RecurringPlanSheet({
             </button>
 
             {remind && (
-              <div className="grid grid-cols-2 gap-3 border-t border-border p-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="plan-time" className="text-xs">
-                    Time
-                  </Label>
-                  <Input
-                    id="plan-time"
-                    type="time"
-                    value={dueTime}
-                    onChange={(e) => setDueTime(e.target.value)}
-                  />
+              <div className="space-y-3 border-t border-border p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="plan-time" className="text-xs">
+                      Time
+                    </Label>
+                    <Input
+                      id="plan-time"
+                      type="time"
+                      value={dueTime}
+                      onChange={(e) => setDueTime(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="plan-lead" className="text-xs">
+                      Days
+                    </Label>
+                    <Input
+                      id="plan-lead"
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={leadDays}
+                      onChange={(e) => {
+                        const next = Math.floor(Number(e.target.value));
+                        setLeadDays(
+                          Number.isFinite(next)
+                            ? Math.min(30, Math.max(0, next))
+                            : 0,
+                        );
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="plan-lead" className="text-xs">
-                    Days before
-                  </Label>
-                  <select
-                    id="plan-lead"
-                    value={leadDays}
-                    onChange={(e) => setLeadDays(Number(e.target.value))}
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  >
-                    {REMIND_LEAD_OPTIONS.map((days) => (
-                      <option key={days} value={days}>
-                        {days === 0 ? "On the day" : days === 1 ? "1 day" : `${days} days`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+
+                {leadDays > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <OptionButton
+                      selected={!leadAfter}
+                      onClick={() => setLeadAfter(false)}
+                      className="text-xs"
+                    >
+                      Before
+                    </OptionButton>
+                    <OptionButton
+                      selected={leadAfter}
+                      onClick={() => setLeadAfter(true)}
+                      className="text-xs"
+                    >
+                      After
+                    </OptionButton>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {leadDays === 0
+                    ? "On the day"
+                    : `${leadDays} ${leadDays === 1 ? "day" : "days"} ${leadAfter ? "after" : "before"}`}
+                </p>
               </div>
             )}
           </div>

@@ -146,7 +146,7 @@ func TestInvalidFields(t *testing.T) {
 		"bad anchor":    func(p *Input) { p.AnchorDay = 32 },
 		"bad time":      func(p *Input) { p.DueTime = "9 am" },
 		"bad amount":    func(p *Input) { p.Amount = -1 },
-		"bad lead time": func(p *Input) { p.LeadDays = 15 },
+		"bad lead time": func(p *Input) { p.LeadDays = 31 },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -156,6 +156,20 @@ func TestInvalidFields(t *testing.T) {
 				t.Fatalf("%s: expected error", name)
 			}
 		})
+	}
+}
+
+func TestReminderCanBeAfterTheDueDate(t *testing.T) {
+	svc := New(newStore(t))
+
+	plan := sendPlan()
+	plan.LeadDays = -2
+	got, err := svc.Add(plan)
+	if err != nil {
+		t.Fatalf("add with a negative reminder: %v", err)
+	}
+	if got.LeadDays != -2 {
+		t.Fatalf("leadDays = %d, want -2", got.LeadDays)
 	}
 }
 
