@@ -75,11 +75,11 @@ export function CashflowChart({
 }) {
 
   const chartData = useMemo(() => binBuckets(buckets), [buckets]);
-  const { ref, inView } = useInView<HTMLDivElement>();
+  const { ref, inView } = useInView<HTMLDivElement>({ once: true });
   // Draw-in animation, replayed whenever the dataset or cadence changes
-  // (the key remounts the chart). Reduced motion disables it entirely, and
-  // the chart only animates while it is actually on screen - off screen it
-  // renders static instead of playing to completion in the background.
+  // (the key remounts the chart). Reduced motion disables it entirely, and it
+  // draws in once, the first time it is actually on screen - scrolling away
+  // and back does not replay it.
   const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? `${granularity}:${chartData.length}:${chartData[0]?.label ?? ""}:${chartData[chartData.length - 1]?.label ?? ""}`
@@ -88,7 +88,7 @@ export function CashflowChart({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>Cashflow</CardTitle>
           </div>

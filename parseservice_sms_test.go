@@ -636,7 +636,7 @@ func TestParseServiceCategoryAssignment(t *testing.T) {
 	}
 	p := &ParseService{store: s}
 
-	food, err := p.CreateCategory("Food", "🍔")
+	food, err := p.CreateCategory("Food", "utensils")
 	if err != nil {
 		t.Fatalf("CreateCategory: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestParseServiceCategoryAssignment(t *testing.T) {
 			for _, tx := range g.Txs {
 				if tx.CustomCategoryID != "" {
 					seen++
-					if tx.CustomCategoryID != food.ID || tx.CustomCategoryEmoji != "🍔" {
+					if tx.CustomCategoryID != food.ID || tx.CustomCategoryIcon != "utensils" {
 						t.Errorf("%s category = %+v", tx.ID, tx)
 					}
 				}

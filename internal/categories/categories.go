@@ -10,6 +10,7 @@ package categories
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -21,7 +22,7 @@ import (
 
 const (
 	maxNameLen    = 40
-	maxEmojiBytes = 32
+	maxIconBytes  = 40
 	maxCategories = 60
 )
 
@@ -40,12 +41,12 @@ func (s *Service) List() ([]store.Category, error) {
 }
 
 // Create validates and appends a category.
-func (s *Service) Create(rawName, rawEmoji string) (store.Category, error) {
+func (s *Service) Create(rawName, rawIcon string) (store.Category, error) {
 	name, err := cleanName(rawName)
 	if err != nil {
 		return store.Category{}, err
 	}
-	emoji, err := cleanEmoji(rawEmoji)
+	icon, err := cleanIcon(rawIcon)
 	if err != nil {
 		return store.Category{}, err
 	}
@@ -57,21 +58,21 @@ func (s *Service) Create(rawName, rawEmoji string) (store.Category, error) {
 	if len(existing) >= maxCategories {
 		return store.Category{}, fmt.Errorf("you already have %d categories; delete one first", maxCategories)
 	}
-	return s.store.AddCategory(name, emoji)
+	return s.store.AddCategory(name, icon)
 }
 
-// Update changes a category's name and emoji. The id (and therefore every
+// Update changes a category's name and icon. The id (and therefore every
 // rule and link) stays the same.
-func (s *Service) Update(id, rawName, rawEmoji string) error {
+func (s *Service) Update(id, rawName, rawIcon string) error {
 	name, err := cleanName(rawName)
 	if err != nil {
 		return err
 	}
-	emoji, err := cleanEmoji(rawEmoji)
+	icon, err := cleanIcon(rawIcon)
 	if err != nil {
 		return err
 	}
-	return s.store.UpdateCategory(id, name, emoji)
+	return s.store.UpdateCategory(id, name, icon)
 }
 
 // Delete removes a category and its rules. Transactions fall back to their
@@ -143,6 +144,83 @@ func (s *Service) Assign(txID, txType, counterpartyKey, categoryID string, apply
 // grouping preview and the backend's rule matching can never disagree.
 func CounterpartyKey(description string) string {
 	return counterparty.GroupKey(analysis.CounterpartyLabel(description))
+}
+
+// Total is one category's share of a dataset. ID is empty for the
+// Uncategorized bucket - the transactions no rule labelled - which the
+// custom donut draws as a single gray slice so the labelled part never looks
+// like the whole. Amount is the signed sum in cents and Percent is over the
+// absolute total, mirroring analysis.CategoryTotal.
+type Total struct {
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	Icon    string  `json:"icon"`
+	Amount  int64   `json:"amount"`
+	Count   int     `json:"count"`
+	Percent float64 `json:"percent"`
+}
+
+// uncategorizedTotal labels the bucket for transactions with no assignment.
+var uncategorizedTotal = Total{Name: "Uncategorized"}
+
+// Totals sums a dataset by user category, highest absolute volume first.
+// Unlabelled rows are kept as their own bucket rather than dropped, so the
+// donut always accounts for every transaction in the window.
+func (s *Service) Totals(txs []parser.Transaction) ([]Total, error) {
+	ix, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	assigned := ix.ResolveAll(txs)
+
+	buckets := make(map[string]*Total, len(ix.categories)+1)
+	for _, tx := range txs {
+		key := ""
+		if c, ok := assigned[tx.ID]; ok {
+			key = c.ID
+			if _, ok := buckets[key]; !ok {
+				buckets[key] = &Total{ID: c.ID, Name: c.Name, Icon: c.Icon}
+			}
+		} else if _, ok := buckets[key]; !ok {
+			buckets[key] = &Total{Name: uncategorizedTotal.Name}
+		}
+		b := buckets[key]
+		b.Amount += tx.Amount
+		b.Count++
+	}
+
+	out := make([]Total, 0, len(buckets))
+	var absTotal int64
+	for _, b := range buckets {
+		out = append(out, *b)
+		absTotal += absOf(b.Amount)
+	}
+	if absTotal > 0 {
+		for i := range out {
+			out[i].Percent = float64(absOf(out[i].Amount)) / float64(absTotal) * 100
+		}
+	}
+	// Stable across runs: volume first, then name, with Uncategorized last
+	// among equal-volume slices so the fallback never leads the legend.
+	sort.Slice(out, func(i, j int) bool {
+		ai, aj := absOf(out[i].Amount), absOf(out[j].Amount)
+		if ai != aj {
+			return ai > aj
+		}
+		ui, uj := out[i].ID == "", out[j].ID == ""
+		if ui != uj {
+			return uj
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
+}
+
+func absOf(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 // Index is the resolved category state of one dataset: the definitions plus
@@ -264,13 +342,13 @@ func cleanName(raw string) (string, error) {
 	return name, nil
 }
 
-func cleanEmoji(raw string) (string, error) {
-	emoji := strings.TrimSpace(raw)
-	if emoji == "" {
-		return "", fmt.Errorf("pick an emoji")
+func cleanIcon(raw string) (string, error) {
+	icon := strings.TrimSpace(raw)
+	if icon == "" {
+		return "", fmt.Errorf("pick an icon")
 	}
-	if len(emoji) > maxEmojiBytes {
-		return "", fmt.Errorf("pick a single emoji")
+	if len(icon) > maxIconBytes {
+		return "", fmt.Errorf("that icon name is too long")
 	}
-	return emoji, nil
+	return icon, nil
 }

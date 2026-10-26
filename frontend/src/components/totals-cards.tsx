@@ -84,7 +84,7 @@ export function TotalsCards({
   totals: analysis.Totals | null;
   currentBalance?: number;
 }) {
-  const { ref, inView } = useInView<HTMLDivElement>();
+  const { ref, inView } = useInView<HTMLDivElement>({ once: true });
   // Count-ups only run once the row of KPIs is actually on screen.
   const totalIn = useCountUp(totals?.totalIn ?? 0, 800, inView);
   const totalOut = useCountUp(totals?.totalOut ?? 0, 800, inView);
@@ -134,7 +134,6 @@ export function TotalsCards({
         label="Total Out"
         value={formatMoney(totalOut)}
         tone="out"
-        hint="Spending & transfers"
         emphasis="secondary"
       />
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { typeStyle } from "@/lib/transaction-types";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export type Group = {
 };
 export type TransactionView = NonNullable<DayGroup["txs"]>[number];
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
+import { CategoryIcon } from "@/components/category-icon";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { useCategoryVersion } from "@/lib/category-refresh";
 
@@ -126,7 +127,7 @@ function TxRow({
   const { icon: Icon, className: tint, label: typeLabel } = typeStyle(tx.type);
   const title = tx.counterparty || typeLabel;
   const category = tx.customCategoryId
-    ? { name: tx.customCategoryName, emoji: tx.customCategoryEmoji }
+    ? { name: tx.customCategoryName, icon: tx.customCategoryIcon }
     : null;
   const moneyIn = tx.amount >= 0;
   // Long-press (touch) or right-click (mouse) veils the ledger into the
@@ -145,7 +146,7 @@ function TxRow({
       aria-hidden
     >
       {category ? (
-        <span className="text-[18px] leading-none">{category.emoji}</span>
+        <CategoryIcon icon={category.icon} className="size-4.5" />
       ) : (
         <Icon className="size-4.5" strokeWidth={1.75} />
       )}
@@ -202,7 +203,7 @@ function TxRow({
             onVeil();
           }}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 touch-manipulation items-center gap-3 py-2.5 pr-3 text-left select-none [-webkit-touch-callout:none]"
+          className="flex min-w-0 flex-1 touch-manipulation items-center gap-3 py-2.5 pr-3 pl-3 text-left select-none [-webkit-touch-callout:none]"
         >
           {/* text block */}
           <span className="min-w-0 flex-1">
@@ -244,7 +245,12 @@ function TxRow({
           {category && (
             <DetailRow
               label="Category"
-              value={`${category.emoji} ${category.name}`}
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  <CategoryIcon icon={category.icon} className="size-4" />
+                  {category.name}
+                </span>
+              }
             />
           )}
           {category && <DetailRow label="Type" value={typeLabel} />}
@@ -271,7 +277,7 @@ function DetailRow({
   wrap,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   mono?: boolean;
   wrap?: boolean;
 }) {

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Category is one user-defined spending label: an emoji plus a name. It is
+// Category is one user-defined spending label: an icon plus a name. It is
 // global (not scoped to a statement), so the same label applies to PDF
 // imports and SMS wallets alike. SortOrder is the user's manual position in
 // the picker and the chart legend: lower shows first, and new categories are
@@ -16,7 +16,7 @@ import (
 type Category struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
-	Emoji     string    `json:"emoji"`
+	Icon      string    `json:"icon"`
 	SortOrder int       `json:"sortOrder"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -47,7 +47,7 @@ func (s *Store) ListCategories() ([]Category, error) {
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, name, emoji, sort_order, created_at
+		SELECT id, name, icon, sort_order, created_at
 		FROM categories
 		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Store) ListCategories() ([]Category, error) {
 			c       Category
 			created string
 		)
-		if err := rows.Scan(&c.ID, &c.Name, &c.Emoji, &c.SortOrder, &created); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.SortOrder, &created); err != nil {
 			return nil, fmt.Errorf("could not read category: %w", err)
 		}
 		c.CreatedAt = parseTime(created)
@@ -83,8 +83,8 @@ func (s *Store) CategoryByID(id string) (Category, error) {
 		created string
 	)
 	err := s.db.QueryRow(
-		"SELECT id, name, emoji, sort_order, created_at FROM categories WHERE id = ?", id,
-	).Scan(&c.ID, &c.Name, &c.Emoji, &c.SortOrder, &created)
+		"SELECT id, name, icon, sort_order, created_at FROM categories WHERE id = ?", id,
+	).Scan(&c.ID, &c.Name, &c.Icon, &c.SortOrder, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Category{}, fmt.Errorf("no category with id %q", id)
 	}
@@ -97,7 +97,7 @@ func (s *Store) CategoryByID(id string) (Category, error) {
 
 // AddCategory appends a category. Names are unique case-insensitively so the
 // picker never shows two rows the user cannot tell apart.
-func (s *Store) AddCategory(name, emoji string) (Category, error) {
+func (s *Store) AddCategory(name, icon string) (Category, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -115,13 +115,13 @@ func (s *Store) AddCategory(name, emoji string) (Category, error) {
 	c := Category{
 		ID:        NewID(),
 		Name:      name,
-		Emoji:     emoji,
+		Icon:      icon,
 		CreatedAt: time.Now().UTC(),
 	}
 	if _, err := s.db.Exec(`
-		INSERT INTO categories (id, name, emoji, sort_order, created_at)
+		INSERT INTO categories (id, name, icon, sort_order, created_at)
 		VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM categories), ?)`,
-		c.ID, c.Name, c.Emoji, c.CreatedAt.Format(time.RFC3339Nano),
+		c.ID, c.Name, c.Icon, c.CreatedAt.Format(time.RFC3339Nano),
 	); err != nil {
 		return Category{}, fmt.Errorf("could not save category: %w", err)
 	}
@@ -133,9 +133,9 @@ func (s *Store) AddCategory(name, emoji string) (Category, error) {
 	return c, nil
 }
 
-// UpdateCategory changes a category's name and emoji. Renaming keeps the id,
+// UpdateCategory changes a category's name and icon. Renaming keeps the id,
 // so every rule and deep link keeps pointing at the same category.
-func (s *Store) UpdateCategory(id, name, emoji string) error {
+func (s *Store) UpdateCategory(id, name, icon string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -151,7 +151,7 @@ func (s *Store) UpdateCategory(id, name, emoji string) error {
 	}
 
 	res, err := s.db.Exec(
-		"UPDATE categories SET name = ?, emoji = ? WHERE id = ?", name, emoji, id,
+		"UPDATE categories SET name = ?, icon = ? WHERE id = ?", name, icon, id,
 	)
 	if err != nil {
 		return fmt.Errorf("could not update category: %w", err)

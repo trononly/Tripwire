@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   Settings,
   Lightbulb,
+  Tags,
 } from "lucide-react";
 
 import {
@@ -26,6 +27,7 @@ const navMain = [
     items: [
       { title: "Dashboard", url: "/", icon: LayoutDashboard },
       { title: "Transactions", url: "/transactions", icon: ArrowLeftRight },
+      { title: "Categories", url: "/categories", icon: Tags },
       { title: "Insights", url: "/insights", icon: Lightbulb },
       { title: "Settings", url: "/settings", icon: Settings },
     ],

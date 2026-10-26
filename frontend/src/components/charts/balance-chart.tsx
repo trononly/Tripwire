@@ -41,9 +41,9 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [data]);
   // Draw-in animation, replayed whenever the dataset changes (the key
-  // remounts the chart). Reduced motion disables it entirely, and the chart
-  // only animates while on screen so it never plays in the background.
-  const { ref, inView } = useInView<HTMLDivElement>();
+  // remounts the chart). Reduced motion disables it entirely, and it draws in
+  // once, the first time it is on screen - scrolling back does not replay it.
+  const { ref, inView } = useInView<HTMLDivElement>({ once: true });
   const animate = !useReduceMotionEnabled() && inView;
   const animationKey = animate
     ? `${points.length}:${points[0]?.date ?? ""}:${points[points.length - 1]?.date ?? ""}`

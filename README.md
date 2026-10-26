@@ -74,7 +74,7 @@ React/TypeScript frontend.
 - `internal/counterparty`, `internal/txtype` - shared helpers that extract the
   counterparty and classify a transaction description, used by both analysis
   and the recurring detector.
-- `internal/categories` - the user's own emoji categories plus the rule layer
+- `internal/categories` - the user's own icon categories plus the rule layer
   that maps a receipt, counterparty or transaction type to one.
 - `frontend/src` - the UI: `App.tsx` shell, `pages/`, `components/`, `lib/`.
 - `frontend/bindings` - generated Wails bindings; do not edit by hand.
@@ -102,6 +102,13 @@ re-importing a statement or refreshing the SMS feed keeps every label.
 Resolution is transaction override, then counterparty, then type, then the
 built-in category, and a paired Fuliza fee inherits its parent purchase's
 label.
+
+The dashboard's spending breakdown switches between the built-in M-Pesa
+categories and **My categories**: unlabelled transactions stay visible as one
+gray Uncategorized slice, and tapping any slice opens the matching rows in
+Transactions. Categories themselves are renamed, reordered and deleted on the
+**Categories** page, reachable from Settings, the desktop sidebar and the
+donut's Manage link.
 
 ## Running it
 
