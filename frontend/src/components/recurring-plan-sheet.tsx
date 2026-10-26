@@ -13,12 +13,18 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store/models";
+import type {
+  PlanReminder,
+  RecurringPlan,
+} from "../../bindings/mpesa-analyzer/internal/store/models";
 import {
   CADENCE_LABELS,
   KIND_LABELS,
   WEEKDAYS,
   emptyPlan,
+  addDays,
+  dayKey,
+  nextDue,
   planTarget,
   reminderPhrase,
   samePlanTarget,
@@ -98,7 +104,9 @@ export function RecurringPlanSheet({
   const [anchorDay, setAnchorDay] = useState(1);
   const [anchorWeekday, setAnchorWeekday] = useState(0);
   const [dueTime, setDueTime] = useState("09:00");
-  const [reminders, setReminders] = useState<number[]>([1]);
+  const [reminders, setReminders] = useState<PlanReminder[]>([
+    { days: 1, time: "09:00" },
+  ]);
   const [remind, setRemind] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -121,7 +129,7 @@ export function RecurringPlanSheet({
           reminders:
             plan.reminders && plan.reminders.length > 0
               ? plan.reminders
-              : [plan.leadDays],
+              : [{ days: plan.leadDays, time: plan.dueTime }],
           leadDays: plan.leadDays,
           remind: plan.remind,
           simId: plan.simId,
@@ -141,8 +149,12 @@ export function RecurringPlanSheet({
     setAnchorWeekday(source.anchorWeekday);
     setDueTime(source.dueTime || "09:00");
     const loaded =
-      source.reminders?.length > 0 ? source.reminders : [source.leadDays];
-    setReminders(loaded.length > 0 ? loaded : [0]);
+      source.reminders.length > 0
+        ? source.reminders
+        : [{ days: source.leadDays, time: source.dueTime }];
+    setReminders(
+      loaded.length > 0 ? loaded : [{ days: 0, time: source.dueTime }],
+    );
     setRemind(source.remind);
     setSaving(false);
     setConfirmDelete(false);
@@ -191,6 +203,41 @@ export function RecurringPlanSheet({
     }
   }
 
+  // The calendar rows show the actual date of each reminder for the next
+  // occurrence; the stored value stays a day offset so it repeats every cycle.
+  const duePreview = useMemo(
+    () =>
+      nextDue({
+        name,
+        kind,
+        number,
+        account,
+        amount: askAmount ? 0 : toCents(amount),
+        cadence,
+        anchorDay,
+        anchorWeekday,
+        dueTime,
+        reminders,
+        leadDays: reminders[0]?.days ?? 0,
+        remind,
+        simId: "",
+      }),
+    [
+      name,
+      kind,
+      number,
+      account,
+      amount,
+      askAmount,
+      cadence,
+      anchorDay,
+      anchorWeekday,
+      dueTime,
+      reminders,
+      remind,
+    ],
+  );
+
   async function handleSave() {
     setError(null);
     if (!targetValid) {
@@ -227,7 +274,7 @@ export function RecurringPlanSheet({
       anchorWeekday,
       dueTime,
       reminders,
-      leadDays: reminders[0] ?? 0,
+      leadDays: reminders[0]?.days ?? 0,
       remind,
       simId: "",
     };
@@ -455,7 +502,7 @@ export function RecurringPlanSheet({
               <div className="space-y-3 border-t border-border p-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="plan-time" className="text-xs">
-                    Time
+                    Due time
                   </Label>
                   <Input
                     id="plan-time"
@@ -467,84 +514,91 @@ export function RecurringPlanSheet({
 
                 <div className="space-y-2">
                   <Label className="text-xs">Reminders</Label>
-                  {reminders.map((value, index) => (
-                    <div key={index} className="flex items-center gap-1.5">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={30}
-                        aria-label="Days"
-                        value={Math.abs(value)}
-                        onChange={(e) => {
-                          const raw = Math.floor(Number(e.target.value));
-                          const magnitude = Number.isFinite(raw)
-                            ? Math.min(30, Math.max(0, raw))
-                            : 0;
-                          setReminders((list) =>
-                            list.map((item, i) =>
-                              i === index
-                                ? item < 0
-                                  ? -magnitude
-                                  : magnitude
-                                : item,
-                            ),
-                          );
-                        }}
-                        className="w-16"
-                      />
-                      <OptionButton
-                        selected={value > 0}
-                        onClick={() =>
-                          setReminders((list) =>
-                            list.map((item, i) =>
-                              i === index ? Math.max(1, Math.abs(item)) : item,
-                            ),
-                          )
-                        }
-                        className="flex-1 px-2 py-1 text-xs"
-                      >
-                        Before
-                      </OptionButton>
-                      <OptionButton
-                        selected={value < 0}
-                        onClick={() =>
-                          setReminders((list) =>
-                            list.map((item, i) =>
-                              i === index ? -Math.max(1, Math.abs(item)) : item,
-                            ),
-                          )
-                        }
-                        className="flex-1 px-2 py-1 text-xs"
-                      >
-                        After
-                      </OptionButton>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Remove reminder"
-                        disabled={reminders.length === 1}
-                        onClick={() =>
-                          setReminders((list) => list.filter((_, i) => i !== index))
-                        }
-                        className="size-8 shrink-0"
-                      >
-                        <X className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
+                  {reminders.map((reminder, index) => {
+                    const date = addDays(duePreview, -reminder.days);
+                    const min = dayKey(addDays(duePreview, -30));
+                    const max = dayKey(addDays(duePreview, 30));
+                    return (
+                      <div key={index} className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="date"
+                            aria-label="Reminder date"
+                            value={dayKey(date)}
+                            min={min}
+                            max={max}
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const picked = new Date(`${e.target.value}T00:00:00`);
+                              const dueDay = new Date(
+                                duePreview.getFullYear(),
+                                duePreview.getMonth(),
+                                duePreview.getDate(),
+                              );
+                              const pickedDay = new Date(
+                                picked.getFullYear(),
+                                picked.getMonth(),
+                                picked.getDate(),
+                              );
+                              const diff = Math.round(
+                                (dueDay.getTime() - pickedDay.getTime()) / 86_400_000,
+                              );
+                              const days = Math.max(-30, Math.min(30, diff));
+                              setReminders((list) =>
+                                list.map((item, i) =>
+                                  i === index ? { ...item, days } : item,
+                                ),
+                              );
+                            }}
+                            className="min-w-0 flex-1"
+                          />
+                          <Input
+                            type="time"
+                            aria-label="Reminder time"
+                            value={reminder.time}
+                            onChange={(e) =>
+                              setReminders((list) =>
+                                list.map((item, i) =>
+                                  i === index
+                                    ? { ...item, time: e.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="w-[112px] shrink-0"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Remove reminder"
+                            disabled={reminders.length === 1}
+                            onClick={() =>
+                              setReminders((list) =>
+                                list.filter((_, i) => i !== index),
+                              )
+                            }
+                            className="size-8 shrink-0"
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {reminderPhrase(reminder.days)} at {reminder.time}
+                        </p>
+                      </div>
+                    );
+                  })}
                   {reminders.length < 5 && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        setReminders((list) => {
-                          const candidate = [0, 1, 2, 3, 7].find(
-                            (value) => !list.includes(value),
-                          );
-                          return [...list, candidate ?? 0];
-                        })
+                        setReminders((list) => [
+                          ...list,
+                          { days: 0, time: dueTime },
+                        ])
                       }
                       className="w-full gap-1.5"
                     >
@@ -552,9 +606,6 @@ export function RecurringPlanSheet({
                       Add another reminder
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    {reminders.map(reminderPhrase).join(", ")}
-                  </p>
                 </div>
               </div>
             )}

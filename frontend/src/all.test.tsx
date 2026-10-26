@@ -1432,7 +1432,10 @@ describe("recurring plans", () => {
 	it("schedules every reminder and silences a cycle already paid", () => {
 		const base = plan({
 			anchorDay: 1,
-			reminders: [1, 0],
+			reminders: [
+				{ days: 1, time: "09:00" },
+				{ days: 0, time: "09:00" },
+			],
 			dueTime: "09:00",
 		});
 		const now = new Date(2026, 9, 26, 12, 0);
@@ -1461,12 +1464,24 @@ describe("recurring plans", () => {
 	});
 
 	it("describes several reminders in order", () => {
-		expect(reminderLabel(plan({ reminders: [2, 0, -1] }))).toBe(
-			"Remind 2 days before, on the day and 1 day after, 09:00",
+		expect(
+			reminderLabel(
+				plan({
+					reminders: [
+						{ days: 2, time: "09:00" },
+						{ days: 0, time: "09:00" },
+						{ days: -1, time: "18:00" },
+					],
+				}),
+			),
+		).toBe(
+			"Remind 2 days before at 09:00, on the day at 09:00 and 1 day after at 18:00",
 		);
-		expect(reminderLabel(plan({ reminders: [0], leadDays: 0 }))).toBe(
-			"Remind on the day, 09:00",
-		);
+		expect(
+			reminderLabel(
+				plan({ reminders: [{ days: 0, time: "09:00" }], leadDays: 0 }),
+			),
+		).toBe("Remind on the day at 09:00");
 		expect(reminderLabel(plan({ remind: false }))).toBe("Reminders off");
 	});
 

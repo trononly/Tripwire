@@ -163,19 +163,41 @@ func TestMultipleRemindersAreSortedAndDeduped(t *testing.T) {
 	svc := New(newStore(t))
 
 	plan := sendPlan()
-	plan.Reminders = []int{0, 2, -1, 2}
+	plan.Reminders = []store.PlanReminder{
+		{Days: 0, Time: "09:00"},
+		{Days: 2, Time: "18:00"},
+		{Days: -1, Time: "08:30"},
+		{Days: 2, Time: "18:00"},
+	}
 	got, err := svc.Add(plan)
 	if err != nil {
 		t.Fatalf("add with multiple reminders: %v", err)
 	}
-	if len(got.Reminders) != 3 || got.Reminders[0] != 2 || got.Reminders[1] != 0 || got.Reminders[2] != -1 {
-		t.Fatalf("reminders = %v, want [2 0 -1]", got.Reminders)
+	want := []store.PlanReminder{
+		{Days: 2, Time: "18:00"},
+		{Days: 0, Time: "09:00"},
+		{Days: -1, Time: "08:30"},
+	}
+	if len(got.Reminders) != len(want) {
+		t.Fatalf("reminders = %v, want %v", got.Reminders, want)
+	}
+	for i := range want {
+		if got.Reminders[i] != want[i] {
+			t.Fatalf("reminders = %v, want %v", got.Reminders, want)
+		}
 	}
 	if got.LeadDays != 2 {
 		t.Fatalf("leadDays = %d, want the first reminder (2)", got.LeadDays)
 	}
 
-	plan.Reminders = []int{0, 1, 2, 3, 4, 5}
+	plan.Reminders = []store.PlanReminder{
+		{Days: 0, Time: "09:00"},
+		{Days: 1, Time: "09:00"},
+		{Days: 2, Time: "09:00"},
+		{Days: 3, Time: "09:00"},
+		{Days: 4, Time: "09:00"},
+		{Days: 5, Time: "09:00"},
+	}
 	if _, err := svc.Add(plan); err == nil {
 		t.Fatal("expected the five-reminder limit")
 	}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, X } from "lucide-react";
+import { Banknote, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, Undo2, X } from "lucide-react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 
@@ -579,6 +579,18 @@ function PlanPage({
             {planTarget(toPlanLike(plan))}
           </p>
         </div>
+        {plan.skippedFor && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Undo skip for ${shortDay(plan.skippedFor)}`}
+            title={`Undo skip for ${shortDay(plan.skippedFor)}`}
+            onClick={onUnskip}
+            className="size-8 shrink-0 text-muted-foreground"
+          >
+            <Undo2 className="size-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -616,21 +628,6 @@ function PlanPage({
           <p className="truncate">{reminderLabel(toPlanLike(plan))}</p>
         </div>
       </div>
-
-      {plan.skippedFor && (
-        <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
-          <span className="text-muted-foreground">
-            Skipped {shortDay(plan.skippedFor)}
-          </span>
-          <button
-            type="button"
-            onClick={onUnskip}
-            className="font-medium underline underline-offset-2 hover:text-foreground"
-          >
-            Undo
-          </button>
-        </div>
-      )}
 
       <div className="flex items-center gap-2">
         <Button onClick={onPlay} disabled={busy} className="flex-1">

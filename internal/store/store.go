@@ -112,6 +112,15 @@ type LipaFavourite struct {
 // USSD target exactly like LipaFavourite: a phone for send/pochi, a paybill
 // with its account, or a till. SimID pins the payment to one wallet; empty
 // follows the wallet selected in the header, which is the usual case.
+// PlanReminder is one notification time for a plan: how many days from the
+// due date and at what time. Days is positive before, 0 on the day and
+// negative after, so "2 days before at 18:00" and "1 day after at 09:00" are
+// both expressible without another column.
+type PlanReminder struct {
+	Days int    `json:"days"`
+	Time string `json:"time"`
+}
+
 type RecurringPlan struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -125,11 +134,11 @@ type RecurringPlan struct {
 	DueTime       string `json:"dueTime"` // "HH:MM" local
 	LeadDays      int    `json:"leadDays"`
 	// Reminders are day offsets relative to the due date: positive before,
-	// 0 on the day, negative after. The plan's time applies to each one.
+	// 0 on the day, negative after, each with its own clock time.
 	// LeadDays is the first offset, kept for older rows and clients.
-	Reminders []int  `json:"reminders"`
-	Remind    bool   `json:"remind"`
-	SimID     string `json:"simId"`
+	Reminders []PlanReminder `json:"reminders"`
+	Remind    bool           `json:"remind"`
+	SimID     string         `json:"simId"`
 	// SkippedFor is the "YYYY-MM-DD" occurrence the user marked as handled
 	// without a recorded payment (paid in cash, or not paying this time).
 	// Empty when nothing is skipped. The schedule advances past it and no
@@ -1020,7 +1029,7 @@ func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
 		); err != nil {
 			return nil, fmt.Errorf("could not read recurring plan: %w", err)
 		}
-		p.Reminders = decodeReminders(raw, p.LeadDays)
+		p.Reminders = decodeReminders(raw, p.LeadDays, p.DueTime)
 		p.Remind = remind != 0
 		p.CreatedAt = parseTime(created)
 		out = append(out, p)
@@ -1127,19 +1136,34 @@ func insertRecurringPlan(
 
 // decodeReminders reads the stored JSON offsets. Rows written before the
 // reminders column existed fall back to their single LeadDays value.
-func decodeReminders(raw string, fallback int) []int {
+func decodeReminders(raw string, fallback int, dueTime string) []PlanReminder {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return []int{fallback}
+		return []PlanReminder{{Days: fallback, Time: dueTime}}
 	}
-	var out []int
+	// Rows written before reminders carried their own time stored an array
+	// of day offsets. Read those with the plan's due time.
+	var days []int
+	if err := json.Unmarshal([]byte(raw), &days); err == nil && len(days) > 0 {
+		out := make([]PlanReminder, 0, len(days))
+		for _, d := range days {
+			out = append(out, PlanReminder{Days: d, Time: dueTime})
+		}
+		return out
+	}
+	var out []PlanReminder
 	if err := json.Unmarshal([]byte(raw), &out); err != nil || len(out) == 0 {
-		return []int{fallback}
+		return []PlanReminder{{Days: fallback, Time: dueTime}}
+	}
+	for i := range out {
+		if out[i].Time == "" {
+			out[i].Time = dueTime
+		}
 	}
 	return out
 }
 
-func encodeReminders(reminders []int) string {
+func encodeReminders(reminders []PlanReminder) string {
 	if len(reminders) == 0 {
 		return ""
 	}

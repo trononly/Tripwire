@@ -47,19 +47,19 @@ const (
 // unmarshalled from the dialog's empty string, and the store owns both fields
 // anyway.
 type Input struct {
-	Name          string `json:"name"`
-	Kind          string `json:"kind"`
-	Number        string `json:"number"`
-	Account       string `json:"account"`
-	Amount        int64  `json:"amount"`
-	Cadence       string `json:"cadence"`
-	AnchorDay     int    `json:"anchorDay"`
-	AnchorWeekday int    `json:"anchorWeekday"`
-	DueTime       string `json:"dueTime"`
-	LeadDays      int    `json:"leadDays"`
-	Reminders     []int  `json:"reminders"`
-	Remind        bool   `json:"remind"`
-	SimID         string `json:"simId"`
+	Name          string               `json:"name"`
+	Kind          string               `json:"kind"`
+	Number        string               `json:"number"`
+	Account       string               `json:"account"`
+	Amount        int64                `json:"amount"`
+	Cadence       string               `json:"cadence"`
+	AnchorDay     int                  `json:"anchorDay"`
+	AnchorWeekday int                  `json:"anchorWeekday"`
+	DueTime       string               `json:"dueTime"`
+	LeadDays      int                  `json:"leadDays"`
+	Reminders     []store.PlanReminder `json:"reminders"`
+	Remind        bool                 `json:"remind"`
+	SimID         string               `json:"simId"`
 }
 
 // Service is the validation layer between the Wails service and the store.
@@ -206,27 +206,39 @@ func normalize(in Input) (store.RecurringPlan, error) {
 	}
 	reminders := in.Reminders
 	if len(reminders) == 0 {
-		reminders = []int{in.LeadDays}
+		reminders = []store.PlanReminder{{Days: in.LeadDays, Time: out.DueTime}}
 	}
 	if len(reminders) > 5 {
 		return out, fmt.Errorf("use up to five reminders")
 	}
-	seen := make(map[int]bool, len(reminders))
-	clean := make([]int, 0, len(reminders))
-	for _, days := range reminders {
-		if days < -MaxLeadDays || days > MaxLeadDays {
+	seen := make(map[string]bool, len(reminders))
+	clean := make([]store.PlanReminder, 0, len(reminders))
+	for _, reminder := range reminders {
+		if reminder.Days < -MaxLeadDays || reminder.Days > MaxLeadDays {
 			return out, fmt.Errorf("remind up to %d days before or after", MaxLeadDays)
 		}
-		if seen[days] {
+		if reminder.Time == "" {
+			reminder.Time = out.DueTime
+		}
+		if _, err := time.Parse("15:04", reminder.Time); err != nil {
+			return out, fmt.Errorf("choose a valid reminder time")
+		}
+		key := fmt.Sprintf("%d|%s", reminder.Days, reminder.Time)
+		if seen[key] {
 			continue
 		}
-		seen[days] = true
-		clean = append(clean, days)
+		seen[key] = true
+		clean = append(clean, reminder)
 	}
 	// Earliest first: 7 days before, 1 day before, on the day, then after.
-	sort.Sort(sort.Reverse(sort.IntSlice(clean)))
+	sort.SliceStable(clean, func(i, j int) bool {
+		if clean[i].Days != clean[j].Days {
+			return clean[i].Days > clean[j].Days
+		}
+		return clean[i].Time < clean[j].Time
+	})
 	out.Reminders = clean
-	out.LeadDays = clean[0]
+	out.LeadDays = clean[0].Days
 	if len(out.SimID) > 64 {
 		return out, fmt.Errorf("invalid wallet")
 	}

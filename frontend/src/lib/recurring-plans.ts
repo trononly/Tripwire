@@ -7,7 +7,10 @@
 // once the user tracks it, so the card never shows the same payee twice.
 
 import type { RecurringPayment } from "../../bindings/mpesa-analyzer/internal/recurring/models";
-import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store/models";
+import type {
+  PlanReminder,
+  RecurringPlan,
+} from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Transaction } from "../../bindings/mpesa-analyzer/internal/parser/models";
 import { formatMoney } from "@/lib/format";
 import {
@@ -32,8 +35,9 @@ export interface PlanDraft {
   anchorDay: number;
   anchorWeekday: number;
   dueTime: string;
-  /** Day offsets: positive before, 0 on the day, negative after. */
-  reminders: number[];
+  /** Day offsets with their own time: positive before, 0 on the day,
+   * negative after. */
+  reminders: PlanReminder[];
   /** First offset, kept for older callers. */
   leadDays: number;
   remind: boolean;
@@ -67,7 +71,7 @@ export function toPlanLike(plan: RecurringPlan): PlanLike {
     reminders:
       plan.reminders && plan.reminders.length > 0
         ? plan.reminders
-        : [plan.leadDays],
+        : [{ days: plan.leadDays, time: plan.dueTime }],
     leadDays: plan.leadDays,
     remind: plan.remind,
     simId: plan.simId,
@@ -252,13 +256,22 @@ export function reminderPhrase(days: number): string {
 
 export function reminderLabel(plan: PlanDraft): string {
   if (!plan.remind) return "Reminders off";
-  const list = plan.reminders?.length ? plan.reminders : [plan.leadDays];
-  const phrases = list.map(reminderPhrase);
+  const list = plan.reminders?.length
+    ? plan.reminders
+    : [{ days: plan.leadDays, time: plan.dueTime }];
+  const phrases = list.map(
+    (reminder) => `${reminderPhrase(reminder.days)} at ${reminder.time}`,
+  );
   const joined =
     phrases.length === 1
       ? phrases[0]
       : `${phrases.slice(0, -1).join(", ")} and ${phrases[phrases.length - 1]}`;
-  return `Remind ${joined}, ${plan.dueTime}`;
+  return `Remind ${joined}`;
+}
+
+/** Date arithmetic used by the reminder picker; local time throughout. */
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY_MS);
 }
 
 function digits(raw: string): string {
@@ -377,7 +390,7 @@ export function emptyPlan(now: Date = new Date()): PlanDraft {
     anchorDay: now.getDate(),
     anchorWeekday: now.getDay(),
     dueTime: "09:00",
-    reminders: [1],
+    reminders: [{ days: 1, time: "09:00" }],
     leadDays: 1,
     remind: true,
     simId: "",
@@ -672,7 +685,10 @@ export function buildReminderItems(
   for (const plan of plans) {
     if (!plan.remind) continue;
     const like = toPlanLike(plan);
-    const offsets = like.reminders.length > 0 ? like.reminders : [like.leadDays];
+    const offsets =
+      like.reminders.length > 0
+        ? like.reminders
+        : [{ days: like.leadDays, time: like.dueTime }];
     const paid = lastPaid[plan.id] ?? null;
 
     for (const occurrence of upcoming(like, 6, now)) {
@@ -687,10 +703,17 @@ export function buildReminderItems(
           : `Payment due ${when}`;
 
       for (const offset of offsets) {
-        const at = new Date(occurrence.getTime() - offset * DAY_MS);
+        const at = addDays(occurrence, -offset.days);
+        const [hours, minutes] = offset.time.split(":").map(Number);
+        at.setHours(
+          Number.isFinite(hours) ? hours : 9,
+          Number.isFinite(minutes) ? minutes : 0,
+          0,
+          0,
+        );
         if (at.getTime() <= now.getTime() + 60_000) continue;
         items.push({
-          id: `${plan.id}:${dayKey(occurrence)}:${offset}`,
+          id: `${plan.id}:${dayKey(occurrence)}:${offset.days}:${offset.time}`,
           planId: plan.id,
           title: plan.name,
           body,
