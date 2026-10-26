@@ -80,10 +80,10 @@ func TestSameContactCanHaveSeveralPlans(t *testing.T) {
 	svc := New(newStore(t))
 
 	first := sendPlan()
-	first.Name = "Walter — bundles"
+	first.Name = "Walter - bundles"
 	first.Amount = 10_000
 	second := sendPlan()
-	second.Name = "Walter — rent"
+	second.Name = "Walter - rent"
 	second.Amount = 1_500_000
 
 	if _, err := svc.Add(first); err != nil {

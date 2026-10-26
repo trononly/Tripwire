@@ -97,7 +97,7 @@ const STATUS_TEXT: Record<string, string> = {
   starting: "Opening the M-PESA menu…",
   step: "Filling the menu…",
   "awaiting-pin": "Enter your M-PESA PIN in the phone dialog.",
-  complete: "Menu ready — finish with your PIN.",
+  complete: "Menu ready - finish with your PIN.",
   aborted: "Payment stopped.",
 };
 
@@ -120,7 +120,7 @@ export interface RecurringPaymentsProps {
 /**
  * Recurring payments: the payments you set up are the card, with Play and
  * reminders. Detected bills are suggestions below them, not another kind of
- * payment page — they either become a plan or get dismissed. No "Yours" /
+ * payment page - they either become a plan or get dismissed. No "Yours" /
  * "Detected" badges: where a row sits already says what it is.
  */
 export function RecurringPayments({
@@ -634,7 +634,7 @@ function SuggestionRow({
           {isTracked() ? (
             <>
               <Check className="size-4" aria-hidden />
-              Tracked — add another
+              Tracked - add another
             </>
           ) : (
             <>
