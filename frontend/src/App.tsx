@@ -232,6 +232,7 @@ function App() {
                         activeStatement={
                           mode === "statements" ? stmts.activeStatement : null
                         }
+                        simKey={paySim}
                       />
                     </Suspense>
                   }

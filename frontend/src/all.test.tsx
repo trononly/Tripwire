@@ -49,6 +49,21 @@ import {
 	normalizePhone,
 } from "@/lib/ussd-menus";
 import { paySimKey } from "@/lib/pay-sim";
+import type { RecurringPayment } from "../bindings/mpesa-analyzer/internal/recurring/models";
+import type { Transaction } from "../bindings/mpesa-analyzer/internal/parser/models";
+import {
+	amountBands,
+	buildReminderItems,
+	emptyPlan,
+	planCoversDetected,
+	planFromDetected,
+	reminderLabel,
+	lastPaidOf,
+	nextDue,
+	planScript,
+	samePlanTarget,
+	type PlanLike,
+} from "@/lib/recurring-plans";
 import {
 	favouriteInitials,
 	formatFavouritePhone,
@@ -1348,5 +1363,261 @@ describe("sms result filtering", () => {
 		expect(end! - start!).toBe(24 * 60 * 60 * 1000 - 1);
 		expect(dayStartMs("")).toBeNull();
 		expect(dayEndMs("nope")).toBeNull();
+	});
+});
+
+describe("recurring plans", () => {
+	const plan = (over: Partial<PlanLike> = {}): PlanLike => ({
+		...emptyPlan(new Date(2026, 0, 15)),
+		id: "plan-1",
+		createdAt: "2026-01-15T09:00:00Z",
+		name: "Agnes Muiruri",
+		kind: "send",
+		number: "0712345678",
+		amount: 25_000,
+		cadence: "monthly",
+		anchorDay: 31,
+		dueTime: "09:00",
+		...over,
+	});
+
+	it("clamps a monthly anchor to the last day of a shorter month", () => {
+		const due = nextDue(plan(), new Date(2026, 1, 10));
+		expect(due.getMonth()).toBe(1);
+		expect(due.getDate()).toBe(28);
+		expect(due.getHours()).toBe(9);
+	});
+
+	it("finds the next weekly and bi-weekly occurrence", () => {
+		const weekly = nextDue(plan({ cadence: "weekly", anchorWeekday: 5 }), new Date(2026, 9, 21));
+		expect(weekly.getDay()).toBe(5);
+		expect(weekly.getDate()).toBe(23);
+
+		const biweekly = nextDue(
+			plan({
+				cadence: "bi-weekly",
+				anchorWeekday: 5,
+				createdAt: "2026-10-02T09:00:00Z",
+			}),
+			new Date(2026, 9, 20),
+		);
+		expect(biweekly.getDay()).toBe(5);
+		expect(biweekly.getDate()).toBe(30);
+	});
+
+	it("matches last paid by paybill number and account, outflows only", () => {
+		const kplc = plan({
+			name: "KPLC",
+			kind: "paybill",
+			number: "888880",
+			account: "01450540651",
+			amount: 0,
+		});
+		const txs: Transaction[] = [
+			{ id: "1", date: "2026-02-01 10:00:00", description: "Pay Bill Online to 888880 Acc. 01450540651", status: "Success", amount: -245_000, balance: 0 },
+			{ id: "2", date: "2026-03-01 10:00:00", description: "Pay Bill Online to 888880 Acc. 01450540651", status: "Success", amount: -230_000, balance: 0 },
+			{ id: "3", date: "2026-03-02 10:00:00", description: "Pay Bill Online to 888880 Acc. 9999", status: "Success", amount: -1_000, balance: 0 },
+			{ id: "4", date: "2026-04-01 10:00:00", description: "Funds received from - 888880 KPLC", status: "Success", amount: 5_000, balance: 0 },
+		];
+		expect(lastPaidOf(kplc, txs)).toEqual({ date: "2026-03-01 10:00:00", amount: 230_000 });
+	});
+
+	it("matches a send plan by the name printed in the statement", () => {
+		const txs: Transaction[] = [
+			{ id: "1", date: "2026-02-03 08:00:00", description: "Customer Transfer to - AGNES MUIRURI 0712***678", status: "Success", amount: -25_000, balance: 0 },
+		];
+		expect(lastPaidOf(plan(), txs)?.date).toBe("2026-02-03 08:00:00");
+	});
+
+	it("schedules every reminder and silences a cycle already paid", () => {
+		const base = plan({
+			anchorDay: 1,
+			reminders: [
+				{ offsetMinutes: -1440 },
+				{ offsetMinutes: 0 },
+			],
+			dueTime: "09:00",
+		});
+		const now = new Date(2026, 9, 26, 12, 0);
+		const items = buildReminderItems([base as never], {}, now);
+		// Six monthly occurrences, two reminders each.
+		expect(items).toHaveLength(12);
+		expect(new Date(items[0].at).getDate()).toBe(31);
+		expect(new Date(items[1].at).getDate()).toBe(1);
+		expect(items[0].body).toContain("250.00");
+
+		// A payment made the day before the occurrence covers that cycle:
+		// November's two alarms are gone, December's remain.
+		const paid = {
+			"plan-1": { date: "2026-10-31 18:00:00", amount: 25_000 },
+		};
+		const afterPaid = buildReminderItems([base as never], paid, now);
+		expect(afterPaid).toHaveLength(10);
+		expect(afterPaid[0].body).toContain("Dec");
+		expect(new Date(afterPaid[0].at).getMonth()).toBe(10);
+
+		// An older payment, from the previous cycle, does not.
+		const old = {
+			"plan-1": { date: "2026-10-01 18:00:00", amount: 25_000 },
+		};
+		expect(buildReminderItems([base as never], old, now)).toHaveLength(12);
+	});
+
+	it("describes several reminders in order", () => {
+		expect(
+			reminderLabel(
+				plan({
+					reminders: [
+						{ offsetMinutes: -2880 },
+						{ offsetMinutes: 0 },
+						{ offsetMinutes: -600 },
+					],
+				}),
+			),
+		).toBe("Remind 2 days before, on the due date and 10 hours before");
+		expect(
+			reminderLabel(
+				plan({ reminders: [{ offsetMinutes: 0 }], leadDays: 0 }),
+			),
+		).toBe("Remind on the due date");
+		expect(reminderLabel(plan({ remind: false }))).toBe("Reminders off");
+	});
+
+	it("steps over a skipped occurrence", () => {
+		const skipped = plan({ anchorDay: 5, skippedFor: "2026-11-05" });
+		const due = nextDue(skipped, new Date(2026, 9, 26));
+		expect(due.getMonth()).toBe(11);
+		expect(due.getDate()).toBe(5);
+
+		// A skip from a past cycle does not affect the next date.
+		const old = plan({ anchorDay: 5, skippedFor: "2026-01-05" });
+		expect(nextDue(old, new Date(2026, 9, 26)).getMonth()).toBe(10);
+	});
+
+	it("recognises another plan for the same contact", () => {
+		expect(samePlanTarget(plan(), "send", "254712345678", "")).toBe(true);
+		expect(samePlanTarget(plan(), "pochi", "0712345678", "")).toBe(false);
+		expect(
+			samePlanTarget(
+				plan({ kind: "paybill", number: "888880", account: "A1" }),
+				"paybill",
+				"888880",
+				"a1",
+			),
+		).toBe(true);
+		expect(
+			samePlanTarget(
+				plan({ kind: "paybill", number: "888880", account: "A1" }),
+				"paybill",
+				"888880",
+				"A2",
+			),
+		).toBe(false);
+	});
+
+	it("splits a wide detected range into amount bands", () => {
+		const payment = {
+			counterparty: "WALTER KAGUCHIA 0715448705",
+			count: 9,
+			type: "send_money",
+			amount: 38_700,
+			amountMin: 6_900,
+			amountMax: 1_650_000,
+			cadence: "monthly",
+			medianGapDays: 30,
+			firstDate: "2026-03-27 12:30:32",
+			lastDate: "2026-10-05 07:59:33",
+		} satisfies RecurringPayment;
+		const amounts = [6_900, 30_500, 35_900, 38_500, 38_700, 58_300, 1_400_000, 1_650_000];
+		const txs: Transaction[] = amounts.map((amount, i) => ({
+			id: String(i),
+			date: "2026-10-05 07:59:33",
+			description: "Customer Transfer to - WALTER KAGUCHIA 0715448705",
+			status: "Success",
+			amount: -amount,
+			balance: 0,
+		}));
+
+		const bands = amountBands(txs, payment);
+		expect(bands).toHaveLength(2);
+		expect(bands[0].count).toBe(6);
+		expect(bands[0].min).toBe(6_900);
+		expect(bands[0].max).toBe(58_300);
+		expect(bands[1].count).toBe(2);
+		expect(bands[1].min).toBe(1_400_000);
+	});
+
+	it("does not split a normal bill's amount variation", () => {
+		const payment = {
+			counterparty: "KPLC",
+			count: 4,
+			type: "paybill",
+			amount: 25_000,
+			amountMin: 20_000,
+			amountMax: 30_000,
+			cadence: "monthly",
+			medianGapDays: 30,
+			firstDate: "2026-01-01 10:00:00",
+			lastDate: "2026-04-01 10:00:00",
+		} satisfies RecurringPayment;
+		const txs: Transaction[] = [20_000, 25_000, 27_000, 30_000].map((amount, i) => ({
+			id: String(i),
+			date: "2026-04-01 10:00:00",
+			description: "Pay Bill Online to 888880 - KPLC",
+			status: "Success",
+			amount: -amount,
+			balance: 0,
+		}));
+		expect(amountBands(txs, payment)).toEqual([]);
+	});
+
+	it("marks the detected amount as tracked once a plan covers it", () => {
+		const payment = {
+			counterparty: "WALTER KAGUCHIA 0715448705",
+			count: 9,
+			type: "send_money",
+			amount: 38_700,
+			amountMin: 6_900,
+			amountMax: 1_650_000,
+			cadence: "monthly",
+			medianGapDays: 30,
+			firstDate: "2026-03-27 12:30:32",
+			lastDate: "2026-10-05 07:59:33",
+		} satisfies RecurringPayment;
+
+		const walter = plan({ name: "WALTER KAGUCHIA", amount: 38_500 });
+		expect(planCoversDetected(walter, payment, 38_500)).toBe(true);
+		expect(planCoversDetected(walter, payment, 1_525_000)).toBe(false);
+		expect(planCoversDetected(walter, payment)).toBe(true);
+		expect(planCoversDetected(plan({ name: "KPLC", amount: 38_500 }), payment)).toBe(false);
+	});
+
+	it("prefills a tracked send payment's phone and clean name", () => {
+		const draft = planFromDetected({
+			counterparty: "WALTER KAGUCHIA 0715448705",
+			count: 9,
+			type: "send_money",
+			amount: 38_700,
+			amountMin: 6_900,
+			amountMax: 1_650_000,
+			cadence: "monthly",
+			medianGapDays: 30,
+			firstDate: "2026-03-27 12:30:32",
+			lastDate: "2026-10-05 07:59:33",
+		});
+		expect(draft.kind).toBe("send");
+		expect(draft.number).toBe("0715448705");
+		expect(draft.name).toBe("WALTER KAGUCHIA");
+		expect(draft.amount).toBe(38_700);
+	});
+
+	it("builds a play script from the plan's target", () => {
+		const script = planScript(
+			plan({ kind: "paybill", number: "888880", account: "01450540651" }),
+			"250",
+		);
+		expect(script?.kind).toBe("paybill");
+		expect(script?.steps.map((s) => s.input)).toEqual(["6", "1", "888880", "01450540651", "250", "1"]);
+		expect(planScript(plan({ kind: "till", number: "12" }), "250")).toBeNull();
 	});
 });

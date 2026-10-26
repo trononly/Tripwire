@@ -883,6 +883,31 @@ public class WailsBridge {
     }
 
     /**
+     * Replace the scheduled payment reminders. json:
+     * {"items":[{"id","planId","title","body","at"}]}, where at is epoch ms.
+     * The previous batch is cancelled first, so edits and deletes never leave
+     * a stale alarm behind.
+     */
+    public void scheduleReminders(final String json) {
+        mainHandler.post(() -> ReminderScheduler.schedule(activity.getApplicationContext(), json));
+    }
+
+    /** Ask for POST_NOTIFICATIONS on Android 13+, when a reminder is saved. */
+    public void requestNotificationPermission() {
+        mainHandler.post(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(
+                        "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                    activity.requestPermissions(
+                            new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "requestNotificationPermission failed", e);
+            }
+        });
+    }
+
+    /**
      * Backing store for secure storage. Uses EncryptedSharedPreferences (AES via
      * the Android Keystore). Requires API 23+. Returns null if secure storage
      * cannot be initialized - callers MUST check for null and report the error.

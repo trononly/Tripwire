@@ -71,9 +71,16 @@ type timedTx struct {
 	at time.Time
 }
 
-// DetectRecurringPayments returns every counterparty whose outgoing
-// payments qualify as recurring, sorted by counterparty name for stable,
-// deterministic output.
+// DetectRecurringPayments returns every counterparty-and-method whose
+// outgoing payments qualify as recurring, sorted by counterparty name (then
+// payment method) for stable, deterministic output.
+//
+// Grouping by counterparty alone lumps unrelated payments to the same payee
+// together: a person who receives your weekly KES 100 send-money transfer and
+// an occasional KES 16,500 paybill would produce one group with an
+// unreadable amount range and a mixed transaction type. Splitting by the
+// transaction type keeps "send money" separate from "paybill"/"buy goods", so
+// each real payment pattern gets its own cadence, amount range and plan.
 //
 // The function never returns an error because it has no failure path: it
 // is total over its input space, and every input - including nil - maps to
@@ -86,28 +93,45 @@ type timedTx struct {
 // in this input indicates a caller bypassing the parser; validate upstream
 // if visibility into dropped rows matters.
 func DetectRecurringPayments(transactions []parser.Transaction) []RecurringPayment {
-	groups := groupByCounterparty(transactions)
+	groups := groupByPaymentMethod(transactions)
 
 	results := make([]RecurringPayment, 0, len(groups))
-	for counterparty, txs := range groups {
+	for key, txs := range groups {
 		if p, ok := analyzeGroup(txs); ok {
-			p.Counterparty = counterparty
+			p.Counterparty = key.counterparty
 			results = append(results, p)
 		}
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].Counterparty < results[j].Counterparty })
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Counterparty != results[j].Counterparty {
+			return results[i].Counterparty < results[j].Counterparty
+		}
+		if results[i].Type != results[j].Type {
+			return results[i].Type < results[j].Type
+		}
+		return results[i].Amount < results[j].Amount
+	})
 	return results
 }
 
-// groupByCounterparty collects eligible outgoing payments: negative amount
+// paymentMethod groups payments to the same payee made the same way. The
+// type comes from the statement description (see internal/txtype), never
+// from the name, so two Send Money transfers and a Pay Bill to one person
+// stay three separate patterns.
+type paymentMethod struct {
+	counterparty string
+	typ          txtype.TransactionType
+}
+
+// groupByPaymentMethod collects eligible outgoing payments: negative amount
 // (money out), a non-empty counterparty, and a parseable date. The parser
 // normally returns transactions in chronological order, but ordering is
 // not part of its contract, so each group is sorted defensively; the cost
 // is one O(n log n) pass over the eligible subset. Unparseable dates are
 // skipped: one corrupt row must not poison a long payment history with
 // bogus gaps.
-func groupByCounterparty(transactions []parser.Transaction) map[string][]timedTx {
-	groups := make(map[string][]timedTx)
+func groupByPaymentMethod(transactions []parser.Transaction) map[paymentMethod][]timedTx {
+	groups := make(map[paymentMethod][]timedTx)
 	for _, tx := range transactions {
 		if tx.Amount >= 0 {
 			continue
@@ -120,7 +144,11 @@ func groupByCounterparty(transactions []parser.Transaction) map[string][]timedTx
 		if err != nil {
 			continue
 		}
-		groups[counterparty] = append(groups[counterparty], timedTx{tx: tx, at: at})
+		key := paymentMethod{
+			counterparty: counterparty,
+			typ:          txtype.TypeOf(tx.Description),
+		}
+		groups[key] = append(groups[key], timedTx{tx: tx, at: at})
 	}
 	for _, group := range groups {
 		sort.SliceStable(group, func(i, j int) bool { return group[i].at.Before(group[j].at) })
@@ -192,12 +220,11 @@ func analyzeGroup(txs []timedTx) (RecurringPayment, bool) {
 	}, true
 }
 
-// majorityType returns the most common transaction type in a group. The
-// recurring detector's grouping is by counterparty, so a group's rows are
-// almost always one kind; the vote just resolves the rare mixed group
-// (e.g. a payee paid both by Pay Bill and by merchant payment). Ties are
-// broken alphabetically so the result stays deterministic. Never guesses
-// from the counterparty string - only from the statement descriptions.
+// majorityType returns the most common transaction type in a group. Groups
+// are already split by payment method, so every row normally agrees; the vote
+// keeps the result well-defined if a type rule changes mid-history. Ties are
+// broken alphabetically so the result stays deterministic. Never guesses from
+// the counterparty string - only from the statement descriptions.
 func majorityType(txs []timedTx) string {
 	counts := make(map[txtype.TransactionType]int)
 	for _, t := range txs {

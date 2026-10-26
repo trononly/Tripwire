@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -102,6 +103,50 @@ type LipaFavourite struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// RecurringPlan is one payment the user set up to pay on a schedule. The
+// detector only finds patterns already visible in the statements; a plan
+// covers the cases it cannot see (a weekly token purchase, a fixed rent
+// transfer) and gives the card a Play button and a reminder.
+//
+// Amount is in cents; 0 means "ask me for the amount when I press Play"
+// (utilities and other variable bills). Kind/Number/Account describe the
+// USSD target exactly like LipaFavourite: a phone for send/pochi, a paybill
+// with its account, or a till. SimID pins the payment to one wallet; empty
+// follows the wallet selected in the header, which is the usual case.
+// PlanReminder is one notification time for a plan, stored as how many
+// minutes before the due occurrence it fires (0 = on the due date). The
+// dialog edits it as a number plus minutes/hours/days/weeks, the way calendar
+// apps do.
+type PlanReminder struct {
+	OffsetMinutes int `json:"offsetMinutes"`
+}
+
+type RecurringPlan struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Kind          string `json:"kind"` // "send", "pochi", "paybill" or "till"
+	Number        string `json:"number"`
+	Account       string `json:"account"`
+	Amount        int64  `json:"amount"`
+	Cadence       string `json:"cadence"` // weekly, bi-weekly, monthly, quarterly
+	AnchorDay     int    `json:"anchorDay"`
+	AnchorWeekday int    `json:"anchorWeekday"`
+	DueTime       string `json:"dueTime"` // "HH:MM" local
+	LeadDays      int    `json:"leadDays"`
+	// Reminders are day offsets relative to the due date: positive before,
+	// 0 on the day, negative after, each with its own clock time.
+	// LeadDays is the first offset, kept for older rows and clients.
+	Reminders []PlanReminder `json:"reminders"`
+	Remind    bool           `json:"remind"`
+	SimID     string         `json:"simId"`
+	// SkippedFor is the "YYYY-MM-DD" occurrence the user marked as handled
+	// without a recorded payment (paid in cash, or not paying this time).
+	// Empty when nothing is skipped. The schedule advances past it and no
+	// reminder is sent for that cycle.
+	SkippedFor string    `json:"skippedFor"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 // schema is applied on every open; every statement is idempotent.
 const schema = `
 CREATE TABLE IF NOT EXISTS statements (
@@ -182,6 +227,25 @@ CREATE TABLE IF NOT EXISTS category_rules (
 
 CREATE INDEX IF NOT EXISTS idx_category_rules_category
 	ON category_rules (category_id);
+
+CREATE TABLE IF NOT EXISTS recurring_plans (
+	id             TEXT PRIMARY KEY,
+	name           TEXT NOT NULL,
+	kind           TEXT NOT NULL,
+	number         TEXT NOT NULL,
+	account        TEXT NOT NULL DEFAULT '',
+	amount         INTEGER NOT NULL DEFAULT 0,
+	cadence        TEXT NOT NULL,
+	anchor_day     INTEGER NOT NULL DEFAULT 1,
+	anchor_weekday INTEGER NOT NULL DEFAULT 0,
+	due_time       TEXT NOT NULL DEFAULT '09:00',
+	lead_days      INTEGER NOT NULL DEFAULT 0,
+	reminders      TEXT NOT NULL DEFAULT '',
+	remind         INTEGER NOT NULL DEFAULT 1,
+	sim_id         TEXT NOT NULL DEFAULT '',
+	skipped_for    TEXT NOT NULL DEFAULT '',
+	created_at     TEXT NOT NULL
+);
 `
 
 // Store wraps the SQLite database.
@@ -228,6 +292,8 @@ func New(path string) (*Store, error) {
 		`ALTER TABLE statements ADD COLUMN sim_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE statements ADD COLUMN sim_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE favourites ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE recurring_plans ADD COLUMN skipped_for TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE recurring_plans ADD COLUMN reminders TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -345,6 +411,36 @@ func migrateCategoriesIcon(db *sql.DB) error {
 	} {
 		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("could not migrate categories to icons: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// Reset removes all user data: statements and their transactions, saved
+// recipients, recurring plans and custom categories. The schema stays, so the
+// app can keep running; the next read simply sees an empty store. It runs in
+// one transaction so a failure cannot leave half a dataset behind.
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start reset: %w", err)
+	}
+	defer tx.Rollback()
+
+	// transactions go with statements through ON DELETE CASCADE.
+	for _, table := range []string{
+		"statements",
+		"favourites",
+		"lipa_favourites",
+		"recurring_plans",
+		"category_rules",
+		"categories",
+	} {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("could not clear %s: %w", table, err)
 		}
 	}
 	return tx.Commit()
@@ -899,6 +995,230 @@ func (s *Store) SetSimID(id, simID string) error {
 		return fmt.Errorf("no statement with id %q", id)
 	}
 	return nil
+}
+
+// ListRecurringPlans returns every user-defined plan. The card orders them
+// by next due date, so the store only guarantees a stable, readable order.
+func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query(`
+		SELECT id, name, kind, number, account, amount, cadence,
+		       anchor_day, anchor_weekday, due_time, lead_days, reminders,
+		       remind, sim_id, skipped_for, created_at
+		FROM recurring_plans
+		ORDER BY name COLLATE NOCASE, created_at, rowid`)
+	if err != nil {
+		return nil, fmt.Errorf("could not list recurring plans: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]RecurringPlan, 0, 8)
+	for rows.Next() {
+		var (
+			p       RecurringPlan
+			raw     string
+			remind  int
+			created string
+		)
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.Kind, &p.Number, &p.Account, &p.Amount,
+			&p.Cadence, &p.AnchorDay, &p.AnchorWeekday, &p.DueTime,
+			&p.LeadDays, &raw, &remind, &p.SimID, &p.SkippedFor, &created,
+		); err != nil {
+			return nil, fmt.Errorf("could not read recurring plan: %w", err)
+		}
+		p.Reminders = decodeReminders(raw, p.LeadDays, p.DueTime)
+		p.Remind = remind != 0
+		p.CreatedAt = parseTime(created)
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not list recurring plans: %w", err)
+	}
+	return out, nil
+}
+
+// AddRecurringPlan inserts a validated plan. The unique index on the target
+// keeps one plan per payee; the service checks it first so the UI can name
+// the existing plan instead of surfacing a constraint error.
+func (s *Store) AddRecurringPlan(p RecurringPlan) (RecurringPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p.ID = NewID()
+	p.CreatedAt = time.Now().UTC()
+	if err := insertRecurringPlan(s.db.Exec, p); err != nil {
+		return RecurringPlan{}, err
+	}
+	return p, nil
+}
+
+// UpdateRecurringPlan replaces every editable field of an existing plan.
+func (s *Store) UpdateRecurringPlan(p RecurringPlan) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec(`
+		UPDATE recurring_plans SET
+			name = ?, kind = ?, number = ?, account = ?, amount = ?,
+			cadence = ?, anchor_day = ?, anchor_weekday = ?, due_time = ?,
+			lead_days = ?, reminders = ?, remind = ?, sim_id = ?
+		WHERE id = ?`,
+		p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays,
+		encodeReminders(p.Reminders), boolInt(p.Remind), p.SimID, p.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("could not update recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", p.ID)
+	}
+	return nil
+}
+
+// SetRecurringPlanSkipped records the occurrence the user marked as handled,
+// or clears it with an empty string. It deliberately does not touch the
+// schedule: the frontend advances past the skipped date, so undoing is just
+// clearing the field.
+func (s *Store) SetRecurringPlanSkipped(id, skippedFor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec(
+		"UPDATE recurring_plans SET skipped_for = ? WHERE id = ?", skippedFor, id,
+	)
+	if err != nil {
+		return fmt.Errorf("could not skip recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", id)
+	}
+	return nil
+}
+
+// DeleteRecurringPlan removes a plan. Detected payments are analysis output,
+// not rows, so deleting a plan can never touch the statements.
+func (s *Store) DeleteRecurringPlan(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("DELETE FROM recurring_plans WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("could not delete recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", id)
+	}
+	return nil
+}
+
+func insertRecurringPlan(
+	exec func(string, ...any) (sql.Result, error), p RecurringPlan,
+) error {
+	if _, err := exec(`
+		INSERT INTO recurring_plans
+			(id, name, kind, number, account, amount, cadence, anchor_day,
+			 anchor_weekday, due_time, lead_days, reminders, remind, sim_id,
+			 skipped_for, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays,
+		encodeReminders(p.Reminders), boolInt(p.Remind), p.SimID,
+		p.SkippedFor, p.CreatedAt.UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		return fmt.Errorf("could not save recurring plan: %w", err)
+	}
+	return nil
+}
+
+// decodeReminders reads the stored JSON offsets. Rows written before the
+// reminders column existed fall back to their single LeadDays value.
+func decodeReminders(raw string, fallback int, dueTime string) []PlanReminder {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []PlanReminder{{OffsetMinutes: -fallback * 1440}}
+	}
+
+	// Three shapes exist in the wild: the current offsetMinutes objects, the
+	// earlier objects with days and a clock time, and the first array of
+	// day offsets. Read all three so an upgrade does not lose a reminder.
+	var objects []map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &objects); err == nil && len(objects) > 0 {
+		out := make([]PlanReminder, 0, len(objects))
+		for _, obj := range objects {
+			if value, ok := obj["offsetMinutes"]; ok {
+				var minutes int
+				if json.Unmarshal(value, &minutes) == nil {
+					out = append(out, PlanReminder{OffsetMinutes: minutes})
+				}
+				continue
+			}
+			var days int
+			var clock string
+			if value, ok := obj["days"]; ok {
+				_ = json.Unmarshal(value, &days)
+			}
+			if value, ok := obj["time"]; ok {
+				_ = json.Unmarshal(value, &clock)
+			}
+			out = append(out, PlanReminder{
+				OffsetMinutes: offsetFromDayAndTime(days, clock, dueTime),
+			})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	var days []int
+	if err := json.Unmarshal([]byte(raw), &days); err == nil && len(days) > 0 {
+		out := make([]PlanReminder, 0, len(days))
+		for _, d := range days {
+			out = append(out, PlanReminder{OffsetMinutes: -d * 1440})
+		}
+		return out
+	}
+	return []PlanReminder{{OffsetMinutes: -fallback * 1440}}
+}
+
+// offsetFromDayAndTime converts the old "n days before at HH:MM" shape into
+// minutes relative to the plan's due time.
+func offsetFromDayAndTime(days int, clock, dueTime string) int {
+	if clock == "" {
+		clock = dueTime
+	}
+	return -days*1440 + clockMinutes(clock) - clockMinutes(dueTime)
+}
+
+func clockMinutes(value string) int {
+	parts := strings.SplitN(value, ":", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+	hours, _ := strconv.Atoi(parts[0])
+	minutes, _ := strconv.Atoi(parts[1])
+	return hours*60 + minutes
+}
+
+func encodeReminders(reminders []PlanReminder) string {
+	if len(reminders) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(reminders)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // upsertStatement writes a record's metadata row without touching its
