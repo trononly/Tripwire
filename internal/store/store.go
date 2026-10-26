@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -112,13 +113,12 @@ type LipaFavourite struct {
 // USSD target exactly like LipaFavourite: a phone for send/pochi, a paybill
 // with its account, or a till. SimID pins the payment to one wallet; empty
 // follows the wallet selected in the header, which is the usual case.
-// PlanReminder is one notification time for a plan: how many days from the
-// due date and at what time. Days is positive before, 0 on the day and
-// negative after, so "2 days before at 18:00" and "1 day after at 09:00" are
-// both expressible without another column.
+// PlanReminder is one notification time for a plan, stored as how many
+// minutes before the due occurrence it fires (0 = on the due date). The
+// dialog edits it as a number plus minutes/hours/days/weeks, the way calendar
+// apps do.
 type PlanReminder struct {
-	Days int    `json:"days"`
-	Time string `json:"time"`
+	OffsetMinutes int `json:"offsetMinutes"`
 }
 
 type RecurringPlan struct {
@@ -1139,28 +1139,68 @@ func insertRecurringPlan(
 func decodeReminders(raw string, fallback int, dueTime string) []PlanReminder {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return []PlanReminder{{Days: fallback, Time: dueTime}}
+		return []PlanReminder{{OffsetMinutes: -fallback * 1440}}
 	}
-	// Rows written before reminders carried their own time stored an array
-	// of day offsets. Read those with the plan's due time.
+
+	// Three shapes exist in the wild: the current offsetMinutes objects, the
+	// earlier objects with days and a clock time, and the first array of
+	// day offsets. Read all three so an upgrade does not lose a reminder.
+	var objects []map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &objects); err == nil && len(objects) > 0 {
+		out := make([]PlanReminder, 0, len(objects))
+		for _, obj := range objects {
+			if value, ok := obj["offsetMinutes"]; ok {
+				var minutes int
+				if json.Unmarshal(value, &minutes) == nil {
+					out = append(out, PlanReminder{OffsetMinutes: minutes})
+				}
+				continue
+			}
+			var days int
+			var clock string
+			if value, ok := obj["days"]; ok {
+				_ = json.Unmarshal(value, &days)
+			}
+			if value, ok := obj["time"]; ok {
+				_ = json.Unmarshal(value, &clock)
+			}
+			out = append(out, PlanReminder{
+				OffsetMinutes: offsetFromDayAndTime(days, clock, dueTime),
+			})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
 	var days []int
 	if err := json.Unmarshal([]byte(raw), &days); err == nil && len(days) > 0 {
 		out := make([]PlanReminder, 0, len(days))
 		for _, d := range days {
-			out = append(out, PlanReminder{Days: d, Time: dueTime})
+			out = append(out, PlanReminder{OffsetMinutes: -d * 1440})
 		}
 		return out
 	}
-	var out []PlanReminder
-	if err := json.Unmarshal([]byte(raw), &out); err != nil || len(out) == 0 {
-		return []PlanReminder{{Days: fallback, Time: dueTime}}
+	return []PlanReminder{{OffsetMinutes: -fallback * 1440}}
+}
+
+// offsetFromDayAndTime converts the old "n days before at HH:MM" shape into
+// minutes relative to the plan's due time.
+func offsetFromDayAndTime(days int, clock, dueTime string) int {
+	if clock == "" {
+		clock = dueTime
 	}
-	for i := range out {
-		if out[i].Time == "" {
-			out[i].Time = dueTime
-		}
+	return -days*1440 + clockMinutes(clock) - clockMinutes(dueTime)
+}
+
+func clockMinutes(value string) int {
+	parts := strings.SplitN(value, ":", 2)
+	if len(parts) != 2 {
+		return 0
 	}
-	return out
+	hours, _ := strconv.Atoi(parts[0])
+	minutes, _ := strconv.Atoi(parts[1])
+	return hours*60 + minutes
 }
 
 func encodeReminders(reminders []PlanReminder) string {

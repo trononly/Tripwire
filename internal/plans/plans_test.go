@@ -140,13 +140,13 @@ func TestInvalidFields(t *testing.T) {
 	svc := New(newStore(t))
 
 	cases := map[string]func(*Input){
-		"bad kind":      func(p *Input) { p.Kind = "airtime" },
-		"bad phone":     func(p *Input) { p.Number = "123" },
-		"bad cadence":   func(p *Input) { p.Cadence = "daily" },
-		"bad anchor":    func(p *Input) { p.AnchorDay = 32 },
-		"bad time":      func(p *Input) { p.DueTime = "9 am" },
-		"bad amount":    func(p *Input) { p.Amount = -1 },
-		"bad lead time": func(p *Input) { p.LeadDays = 31 },
+		"bad kind":           func(p *Input) { p.Kind = "airtime" },
+		"bad phone":          func(p *Input) { p.Number = "123" },
+		"bad cadence":        func(p *Input) { p.Cadence = "daily" },
+		"bad anchor":         func(p *Input) { p.AnchorDay = 32 },
+		"bad time":           func(p *Input) { p.DueTime = "9 am" },
+		"bad amount":         func(p *Input) { p.Amount = -1 },
+		"reminder after due": func(p *Input) { p.Reminders = []store.PlanReminder{{OffsetMinutes: 60}} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -164,19 +164,19 @@ func TestMultipleRemindersAreSortedAndDeduped(t *testing.T) {
 
 	plan := sendPlan()
 	plan.Reminders = []store.PlanReminder{
-		{Days: 0, Time: "09:00"},
-		{Days: 2, Time: "18:00"},
-		{Days: -1, Time: "08:30"},
-		{Days: 2, Time: "18:00"},
+		{OffsetMinutes: 0},
+		{OffsetMinutes: -2880},
+		{OffsetMinutes: -10},
+		{OffsetMinutes: -2880},
 	}
 	got, err := svc.Add(plan)
 	if err != nil {
 		t.Fatalf("add with multiple reminders: %v", err)
 	}
 	want := []store.PlanReminder{
-		{Days: 2, Time: "18:00"},
-		{Days: 0, Time: "09:00"},
-		{Days: -1, Time: "08:30"},
+		{OffsetMinutes: -2880},
+		{OffsetMinutes: -10},
+		{OffsetMinutes: 0},
 	}
 	if len(got.Reminders) != len(want) {
 		t.Fatalf("reminders = %v, want %v", got.Reminders, want)
@@ -186,34 +186,47 @@ func TestMultipleRemindersAreSortedAndDeduped(t *testing.T) {
 			t.Fatalf("reminders = %v, want %v", got.Reminders, want)
 		}
 	}
-	if got.LeadDays != 2 {
-		t.Fatalf("leadDays = %d, want the first reminder (2)", got.LeadDays)
-	}
 
 	plan.Reminders = []store.PlanReminder{
-		{Days: 0, Time: "09:00"},
-		{Days: 1, Time: "09:00"},
-		{Days: 2, Time: "09:00"},
-		{Days: 3, Time: "09:00"},
-		{Days: 4, Time: "09:00"},
-		{Days: 5, Time: "09:00"},
+		{OffsetMinutes: -10},
+		{OffsetMinutes: -20},
+		{OffsetMinutes: -30},
+		{OffsetMinutes: -40},
+		{OffsetMinutes: -50},
+		{OffsetMinutes: -60},
 	}
 	if _, err := svc.Add(plan); err == nil {
-		t.Fatal("expected the five-reminder limit")
+		t.Fatal("expected the five-notification limit")
 	}
 }
 
-func TestReminderCanBeAfterTheDueDate(t *testing.T) {
+func TestOnDueDateReminderIsAlwaysPresent(t *testing.T) {
 	svc := New(newStore(t))
 
 	plan := sendPlan()
-	plan.LeadDays = -2
+	plan.Reminders = []store.PlanReminder{{OffsetMinutes: -1440}}
 	got, err := svc.Add(plan)
 	if err != nil {
-		t.Fatalf("add with a negative reminder: %v", err)
+		t.Fatalf("add: %v", err)
 	}
-	if got.LeadDays != -2 {
-		t.Fatalf("leadDays = %d, want -2", got.LeadDays)
+	if len(got.Reminders) != 2 || got.Reminders[0].OffsetMinutes != -1440 ||
+		got.Reminders[1].OffsetMinutes != 0 {
+		t.Fatalf("reminders = %v, want [-1440 0]", got.Reminders)
+	}
+}
+
+func TestReminderMustBeBeforeTheDueDate(t *testing.T) {
+	svc := New(newStore(t))
+
+	plan := sendPlan()
+	plan.Reminders = []store.PlanReminder{{OffsetMinutes: 60}}
+	if _, err := svc.Add(plan); err == nil {
+		t.Fatal("expected a before-the-due-date error")
+	}
+
+	plan.Reminders = []store.PlanReminder{{OffsetMinutes: -99_999}}
+	if _, err := svc.Add(plan); err == nil {
+		t.Fatal("expected a too-far-before error")
 	}
 }
 

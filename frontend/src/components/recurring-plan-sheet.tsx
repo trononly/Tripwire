@@ -22,16 +22,14 @@ import {
   KIND_LABELS,
   WEEKDAYS,
   emptyPlan,
-  addDays,
-  dayKey,
-  nextDue,
   planTarget,
-  reminderPhrase,
+  reminderUnit,
   samePlanTarget,
   toPlanLike,
   type PlanCadence,
   type PlanDraft,
   type PlanKind,
+  type ReminderUnit,
 } from "@/lib/recurring-plans";
 import { formatMoney } from "@/lib/format";
 import {
@@ -105,7 +103,7 @@ export function RecurringPlanSheet({
   const [anchorWeekday, setAnchorWeekday] = useState(0);
   const [dueTime, setDueTime] = useState("09:00");
   const [reminders, setReminders] = useState<PlanReminder[]>([
-    { days: 1, time: "09:00" },
+    { offsetMinutes: 0 },
   ]);
   const [remind, setRemind] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,7 +127,7 @@ export function RecurringPlanSheet({
           reminders:
             plan.reminders && plan.reminders.length > 0
               ? plan.reminders
-              : [{ days: plan.leadDays, time: plan.dueTime }],
+              : [{ offsetMinutes: 0 }],
           leadDays: plan.leadDays,
           remind: plan.remind,
           simId: plan.simId,
@@ -151,9 +149,11 @@ export function RecurringPlanSheet({
     const loaded =
       source.reminders.length > 0
         ? source.reminders
-        : [{ days: source.leadDays, time: source.dueTime }];
+        : [{ offsetMinutes: 0 }];
     setReminders(
-      loaded.length > 0 ? loaded : [{ days: 0, time: source.dueTime }],
+      loaded.some((reminder) => reminder.offsetMinutes === 0)
+        ? loaded
+        : [{ offsetMinutes: 0 }, ...loaded],
     );
     setRemind(source.remind);
     setSaving(false);
@@ -190,6 +190,48 @@ export function RecurringPlanSheet({
   }
 
   /** Guess the flow from the number, until the user picks a type. */
+  const MAX_OFFSET_MINUTES = 30 * 24 * 60;
+  const UNIT_MINUTES: Record<ReminderUnit, number> = {
+    minutes: 1,
+    hours: 60,
+    days: 1440,
+    weeks: 10080,
+  };
+  const extras = reminders
+    .filter((reminder) => reminder.offsetMinutes !== 0)
+    .sort((a, b) => a.offsetMinutes - b.offsetMinutes);
+
+  function setExtras(next: PlanReminder[]) {
+    setReminders([
+      { offsetMinutes: 0 },
+      ...next
+        .map((reminder) => ({
+          offsetMinutes: Math.max(
+            -MAX_OFFSET_MINUTES,
+            Math.min(-1, reminder.offsetMinutes),
+          ),
+        }))
+        .sort((a, b) => a.offsetMinutes - b.offsetMinutes),
+    ]);
+  }
+
+  function updateExtra(index: number, offsetMinutes: number) {
+    setExtras(
+      extras.map((reminder, i) =>
+        i === index ? { offsetMinutes } : reminder,
+      ),
+    );
+  }
+
+  function addExtra() {
+    setExtras((() => {
+      const used = new Set(extras.map((reminder) => reminder.offsetMinutes));
+      const candidate =
+        [-10, -60, -1440, -10080].find((value) => !used.has(value)) ?? -10;
+      return [...extras, { offsetMinutes: candidate }];
+    })());
+  }
+
   function changeNumber(value: string) {
     setNumber(value);
     if (kindTouched) return;
@@ -202,41 +244,6 @@ export function RecurringPlanSheet({
       setKind("paybill");
     }
   }
-
-  // The calendar rows show the actual date of each reminder for the next
-  // occurrence; the stored value stays a day offset so it repeats every cycle.
-  const duePreview = useMemo(
-    () =>
-      nextDue({
-        name,
-        kind,
-        number,
-        account,
-        amount: askAmount ? 0 : toCents(amount),
-        cadence,
-        anchorDay,
-        anchorWeekday,
-        dueTime,
-        reminders,
-        leadDays: reminders[0]?.days ?? 0,
-        remind,
-        simId: "",
-      }),
-    [
-      name,
-      kind,
-      number,
-      account,
-      amount,
-      askAmount,
-      cadence,
-      anchorDay,
-      anchorWeekday,
-      dueTime,
-      reminders,
-      remind,
-    ],
-  );
 
   async function handleSave() {
     setError(null);
@@ -274,7 +281,7 @@ export function RecurringPlanSheet({
       anchorWeekday,
       dueTime,
       reminders,
-      leadDays: reminders[0]?.days ?? 0,
+      leadDays: 0,
       remind,
       simId: "",
     };
@@ -315,7 +322,7 @@ export function RecurringPlanSheet({
               id="plan-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Agnes Muiruri"
+              placeholder="John Kamau"
               autoComplete="off"
             />
           </div>
@@ -513,97 +520,83 @@ export function RecurringPlanSheet({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs">Reminders</Label>
-                  {reminders.map((reminder, index) => {
-                    const date = addDays(duePreview, -reminder.days);
-                    const min = dayKey(addDays(duePreview, -30));
-                    const max = dayKey(addDays(duePreview, 30));
+                  <Label className="text-xs">Notifications</Label>
+
+                  <div className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5 text-sm">
+                    <span>On due date</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {dueTime}
+                    </span>
+                  </div>
+
+                  {extras.map((reminder, index) => {
+                    const { unit, value } = reminderUnit(
+                      reminder.offsetMinutes,
+                    );
+                    const max =
+                      unit === "weeks" ? 4 : unit === "days" ? 30 : 999;
                     return (
-                      <div key={index} className="space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <Input
-                            type="date"
-                            aria-label="Reminder date"
-                            value={dayKey(date)}
-                            min={min}
-                            max={max}
-                            onChange={(e) => {
-                              if (!e.target.value) return;
-                              const picked = new Date(`${e.target.value}T00:00:00`);
-                              const dueDay = new Date(
-                                duePreview.getFullYear(),
-                                duePreview.getMonth(),
-                                duePreview.getDate(),
-                              );
-                              const pickedDay = new Date(
-                                picked.getFullYear(),
-                                picked.getMonth(),
-                                picked.getDate(),
-                              );
-                              const diff = Math.round(
-                                (dueDay.getTime() - pickedDay.getTime()) / 86_400_000,
-                              );
-                              const days = Math.max(-30, Math.min(30, diff));
-                              setReminders((list) =>
-                                list.map((item, i) =>
-                                  i === index ? { ...item, days } : item,
-                                ),
-                              );
-                            }}
-                            className="min-w-0 flex-1"
-                          />
-                          <Input
-                            type="time"
-                            aria-label="Reminder time"
-                            value={reminder.time}
-                            onChange={(e) =>
-                              setReminders((list) =>
-                                list.map((item, i) =>
-                                  i === index
-                                    ? { ...item, time: e.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                            className="w-[112px] shrink-0"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Remove reminder"
-                            disabled={reminders.length === 1}
-                            onClick={() =>
-                              setReminders((list) =>
-                                list.filter((_, i) => i !== index),
-                              )
-                            }
-                            className="size-8 shrink-0"
-                          >
-                            <X className="size-4" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {reminderPhrase(reminder.days)} at {reminder.time}
-                        </p>
+                      <div key={index} className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={max}
+                          aria-label="Notification amount"
+                          value={value}
+                          onChange={(e) => {
+                            const raw = Math.floor(Number(e.target.value));
+                            const amount = Number.isFinite(raw)
+                              ? Math.max(1, Math.min(max, raw))
+                              : 1;
+                            updateExtra(index, -amount * UNIT_MINUTES[unit]);
+                          }}
+                          className="w-16"
+                        />
+                        <select
+                          aria-label="Notification unit"
+                          value={unit}
+                          onChange={(e) => {
+                            const nextUnit = e.target.value as ReminderUnit;
+                            updateExtra(index, -value * UNIT_MINUTES[nextUnit]);
+                          }}
+                          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        >
+                          <option value="minutes">minutes</option>
+                          <option value="hours">hours</option>
+                          <option value="days">days</option>
+                          <option value="weeks">weeks</option>
+                        </select>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          before
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove notification"
+                          onClick={() =>
+                            setExtras(
+                              extras.filter((_, i) => i !== index),
+                            )
+                          }
+                          className="size-8 shrink-0"
+                        >
+                          <X className="size-4" />
+                        </Button>
                       </div>
                     );
                   })}
-                  {reminders.length < 5 && (
+
+                  {extras.length < 4 && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        setReminders((list) => [
-                          ...list,
-                          { days: 0, time: dueTime },
-                        ])
-                      }
+                      onClick={addExtra}
                       className="w-full gap-1.5"
                     >
                       <Plus className="size-4" aria-hidden />
-                      Add another reminder
+                      Add notification
                     </Button>
                   )}
                 </div>

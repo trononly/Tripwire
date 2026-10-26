@@ -1433,8 +1433,8 @@ describe("recurring plans", () => {
 		const base = plan({
 			anchorDay: 1,
 			reminders: [
-				{ days: 1, time: "09:00" },
-				{ days: 0, time: "09:00" },
+				{ offsetMinutes: -1440 },
+				{ offsetMinutes: 0 },
 			],
 			dueTime: "09:00",
 		});
@@ -1468,20 +1468,18 @@ describe("recurring plans", () => {
 			reminderLabel(
 				plan({
 					reminders: [
-						{ days: 2, time: "09:00" },
-						{ days: 0, time: "09:00" },
-						{ days: -1, time: "18:00" },
+						{ offsetMinutes: -2880 },
+						{ offsetMinutes: 0 },
+						{ offsetMinutes: -600 },
 					],
 				}),
 			),
-		).toBe(
-			"Remind 2 days before at 09:00, on the day at 09:00 and 1 day after at 18:00",
-		);
+		).toBe("Remind 2 days before, on the due date and 10 hours before");
 		expect(
 			reminderLabel(
-				plan({ reminders: [{ days: 0, time: "09:00" }], leadDays: 0 }),
+				plan({ reminders: [{ offsetMinutes: 0 }], leadDays: 0 }),
 			),
-		).toBe("Remind on the day at 09:00");
+		).toBe("Remind on the due date");
 		expect(reminderLabel(plan({ remind: false }))).toBe("Reminders off");
 	});
 

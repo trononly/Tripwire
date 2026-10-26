@@ -39,7 +39,7 @@ const (
 // cents for the amount the user can pre-fill.
 const (
 	MaxAmountCents = 25_000_000
-	MaxLeadDays    = 30
+	MaxLeadMinutes = 30 * 24 * 60
 )
 
 // Input is the editable part of a plan - exactly what the setup dialog sends.
@@ -206,39 +206,46 @@ func normalize(in Input) (store.RecurringPlan, error) {
 	}
 	reminders := in.Reminders
 	if len(reminders) == 0 {
-		reminders = []store.PlanReminder{{Days: in.LeadDays, Time: out.DueTime}}
+		reminders = []store.PlanReminder{{OffsetMinutes: 0}}
+	}
+
+	// On the due date is always available: it is the default notification and
+	// the one row the dialog does not let you remove.
+	hasOnDue := false
+	for _, reminder := range reminders {
+		if reminder.OffsetMinutes == 0 {
+			hasOnDue = true
+			break
+		}
+	}
+	if !hasOnDue {
+		reminders = append(reminders, store.PlanReminder{OffsetMinutes: 0})
 	}
 	if len(reminders) > 5 {
-		return out, fmt.Errorf("use up to five reminders")
+		return out, fmt.Errorf("use up to five notifications")
 	}
-	seen := make(map[string]bool, len(reminders))
+
+	seen := make(map[int]bool, len(reminders))
 	clean := make([]store.PlanReminder, 0, len(reminders))
 	for _, reminder := range reminders {
-		if reminder.Days < -MaxLeadDays || reminder.Days > MaxLeadDays {
-			return out, fmt.Errorf("remind up to %d days before or after", MaxLeadDays)
+		if reminder.OffsetMinutes > 0 {
+			return out, fmt.Errorf("reminders must be before the due date")
 		}
-		if reminder.Time == "" {
-			reminder.Time = out.DueTime
+		if reminder.OffsetMinutes < -MaxLeadMinutes {
+			return out, fmt.Errorf("remind at most %d days before", MaxLeadMinutes/1440)
 		}
-		if _, err := time.Parse("15:04", reminder.Time); err != nil {
-			return out, fmt.Errorf("choose a valid reminder time")
-		}
-		key := fmt.Sprintf("%d|%s", reminder.Days, reminder.Time)
-		if seen[key] {
+		if seen[reminder.OffsetMinutes] {
 			continue
 		}
-		seen[key] = true
+		seen[reminder.OffsetMinutes] = true
 		clean = append(clean, reminder)
 	}
-	// Earliest first: 7 days before, 1 day before, on the day, then after.
+	// Earliest first: 2 days before, 10 minutes before, then on the due date.
 	sort.SliceStable(clean, func(i, j int) bool {
-		if clean[i].Days != clean[j].Days {
-			return clean[i].Days > clean[j].Days
-		}
-		return clean[i].Time < clean[j].Time
+		return clean[i].OffsetMinutes < clean[j].OffsetMinutes
 	})
 	out.Reminders = clean
-	out.LeadDays = clean[0].Days
+	out.LeadDays = 0
 	if len(out.SimID) > 64 {
 		return out, fmt.Errorf("invalid wallet")
 	}

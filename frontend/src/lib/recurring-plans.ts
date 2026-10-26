@@ -35,8 +35,7 @@ export interface PlanDraft {
   anchorDay: number;
   anchorWeekday: number;
   dueTime: string;
-  /** Day offsets with their own time: positive before, 0 on the day,
-   * negative after. */
+  /** Minutes before the due occurrence; 0 is on the due date. */
   reminders: PlanReminder[];
   /** First offset, kept for older callers. */
   leadDays: number;
@@ -71,7 +70,7 @@ export function toPlanLike(plan: RecurringPlan): PlanLike {
     reminders:
       plan.reminders && plan.reminders.length > 0
         ? plan.reminders
-        : [{ days: plan.leadDays, time: plan.dueTime }],
+        : [{ offsetMinutes: 0 }],
     leadDays: plan.leadDays,
     remind: plan.remind,
     simId: plan.simId,
@@ -248,19 +247,46 @@ export function dueLabel(due: Date, now: Date = new Date()): string {
   })}`;
 }
 
-export function reminderPhrase(days: number): string {
-  if (days === 0) return "on the day";
-  const count = Math.abs(days);
-  return `${count} ${count === 1 ? "day" : "days"} ${days > 0 ? "before" : "after"}`;
+const UNIT_MINUTES = {
+  minutes: 1,
+  hours: 60,
+  days: 1440,
+  weeks: 10080,
+} as const;
+
+export type ReminderUnit = keyof typeof UNIT_MINUTES;
+
+/** The largest unit that divides the offset evenly, so 2880 reads as 2 days. */
+export function reminderUnit(offsetMinutes: number): {
+  unit: ReminderUnit;
+  value: number;
+} {
+  const before = Math.abs(offsetMinutes);
+  if (before >= UNIT_MINUTES.weeks && before % UNIT_MINUTES.weeks === 0) {
+    return { unit: "weeks", value: before / UNIT_MINUTES.weeks };
+  }
+  if (before >= UNIT_MINUTES.days && before % UNIT_MINUTES.days === 0) {
+    return { unit: "days", value: before / UNIT_MINUTES.days };
+  }
+  if (before >= UNIT_MINUTES.hours && before % UNIT_MINUTES.hours === 0) {
+    return { unit: "hours", value: before / UNIT_MINUTES.hours };
+  }
+  return { unit: "minutes", value: before };
+}
+
+export function reminderPhrase(offsetMinutes: number): string {
+  if (offsetMinutes === 0) return "on the due date";
+  const { unit, value } = reminderUnit(offsetMinutes);
+  return `${value} ${value === 1 ? unit.slice(0, -1) : unit} before`;
 }
 
 export function reminderLabel(plan: PlanDraft): string {
   if (!plan.remind) return "Reminders off";
   const list = plan.reminders?.length
     ? plan.reminders
-    : [{ days: plan.leadDays, time: plan.dueTime }];
-  const phrases = list.map(
-    (reminder) => `${reminderPhrase(reminder.days)} at ${reminder.time}`,
+    : [{ offsetMinutes: 0 }];
+  const phrases = list.map((reminder) =>
+    reminderPhrase(reminder.offsetMinutes),
   );
   const joined =
     phrases.length === 1
@@ -390,8 +416,8 @@ export function emptyPlan(now: Date = new Date()): PlanDraft {
     anchorDay: now.getDate(),
     anchorWeekday: now.getDay(),
     dueTime: "09:00",
-    reminders: [{ days: 1, time: "09:00" }],
-    leadDays: 1,
+    reminders: [{ offsetMinutes: 0 }],
+    leadDays: 0,
     remind: true,
     simId: "",
   };
@@ -688,7 +714,7 @@ export function buildReminderItems(
     const offsets =
       like.reminders.length > 0
         ? like.reminders
-        : [{ days: like.leadDays, time: like.dueTime }];
+        : [{ offsetMinutes: 0 }];
     const paid = lastPaid[plan.id] ?? null;
 
     for (const occurrence of upcoming(like, 6, now)) {
@@ -703,17 +729,12 @@ export function buildReminderItems(
           : `Payment due ${when}`;
 
       for (const offset of offsets) {
-        const at = addDays(occurrence, -offset.days);
-        const [hours, minutes] = offset.time.split(":").map(Number);
-        at.setHours(
-          Number.isFinite(hours) ? hours : 9,
-          Number.isFinite(minutes) ? minutes : 0,
-          0,
-          0,
+        const at = new Date(
+          occurrence.getTime() + offset.offsetMinutes * 60_000,
         );
         if (at.getTime() <= now.getTime() + 60_000) continue;
         items.push({
-          id: `${plan.id}:${dayKey(occurrence)}:${offset.days}:${offset.time}`,
+          id: `${plan.id}:${dayKey(occurrence)}:${offset.offsetMinutes}`,
           planId: plan.id,
           title: plan.name,
           body,
