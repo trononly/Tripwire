@@ -102,6 +102,33 @@ type LipaFavourite struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// RecurringPlan is one payment the user set up to pay on a schedule. The
+// detector only finds patterns already visible in the statements; a plan
+// covers the cases it cannot see (a weekly token purchase, a fixed rent
+// transfer) and gives the card a Play button and a reminder.
+//
+// Amount is in cents; 0 means "ask me for the amount when I press Play"
+// (utilities and other variable bills). Kind/Number/Account describe the
+// USSD target exactly like LipaFavourite: a phone for send/pochi, a paybill
+// with its account, or a till. SimID pins the payment to one wallet; empty
+// follows the wallet selected in the header, which is the usual case.
+type RecurringPlan struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Kind          string    `json:"kind"` // "send", "pochi", "paybill" or "till"
+	Number        string    `json:"number"`
+	Account       string    `json:"account"`
+	Amount        int64     `json:"amount"`
+	Cadence       string    `json:"cadence"` // weekly, bi-weekly, monthly, quarterly
+	AnchorDay     int       `json:"anchorDay"`
+	AnchorWeekday int       `json:"anchorWeekday"`
+	DueTime       string    `json:"dueTime"` // "HH:MM" local
+	LeadDays      int       `json:"leadDays"`
+	Remind        bool      `json:"remind"`
+	SimID         string    `json:"simId"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
 // schema is applied on every open; every statement is idempotent.
 const schema = `
 CREATE TABLE IF NOT EXISTS statements (
@@ -182,6 +209,23 @@ CREATE TABLE IF NOT EXISTS category_rules (
 
 CREATE INDEX IF NOT EXISTS idx_category_rules_category
 	ON category_rules (category_id);
+
+CREATE TABLE IF NOT EXISTS recurring_plans (
+	id             TEXT PRIMARY KEY,
+	name           TEXT NOT NULL,
+	kind           TEXT NOT NULL,
+	number         TEXT NOT NULL,
+	account        TEXT NOT NULL DEFAULT '',
+	amount         INTEGER NOT NULL DEFAULT 0,
+	cadence        TEXT NOT NULL,
+	anchor_day     INTEGER NOT NULL DEFAULT 1,
+	anchor_weekday INTEGER NOT NULL DEFAULT 0,
+	due_time       TEXT NOT NULL DEFAULT '09:00',
+	lead_days      INTEGER NOT NULL DEFAULT 0,
+	remind         INTEGER NOT NULL DEFAULT 1,
+	sim_id         TEXT NOT NULL DEFAULT '',
+	created_at     TEXT NOT NULL
+);
 `
 
 // Store wraps the SQLite database.
@@ -899,6 +943,126 @@ func (s *Store) SetSimID(id, simID string) error {
 		return fmt.Errorf("no statement with id %q", id)
 	}
 	return nil
+}
+
+// ListRecurringPlans returns every user-defined plan. The card orders them
+// by next due date, so the store only guarantees a stable, readable order.
+func (s *Store) ListRecurringPlans() ([]RecurringPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query(`
+		SELECT id, name, kind, number, account, amount, cadence,
+		       anchor_day, anchor_weekday, due_time, lead_days, remind,
+		       sim_id, created_at
+		FROM recurring_plans
+		ORDER BY name COLLATE NOCASE, created_at, rowid`)
+	if err != nil {
+		return nil, fmt.Errorf("could not list recurring plans: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]RecurringPlan, 0, 8)
+	for rows.Next() {
+		var (
+			p       RecurringPlan
+			remind  int
+			created string
+		)
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.Kind, &p.Number, &p.Account, &p.Amount,
+			&p.Cadence, &p.AnchorDay, &p.AnchorWeekday, &p.DueTime,
+			&p.LeadDays, &remind, &p.SimID, &created,
+		); err != nil {
+			return nil, fmt.Errorf("could not read recurring plan: %w", err)
+		}
+		p.Remind = remind != 0
+		p.CreatedAt = parseTime(created)
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not list recurring plans: %w", err)
+	}
+	return out, nil
+}
+
+// AddRecurringPlan inserts a validated plan. The unique index on the target
+// keeps one plan per payee; the service checks it first so the UI can name
+// the existing plan instead of surfacing a constraint error.
+func (s *Store) AddRecurringPlan(p RecurringPlan) (RecurringPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p.ID = NewID()
+	p.CreatedAt = time.Now().UTC()
+	if err := insertRecurringPlan(s.db.Exec, p); err != nil {
+		return RecurringPlan{}, err
+	}
+	return p, nil
+}
+
+// UpdateRecurringPlan replaces every editable field of an existing plan.
+func (s *Store) UpdateRecurringPlan(p RecurringPlan) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec(`
+		UPDATE recurring_plans SET
+			name = ?, kind = ?, number = ?, account = ?, amount = ?,
+			cadence = ?, anchor_day = ?, anchor_weekday = ?, due_time = ?,
+			lead_days = ?, remind = ?, sim_id = ?
+		WHERE id = ?`,
+		p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays, boolInt(p.Remind),
+		p.SimID, p.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("could not update recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", p.ID)
+	}
+	return nil
+}
+
+// DeleteRecurringPlan removes a plan. Detected payments are analysis output,
+// not rows, so deleting a plan can never touch the statements.
+func (s *Store) DeleteRecurringPlan(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("DELETE FROM recurring_plans WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("could not delete recurring plan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no recurring plan with id %q", id)
+	}
+	return nil
+}
+
+func insertRecurringPlan(
+	exec func(string, ...any) (sql.Result, error), p RecurringPlan,
+) error {
+	if _, err := exec(`
+		INSERT INTO recurring_plans
+			(id, name, kind, number, account, amount, cadence, anchor_day,
+			 anchor_weekday, due_time, lead_days, remind, sim_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, p.Kind, p.Number, p.Account, p.Amount, p.Cadence,
+		p.AnchorDay, p.AnchorWeekday, p.DueTime, p.LeadDays, boolInt(p.Remind),
+		p.SimID, p.CreatedAt.UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		return fmt.Errorf("could not save recurring plan: %w", err)
+	}
+	return nil
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // upsertStatement writes a record's metadata row without touching its

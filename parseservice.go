@@ -9,6 +9,7 @@ import (
 	"mpesa-analyzer/internal/favourites"
 	"mpesa-analyzer/internal/parser"
 	"mpesa-analyzer/internal/pdf"
+	"mpesa-analyzer/internal/plans"
 	"mpesa-analyzer/internal/sms"
 	"mpesa-analyzer/internal/store"
 	"mpesa-analyzer/internal/txtype"
@@ -869,6 +870,47 @@ func (p *ParseService) ReorderFavourites(ids []string) error {
 		return err
 	}
 	return favourites.New(s).Reorder(ids)
+}
+
+// ListRecurringPlans returns the recurring payments the user set up
+// themselves. These are merged with the detector's output in the UI; they
+// are not transactions and never affect the statement history.
+func (p *ParseService) ListRecurringPlans() ([]store.RecurringPlan, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	return plans.New(s).List()
+}
+
+// AddRecurringPlan validates and saves a user-defined recurring payment. The
+// input is the editable part only; the store owns the id and creation time,
+// so an empty createdAt from the dialog can never reach a time.Time field.
+func (p *ParseService) AddRecurringPlan(plan plans.Input) (store.RecurringPlan, error) {
+	s, err := p.statements()
+	if err != nil {
+		return store.RecurringPlan{}, err
+	}
+	return plans.New(s).Add(plan)
+}
+
+// UpdateRecurringPlan saves changes to an existing plan.
+func (p *ParseService) UpdateRecurringPlan(id string, plan plans.Input) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return plans.New(s).Update(id, plan)
+}
+
+// DeleteRecurringPlan removes a user-defined recurring payment. Only the
+// plan row is deleted; detected payments and statements are untouched.
+func (p *ParseService) DeleteRecurringPlan(id string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return plans.New(s).Delete(id)
 }
 
 // ListLipaFavourites returns the saved destinations for one Lipa flow:
