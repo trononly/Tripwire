@@ -4,7 +4,9 @@ import { ArrowDown, ArrowUp, Loader2, SlidersHorizontal, X } from "lucide-react"
 import {
   TransactionList,
   useTransactionGroups,
+  type TransactionView,
 } from "@/components/transaction-list";
+import { CategoryPickerSheet } from "@/components/category-picker-sheet";
 import {
   Drawer,
   DrawerContent,
@@ -18,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { filterGroups } from "@/lib/transaction-filter";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
+import { typeStyle } from "@/lib/transaction-types";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
 /** Local-day "YYYY-MM-DD" helpers for the quick date presets. */
@@ -88,6 +91,30 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // The transaction whose badge was tapped, if any. The picker lives here
+  // (not in the list) because the "apply to similar" preview needs the full
+  // dataset, not the filtered view the list renders.
+  const [categoryTarget, setCategoryTarget] =
+    useState<TransactionView | null>(null);
+  const similar = useMemo(() => {
+    if (!categoryTarget) return { count: 0, label: "" };
+    const key = categoryTarget.counterpartyKey;
+    let count = 0;
+    for (const g of groups) {
+      for (const t of g.txs) {
+        if (t.id === categoryTarget.id) continue;
+        if (key ? t.counterpartyKey === key : t.type === categoryTarget.type) {
+          count += 1;
+        }
+      }
+    }
+    return {
+      count,
+      label: key
+        ? categoryTarget.counterparty || "similar"
+        : typeStyle(categoryTarget.type).label,
+    };
+  }, [categoryTarget, groups]);
 
   // Draft filters: edited inside the drawer, committed on "Show N".
   // Chips + presets update the draft (and its live preview count)
@@ -412,7 +439,19 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
           : `${totalCount.toLocaleString()} transactions`}
       </p>
 
-      <TransactionList groups={filteredGroups} />
+      <TransactionList
+        groups={filteredGroups}
+        onSetCategory={setCategoryTarget}
+      />
+      <CategoryPickerSheet
+        open={categoryTarget !== null}
+        tx={categoryTarget}
+        similarCount={similar.count}
+        similarLabel={similar.label}
+        onOpenChange={(open) => {
+          if (!open) setCategoryTarget(null);
+        }}
+      />
     </div>
   );
 }

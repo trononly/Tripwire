@@ -155,6 +155,33 @@ CREATE TABLE IF NOT EXISTS lipa_favourites (
 	created_at TEXT NOT NULL,
 	UNIQUE (kind, number, account)
 );
+
+CREATE TABLE IF NOT EXISTS categories (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	emoji      TEXT NOT NULL,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name
+	ON categories (name COLLATE NOCASE);
+
+-- category_rules maps a stable key to a user category. kind='tx' keys on the
+-- M-Pesa receipt, 'counterparty' on counterparty.GroupKey, and 'type' on
+-- txtype.TransactionType. Rules live outside transactions on purpose: the
+-- statement tables are replaceable snapshots, while an assignment belongs to
+-- the real-world transaction and must survive re-imports and new SMS.
+CREATE TABLE IF NOT EXISTS category_rules (
+	kind        TEXT NOT NULL,
+	key         TEXT NOT NULL,
+	category_id TEXT NOT NULL DEFAULT '',
+	updated_at  TEXT NOT NULL,
+	PRIMARY KEY (kind, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_rules_category
+	ON category_rules (category_id);
 `
 
 // Store wraps the SQLite database.
