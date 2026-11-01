@@ -27,6 +27,7 @@ import {
   openUssdAutomationSettings,
 } from "@/lib/sms-bridge";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
+import { PageHeader } from "@/components/page-header";
 import { useFavourites } from "@/hooks/use-favourites";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 
@@ -117,14 +118,12 @@ export default function Send({ simKey }: { simKey?: string | null }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Send to any network or to Pochi La Biashara.
-      </p>
+    <div className="mx-auto w-full max-w-xl space-y-5">
+      <PageHeader title="Send money" />
 
       {/* Top switcher: Send Money / Pochi */}
       <div
-        className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1"
+        className="grid grid-cols-2 gap-1 border bg-muted p-1"
         role="tablist"
       >
         {TABS.map(({ id, label, icon: Icon }) => (
@@ -134,9 +133,9 @@ export default function Send({ simKey }: { simKey?: string | null }) {
             aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={cn(
-              "flex items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs font-medium transition-colors",
+              "flex items-center justify-center gap-1.5 px-2 py-2 text-sm font-medium transition-colors",
               tab === id
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-card text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -158,14 +157,13 @@ export default function Send({ simKey }: { simKey?: string | null }) {
                 setPhone(formatPhoneInput(f.phone));
               },
             }))}
-            emptyHint="Add a contact or number for one-tap sending"
             onManage={() => setFavOpen(true)}
           />
 
           <div className="space-y-1.5">
             <label
               htmlFor="send-phone"
-              className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+              className="text-[13px] font-medium text-foreground"
             >
               Phone number
             </label>

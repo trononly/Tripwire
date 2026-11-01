@@ -12,7 +12,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMoneyShort } from "@/lib/format";
 import { safeFormatTick, safeFormatFull } from "@/lib/safe-date";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
 import { useInView } from "@/hooks/use-in-view";
@@ -50,9 +50,9 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
     : "static";
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle>Balance Trajectory</CardTitle>
+        <CardTitle>Balance</CardTitle>
       </CardHeader>
       <CardContent>
         <div ref={ref}>
@@ -62,20 +62,6 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
             data={points}
             margin={{ left: 8, right: 8, top: 8 }}
           >
-            <defs>
-              <linearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="0%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.45}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.02}
-                />
-              </linearGradient>
-            </defs>
             <XAxis
               dataKey="date"
               hide={false}
@@ -91,8 +77,8 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
               tickLine={false}
               axisLine={false}
               tickMargin={4}
-              width={96}
-              tickFormatter={(v: number) => formatMoney(v * 100)}
+              width={76}
+              tickFormatter={(v: number) => formatMoneyShort(v * 100)}
             />
             <ChartTooltip
               cursor={{ stroke: "var(--border)" }}
@@ -107,15 +93,16 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
             />
             <Area
               dataKey="balance"
-              type="monotone"
-              stroke="var(--primary)"
+              type="linear"
+              stroke="var(--chart-3)"
               strokeWidth={2}
-              fill="url(#balanceFill)"
+              fill="var(--chart-3)"
+              fillOpacity={0.1}
               isAnimationActive={animate}
               animationDuration={700}
               animationEasing="ease-out"
               dot={false}
-              activeDot={{ r: 4 }}
+              activeDot={{ r: 4, fill: "var(--chart-3)" }}
             />
           </AreaChart>
         </ChartContainer>

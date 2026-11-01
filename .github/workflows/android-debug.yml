@@ -1,0 +1,124 @@
+# Builds an installable debug APK with a separate application id
+# (com.tripwire.app.debug) and a blue launcher icon.
+#
+# Why a separate build: the debug APK must live beside the Tripwire the
+# developer actually uses. Changing the applicationId means Android treats it
+# as a second app, so installing or uninstalling the debug build never touches
+# the release app (or its store).
+#
+# Triggers:
+#   * workflow_dispatch - build the current branch on demand
+#   * push to `nightly` - a rolling integration branch, if you keep one
+#
+# The artifact is debug-signed and installable; it is never a release.
+
+name: Android debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - nightly
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "11"
+  WAILS3_VERSION: v3.0.0-beta.17
+
+jobs:
+  debug-apk:
+    name: Package debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            libwayland-dev
+
+      - name: Setup Java (JDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Add Go bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Wails v3 CLI
+        env:
+          GOSUMDB: "off"
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
+
+      # ubuntu-latest ships the Android SDK. Wire its cmdline-tools onto PATH
+      # rather than using android-actions/setup-android (broken against
+      # current cmdline-tools).
+      - name: Setup Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          for d in "$SDK_ROOT/cmdline-tools/latest/bin" "$SDK_ROOT"/cmdline-tools/*/bin; do
+            if [ -x "$d/sdkmanager" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+              export PATH="$d:$PATH"
+              break
+            fi
+          done
+          sdkmanager --version
+
+      - name: Install Android SDK platform, build tools and NDK
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;26.3.11579264"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
+      - name: Export NDK path
+        run: echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/26.3.11579264" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: wails3 task android:package:debug
+
+      - name: Verify debug identity
+        run: |
+          AAPT="$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging bin/tripwire-debug.apk | head -3
+          "$AAPT" dump badging bin/tripwire-debug.apk | grep -q "com.tripwire.app.debug" \
+            || { echo "Debug APK has the wrong application id"; exit 1; }
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tripwire-debug-apk
+          path: bin/tripwire-debug.apk
+          if-no-files-found: error
+          retention-days: 30

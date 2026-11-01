@@ -40,7 +40,7 @@ export function AutomationOffPanel() {
   return (
     <div
       role="alert"
-      className="space-y-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3"
+      className="space-y-3 border border-amber-500/40 bg-amber-500/10 p-4"
     >
       <div className="flex items-start gap-2">
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />

@@ -30,8 +30,8 @@ export function FavouriteStar({
 			className={cn(
 				"absolute right-1 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-md transition-colors",
 				saved
-					? "text-rose-500"
-					: "text-muted-foreground hover:text-rose-500 disabled:opacity-40",
+					? "text-primary"
+					: "text-muted-foreground hover:text-primary disabled:opacity-40",
 			)}
 		>
 			<Star className={cn("size-5", saved && "fill-current")} aria-hidden />

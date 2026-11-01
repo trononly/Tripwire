@@ -3,6 +3,7 @@ export function formatMoney(cents: number): string {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency: "KES",
+    currencyDisplay: "code",
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -13,6 +14,7 @@ export function formatMoneyShort(cents: number): string {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency: "KES",
+    currencyDisplay: "code",
     maximumFractionDigits: 0,
   }).format(value);
 }

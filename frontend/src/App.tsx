@@ -151,10 +151,10 @@ function App() {
         <BackToPrimaryTabs />
         <SidebarProvider>
           {/* Phones navigate from the bottom bar; the sidebar is desktop-only. */}
-          <div className="hidden md:contents">
+          <div className="hidden lg:contents">
             <AppSidebar />
           </div>
-          <Toaster position="bottom-right" richColors />
+          <Toaster position="bottom-right" />
           {/* overflow-x-clip (not hidden): hidden would make this a
               scroll container and silently disable the sticky header. */}
           <SidebarInset className="min-w-0 overflow-x-clip">
@@ -165,7 +165,6 @@ function App() {
               smsMetas={smsMetas}
               smsRecordId={sms.smsRecordId}
               simNumbers={sims.simNumbers}
-              smsImporting={sms.smsImporting}
               historyOpen={historyOpen}
               activeId={stmts.activeId}
               setHistoryOpen={setHistoryOpen}
@@ -173,9 +172,8 @@ function App() {
               onActivate={stmts.handleActivate}
               onDelete={handleDelete}
               onSwitchSim={sms.handleSwitchSim}
-              onImportSms={sms.startSmsImport}
             />
-            <main className="min-w-0 flex-1 space-y-4 p-4 pb-[calc(5.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] md:p-6 md:pb-6">
+            <main className="min-w-0 flex-1 space-y-6 p-4 pb-[calc(6rem+var(--safe-bottom,env(safe-area-inset-bottom)))] md:p-6 lg:pb-8">
               <Routes>
                 <Route
                   path="/"
@@ -186,9 +184,6 @@ function App() {
                         result={analysisResult}
                         loading={analysisLoading}
                         error={analysisError}
-                        activeStatement={
-                          mode === "statements" ? stmts.activeStatement : null
-                        }
                         historyCount={stmts.statements.length}
                         smsMode={mode === "sms"}
                         onImport={() => setImportOpen(true)}
@@ -229,9 +224,6 @@ function App() {
                         result={analysisResult}
                         loading={analysisLoading}
                         error={analysisError}
-                        activeStatement={
-                          mode === "statements" ? stmts.activeStatement : null
-                        }
                         simKey={paySim}
                       />
                     </Suspense>

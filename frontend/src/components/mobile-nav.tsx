@@ -7,7 +7,6 @@ import {
   Plus,
   Send as SendIcon,
   ShoppingCart,
-  Banknote,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -31,25 +30,17 @@ const actions = [
     to: "/send",
     label: "Send Money",
     icon: SendIcon,
-    color: "bg-brand",
-    dx: -88,
-    dy: -96,
+    color: "bg-primary",
+    dx: -76,
+    dy: -110,
   },
   {
     to: "/lipa",
     label: "Lipa na M-PESA",
     icon: ShoppingCart,
-    color: "bg-brand",
-    dx: 0,
-    dy: -128,
-  },
-  {
-    to: "/withdraw",
-    label: "Withdraw",
-    icon: Banknote,
-    color: "bg-brand",
-    dx: 88,
-    dy: -96,
+    color: "bg-primary",
+    dx: 76,
+    dy: -110,
   },
 ] as const;
 
@@ -72,13 +63,13 @@ export function MobileNav() {
       {open && (
         <button
           aria-label="Close Pay menu"
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 bg-black/70"
           onClick={() => setOpen(false)}
         />
       )}
 
       {open && (
-        <div className="pointer-events-none fixed inset-0 z-[60] md:hidden">
+        <div className="pointer-events-none fixed inset-0 z-[60] lg:hidden">
           {/* Zero-size anchor exactly at the Pay button center: the nav is
               5 equal columns, so column 3 (Pay) is centered at left-1/2.
               Bottom offset lands on the Pay circle center. */}
@@ -120,11 +111,7 @@ export function MobileNav() {
                   >
                     <span
                       aria-hidden="true"
-                      className={cn(
-                        "absolute inset-0 rounded-full opacity-25 motion-reduce:animate-none",
-                        !reduceMotion && "animate-ping",
-                        color,
-                      )}
+                      className="absolute inset-0 rounded-full border border-white/20"
                     />
                     <Icon className="relative size-6" />
                   </button>
@@ -146,7 +133,7 @@ export function MobileNav() {
           last row must paint the same colour as the bar itself, otherwise the
           gesture handle sits on a lighter strip. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-[70] border-t bg-background md:hidden"
+        className="fixed inset-x-0 bottom-0 z-[70] border-t bg-background lg:hidden"
         style={{ paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))" }}
       >
         <div className="grid grid-cols-5">
@@ -162,7 +149,7 @@ export function MobileNav() {
                 }}
                 className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-muted-foreground"
               >
-                <span className="flex size-11 items-center justify-center rounded-full bg-brand text-white font-semibold shadow-lg">
+                <span className="flex size-11 items-center justify-center rounded-full bg-primary text-white font-semibold shadow-lg">
                   <Plus className="size-6" strokeWidth={2} />
                 </span>
                 Pay

@@ -2,12 +2,8 @@ import { useMemo, useState } from "react";
 import { Pencil, Plus, Tags } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { CategoryIcon } from "@/components/category-icon";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,19 +84,9 @@ export default function Categories({
 
 	return (
 		<div className="space-y-4">
-			<div className="space-y-1">
-				<h1 className="text-xl font-semibold tracking-tight">Categories</h1>
-				<p className="text-sm text-muted-foreground">
-					Your own labels sit on top of the M-Pesa categories. They follow
-					the transaction, so re-importing a statement or refreshing your SMS
-					wallet keeps them.
-				</p>
-			</div>
+			<PageHeader title="Categories" />
 
 			<Card>
-				<CardHeader>
-					<CardTitle>Your categories</CardTitle>
-				</CardHeader>
 				<CardContent className="p-0">
 					{loading && categories.length === 0 ? (
 						<div className="space-y-2 p-4">
@@ -113,13 +99,7 @@ export default function Categories({
 					) : categories.length === 0 ? (
 						<div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
 							<Tags className="size-6 text-muted-foreground" />
-							<div className="space-y-1">
-								<p className="text-sm font-medium">No categories yet</p>
-								<p className="text-xs text-muted-foreground">
-									Create one here, or tap a transaction's icon in
-									Transactions.
-								</p>
-							</div>
+							<p className="text-sm font-medium">No categories yet</p>
 							<Button onClick={() => setEditing({ category: null })}>
 								<Plus />
 								New category
@@ -135,9 +115,9 @@ export default function Categories({
 											<button
 												type="button"
 												onClick={() => setEditing({ category })}
-												className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/50"
+												className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
 											>
-												<span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+												<span className="flex size-10 shrink-0 items-center justify-center rounded-none bg-muted">
 													<CategoryIcon
 														icon={category.icon}
 														className="size-5"
@@ -147,16 +127,21 @@ export default function Categories({
 													<span className="block truncate text-sm font-medium">
 														{category.name}
 													</span>
-													<span className="block truncate text-xs text-muted-foreground">
+													<span className="block truncate text-[12px] text-muted-foreground">
 														{usage
 															? `${usage.count} ${
 																	usage.count === 1
 																		? "transaction"
 																		: "transactions"
-																} · ${formatMoney(usage.amount)}`
+																}`
 															: "No transactions yet"}
 													</span>
 												</span>
+												{usage ? (
+													<span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+														{formatMoney(usage.amount)}
+													</span>
+												) : null}
 												<Pencil className="size-4 shrink-0 text-muted-foreground" />
 											</button>
 										</li>

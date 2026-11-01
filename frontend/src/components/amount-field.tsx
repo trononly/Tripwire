@@ -26,7 +26,7 @@ export function AmountField({
 		<div className="space-y-1.5">
 			<label
 				htmlFor={id}
-				className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+				className="text-[13px] font-medium text-foreground"
 			>
 				Amount
 			</label>
@@ -36,7 +36,7 @@ export function AmountField({
 					invalid && "border-destructive",
 				)}
 			>
-				<span className="text-sm font-medium text-muted-foreground">KSh</span>
+				<span className="text-sm font-medium text-muted-foreground">KES</span>
 				<input
 					id={id}
 					inputMode="numeric"

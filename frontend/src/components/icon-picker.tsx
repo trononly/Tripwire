@@ -52,7 +52,7 @@ export function IconPicker({
 				) : (
 					CATEGORY_ICON_GROUPS.map((group) => (
 						<div key={group.label} className="mb-3 last:mb-0">
-							<p className="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+							<p className="px-1 pb-1.5 text-[12px] font-medium text-muted-foreground">
 								{group.label}
 							</p>
 							<IconGrid

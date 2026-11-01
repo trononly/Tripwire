@@ -1,4 +1,5 @@
-import { Eye, EyeOff, FileUp, MessageSquareText } from "lucide-react";
+import { Eye, EyeOff, MessageSquareText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,6 @@ export interface AppHeaderProps {
 	smsMetas: store.StatementMeta[];
 	smsRecordId: string | null;
 	simNumbers: Record<string, string>;
-	smsImporting: boolean;
 	historyOpen: boolean;
 	activeId: string | null;
 	setHistoryOpen: (open: boolean) => void;
@@ -23,7 +23,6 @@ export interface AppHeaderProps {
 	onActivate: (id: string) => void;
 	onDelete: (id: string) => void;
 	onSwitchSim: (meta: store.StatementMeta) => void;
-	onImportSms: () => void;
 }
 
 /** Quick Privacy Mode switch: blurs balances until each figure is tapped. */
@@ -31,19 +30,24 @@ function PrivacyToggle() {
 	const on = usePrivacyMode();
 	return (
 		<Button
-			size="icon"
+			size="icon-sm"
 			variant="ghost"
 			aria-pressed={on}
 			aria-label={on ? "Turn off Privacy Mode" : "Turn on Privacy Mode"}
 			title={on ? "Privacy Mode: on" : "Privacy Mode: off"}
 			onClick={() => setPrivacyMode(!on)}
+			data-compact
 		>
 			{on ? <EyeOff /> : <Eye />}
 		</Button>
 	);
 }
 
-/** Sticky top bar: brand, history, and the mode-matched import action. */
+/**
+ * Sticky top bar. It carries the statement scope and the two capabilities
+ * that must be one tap away (privacy and the SMS inbox), not a global
+ * Import button: importing belongs to the screen that needs it.
+ */
 export function AppHeader(props: AppHeaderProps) {
 	const {
 		statements,
@@ -52,7 +56,6 @@ export function AppHeader(props: AppHeaderProps) {
 		smsMetas,
 		smsRecordId,
 		simNumbers,
-		smsImporting,
 		historyOpen,
 		activeId,
 		setHistoryOpen,
@@ -60,19 +63,27 @@ export function AppHeader(props: AppHeaderProps) {
 		onActivate,
 		onDelete,
 		onSwitchSim,
-		onImportSms,
 	} = props;
+	const navigate = useNavigate();
+
 	return (
 		<header className="sticky top-0 z-40 border-b border-border bg-background">
 			<div style={{ height: "var(--safe-top,env(safe-area-inset-top))" }} />
 			<div className="flex h-14 items-center justify-between gap-2 px-4">
-				<div className="flex items-center gap-2">
-					<SidebarTrigger className="hidden md:inline-flex" />
-					<img src="/tripwire.svg" alt="Tripwire" className="w-6 h-6" />
-					<span className="font-bold text-lg text-foreground">Tripwire</span>
+				<div className="flex min-w-0 items-center gap-2">
+					<SidebarTrigger className="hidden lg:inline-flex" />
+					{/* One brand only: the sidebar owns it from lg up. */}
+					<img
+						src="/tripwire.svg"
+						alt="Tripwire"
+						className="size-6 shrink-0 lg:hidden"
+					/>
+					<span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline lg:hidden">
+						Tripwire
+					</span>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-1.5">
 					{(statements.length > 0 || smsMetas.length > 0) && (
 						<PrivacyToggle />
 					)}
@@ -87,9 +98,20 @@ export function AppHeader(props: AppHeaderProps) {
 							onImport={() => setImportOpen(true)}
 						/>
 					)}
-					{/* The header import matches the data mode: statements on
-					    desktop and in statements mode, M-Pesa SMS in SMS mode.
-					    A second SIM adds a wallet switcher beside it. */}
+					{/* SMS mode owns its own import action on the SMS screen.
+					    This icon is the way back to that screen from anywhere. */}
+					{isAndroid && (
+						<Button
+							size="icon-sm"
+							variant="ghost"
+							aria-label="Open SMS import"
+							title="SMS import"
+							onClick={() => navigate("/sms")}
+							data-compact
+						>
+							<MessageSquareText />
+						</Button>
+					)}
 					{isAndroid && mode === "sms" && (
 						<SimSwitcher
 							sims={smsMetas}
@@ -97,26 +119,6 @@ export function AppHeader(props: AppHeaderProps) {
 							numbers={simNumbers}
 							onSwitch={onSwitchSim}
 						/>
-					)}
-					{isAndroid && mode === "sms" ? (
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={onImportSms}
-							disabled={smsImporting}
-						>
-							<MessageSquareText />
-							<span className="hidden sm:inline">
-								{smsImporting ? "Reading…" : "Import SMS"}
-							</span>
-							<span className="sm:hidden">SMS</span>
-						</Button>
-					) : (
-						<Button size="sm" onClick={() => setImportOpen(true)}>
-							<FileUp />
-							<span className="hidden sm:inline">Import Statement</span>
-							<span className="sm:hidden">Import</span>
-						</Button>
 					)}
 				</div>
 			</div>

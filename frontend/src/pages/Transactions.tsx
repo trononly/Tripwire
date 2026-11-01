@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Loader2, SlidersHorizontal, Tags, X } from "lucide-react";
+import { ArrowDown, ArrowUp, FileUp, Loader2, SlidersHorizontal, Tags, X } from "lucide-react";
 import {
   TransactionList,
   useTransactionGroups,
@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { typeStyle } from "@/lib/transaction-types";
+import { PageHeader } from "@/components/page-header";
 import { useCategories } from "@/hooks/use-categories";
 import type * as parser from "../../bindings/mpesa-analyzer/internal/parser/models";
 
@@ -341,8 +342,8 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
 
   return (
     <div className="space-y-4">
-      {/* Header row: search + filter button, pinned under the main header. */}
-      <div className="sticky top-[calc(3.5rem+var(--safe-top,env(safe-area-inset-top)))] z-20 -mx-4 -mt-4 border-b border-border bg-background/90 px-4 py-1.5 backdrop-blur-md md:-mx-6 md:-mt-6">
+      {/* Search + filter toolbar, pinned under the main header. */}
+      <div className="sticky top-[calc(3.5rem+var(--safe-top,env(safe-area-inset-top)))] z-20 -mx-4 border-b border-border bg-background px-4 py-1.5 md:-mx-6">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input
@@ -562,7 +563,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
           <DrawerFooter className="sticky bottom-0 border-t border-border bg-surface">
             <Button
               onClick={applyDraft}
-              className="h-12 w-full rounded-none bg-brand text-sm font-semibold text-white hover:brightness-110"
+              className="h-11 w-full rounded-none text-sm font-semibold"
             >
               Show {previewCount.toLocaleString()}{" "}
               {previewCount === 1 ? "Transaction" : "Transactions"}
@@ -570,7 +571,7 @@ function TxDataTable({ txs }: { txs: parser.Transaction[] }) {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
-      <p className="text-xs text-muted-foreground" aria-live="polite">
+      <p className="text-[13px] text-muted-foreground" aria-live="polite">
         {isFiltered
           ? `Showing ${shownCount.toLocaleString()} of ${totalCount.toLocaleString()} transactions`
           : `${totalCount.toLocaleString()} transactions`}
@@ -659,30 +660,33 @@ export default function Transactions({
           )}
         </div>
       )}
+      <PageHeader title="Transactions" />
       {transactions.length > 0 ? (
         <TxDataTable txs={transactions} />
       ) : (
-        <>
-          <p className="text-sm text-muted-foreground">
-            Normalized financial transactions from PDF and SMS imports.
-          </p>
-          <Card className="flex min-h-64 items-center justify-center border-dashed">
-            <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
-              <p className="text-lg font-medium">No transactions yet</p>
-              <p className="text-sm text-muted-foreground">
-                Import a PDF statement or, on Android, M-Pesa SMS messages to
-                see normalized transactions here.
-              </p>
-            </CardContent>
-          </Card>
-        </>
+        <Card className="flex min-h-64 items-center justify-center">
+          <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-2 text-center">
+            <p className="text-lg font-medium">No transactions yet</p>
+            <p className="text-sm text-muted-foreground">
+              Import a PDF statement, or M-Pesa SMS on Android, to see
+              normalized transactions here.
+            </p>
+            <Button asChild variant="outline">
+              <Link to="/">
+                <FileUp className="size-4" />
+                Go to Dashboard
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
       {showTop && (
         <Button
           size="icon"
           aria-label="Back to top"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="fixed right-4 bottom-[calc(4.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] z-30 size-11 rounded-full shadow-lg"
+          variant="outline"
+          className="fixed right-4 bottom-[calc(4.5rem+var(--safe-bottom,env(safe-area-inset-bottom)))] z-30 size-11 rounded-none bg-background"
         >
           <ArrowUp className="size-5" />
         </Button>

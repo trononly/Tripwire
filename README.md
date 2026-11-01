@@ -155,6 +155,20 @@ or downloadable platform + build-tools; the first run can take a while.
   root `Taskfile.yml` already defaults `PACKAGE_MANAGER` to pnpm - always
   build via the root task (`android:package`), not the inner Taskfile.
 
+## Debug builds (coexists with the release app)
+
+The debug build has its own application id (`com.tripwire.app.debug`), a
+blue launcher icon and the label **Tripwire Debug**, so it installs beside
+the Tripwire you actually use; uninstalling one never removes the other.
+
+    wails3 task android:package:debug   # -> bin/tripwire-debug.apk
+    wails3 task android:run:device      # build, install and launch on adb
+
+The same APK is built by the **Android debug APK** workflow
+(`.github/workflows/android-debug.yml`) on `workflow_dispatch` and on pushes
+to an optional `nightly` branch. Download the `tripwire-debug-apk` artifact
+from the run summary.
+
 ## Install on a device
 
 Enable Developer options + USB debugging, then either:

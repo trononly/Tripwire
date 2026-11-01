@@ -142,7 +142,7 @@ function TxRow({
   };
   const badge = (
     <span
-      className={`flex size-9 shrink-0 items-center justify-center rounded-full transition-shadow group-hover/badge:ring-2 group-hover/badge:ring-primary/25 ${tint}`}
+      className={`flex size-9 shrink-0 items-center justify-center rounded-none transition-colors group-hover/badge:bg-muted/80 ${tint}`}
       aria-hidden
     >
       {category ? (
@@ -224,9 +224,7 @@ function TxRow({
           <span className="flex shrink-0 items-center gap-1">
             <span
               className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
-                moneyIn
-                  ? "text-emerald-600 dark:text-money-in"
-                  : "text-rose-600 dark:text-money-out"
+                moneyIn ? "text-money-in" : "text-foreground"
               }`}
             >
               {formatAmount(tx.amount)}
@@ -380,7 +378,7 @@ export function TransactionList({
               key={g.dayKey}
               className="rounded-none border"
             >
-              <header className="sticky top-0 z-10 flex items-baseline justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
+              <header className="sticky top-0 z-10 flex items-baseline justify-between gap-2 border-b border-border bg-muted px-3 py-2">
                 <span className="text-[13px] font-medium">
                   {dateGroupLabel(g.dayKey)}
                 </span>

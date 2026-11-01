@@ -37,7 +37,7 @@ export function FavouritesRow({
 	return (
 		<div className="space-y-2">
 			<span className="flex items-center gap-1.5 text-sm font-medium">
-				<Star className="size-3.5 text-rose-500" aria-hidden />
+				<Star className="size-3.5 text-primary" aria-hidden />
 				Favourites
 			</span>
 
@@ -45,22 +45,22 @@ export function FavouritesRow({
 				<button
 					type="button"
 					onClick={onManage}
-					className="flex w-full items-center gap-3 rounded-none border border-dashed border-border px-3 py-2 text-left transition-colors hover:border-rose-500/40 hover:bg-rose-500/5"
+					className="flex w-full items-center gap-3 rounded-none border border-dashed border-border px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
 				>
 					<span className="flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
 						<Plus className="size-4 text-muted-foreground" aria-hidden />
 					</span>
 					<span className="min-w-0">
-						<span className="block text-xs font-medium text-foreground">
+						<span className="block text-[13px] font-medium text-foreground">
 							{emptyTitle}
 						</span>
-						<span className="block truncate text-[11px] text-muted-foreground">
+						<span className="block truncate text-[12px] text-muted-foreground">
 							{emptyHint}
 						</span>
 					</span>
 				</button>
 			) : (
-				<div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				<div className="flex flex-wrap gap-2">
 					<button
 						type="button"
 						onClick={onManage}
