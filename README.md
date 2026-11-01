@@ -181,13 +181,14 @@ placed on the SIM that owns the active wallet; without that access the phone
 may show its "Call with SIM 1 / SIM 2" chooser, which the menu automation
 cannot drive.
 
-The automation service is only bound while Android keeps it bound: after
-installing an app update the phone sometimes leaves it enabled but dead, so
-the app reports "automation is not running" instead of dialling into a menu
-nothing will drive. Toggle the service off and on in system accessibility
-settings (or restart the phone) to bind it again. The service drives the
-phone app's USSD window only, never Tripwire's own window, so it can fill the
-menu even though the dialog is not the focused window.
+The service drives the phone app's USSD window only, never Tripwire's own
+window: the USSD dialog is an overlay that is often not the focused window, so
+reading only the active window would leave the menu untouched.
+
+If Android ever reports the service as enabled but no longer runs it, Send
+says "automation is not running" instead of dialling into a menu nothing will
+drive. Toggling the service off and on in system accessibility settings
+rebinds it; restart the phone only if that does not.
 
 ## Install on a device
 
