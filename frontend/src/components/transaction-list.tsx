@@ -224,7 +224,7 @@ function TxRow({
           <span className="flex shrink-0 items-center gap-1">
             <span
               className={`whitespace-nowrap text-[15px] font-medium tabular-nums ${
-                moneyIn ? "text-money-in" : "text-foreground"
+                moneyIn ? "text-money-in" : "text-money-out"
               }`}
             >
               {formatAmount(tx.amount)}

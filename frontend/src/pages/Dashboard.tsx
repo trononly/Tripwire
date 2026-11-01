@@ -221,10 +221,11 @@ export default function Dashboard({
     return `${bits.join(" · ")}.`;
   }, [visible]);
 
-  // Transactions loaded but the analysis is still running (launch, or a
-  // statement just activated): render the skeleton, never a dashboard of
-  // zeroes that fills in a moment later.
-  if (transactions.length > 0 && !result && loading) {
+  // Transactions loaded but the first analysis has not landed: render the
+  // skeleton, never a dashboard of zeroes that fills in a moment later. Once
+  // a result exists it stays on screen through a re-analysis, so the cards
+  // are not torn down and re-animated when the dataset is refreshed.
+  if (transactions.length > 0 && !result && !error) {
     return (
       <div className="space-y-6" aria-busy="true">
         <PageHeader title="Dashboard" />
