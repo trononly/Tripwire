@@ -610,6 +610,18 @@ func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResul
 		return nil, err
 	}
 
+	// A message's key changes shape when READ_PHONE_STATE arrives: it is
+	// keyed by subscription id while the slot is unknown and by physical
+	// slot afterwards. The messages in hand carry both, so map the old key
+	// onto the new one and keep filing into the record that already exists
+	// instead of opening a second wallet for the same physical SIM.
+	slotToSub := make(map[string]string, 2)
+	for _, m := range messages {
+		if m.Slot >= 0 && m.SubID >= 0 {
+			slotToSub[fmt.Sprintf("sim-%d", m.Slot)] = fmt.Sprintf("sub-%d", m.SubID)
+		}
+	}
+
 	for _, key := range order {
 		txs := aggs[key].txs
 		if len(txs) == 0 {
@@ -620,6 +632,34 @@ func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResul
 		latest, err := latestSmsRecord(s, metas, key)
 		if err != nil {
 			return nil, err
+		}
+		if latest == nil {
+			if legacyKey, ok := slotToSub[key]; ok {
+				legacy, lerr := latestSmsRecord(s, metas, legacyKey)
+				if lerr != nil {
+					return nil, lerr
+				}
+				if legacy != nil {
+					if err := s.SetSimID(legacy.ID, key); err != nil {
+						return nil, err
+					}
+					for i := range metas {
+						if metas[i].ID == legacy.ID {
+							metas[i].SimID = key
+						}
+					}
+					legacy.SimID = key
+					// The label usually arrives with the grant too, and the
+					// merge below only refreshes it when new messages land.
+					if l := aggs[key].label; l != "" && legacy.SimLabel != l {
+						if err := s.SetSimLabel(legacy.ID, l); err != nil {
+							return nil, err
+						}
+						legacy.SimLabel = l
+					}
+					latest = legacy
+				}
+			}
 		}
 		if latest == nil {
 			rec := newSmsRecord(txs, key, sim.SimLabel)
@@ -713,9 +753,11 @@ type SimCard struct {
 // the phone-state grant would open a second record for the same physical
 // SIM. A card matches by slot key first, then subscription key; cards with
 // no carrier name and records that already carry the name are skipped for
-// renaming, and a move is skipped when another record already claims the
-// slot key (the older record stays as a snapshot). Returns how many
-// records changed. Transactions, counts and date ranges are untouched.
+// renaming. A move is skipped when another record already claims the slot
+// key, and in that case a record holding nothing the claimed one does not
+// already have is deleted: it is the duplicate left behind when an import
+// ran before the grant and another after it. Returns how many records
+// changed. Transactions, counts and date ranges are untouched.
 func (p *ParseService) RefreshSimLabels(cards []SimCard) (int, error) {
 	s, err := p.statements()
 	if err != nil {
@@ -762,6 +804,24 @@ func (p *ParseService) RefreshSimLabels(cards []SimCard) (int, error) {
 				m.SimID = slotKey
 				changed = true
 			}
+			if slotKey != "" && m.SimID == subKey && claimed[slotKey] {
+				// The slot key is already taken, so this record is the
+				// duplicate an import before the grant left behind. Drop it
+				// when the claimed record already holds every transaction
+				// it has; a record with history of its own stays put.
+				covered, err := coveredByRecord(s, metas, slotKey, m.ID)
+				if err != nil {
+					return updated, err
+				}
+				if covered {
+					if err := s.Delete(m.ID); err != nil {
+						return updated, err
+					}
+					m.Source = ""
+					updated++
+					continue
+				}
+			}
 			if label != "" && m.SimLabel != label {
 				if err := s.SetSimLabel(m.ID, label); err != nil {
 					return updated, err
@@ -775,6 +835,43 @@ func (p *ParseService) RefreshSimLabels(cards []SimCard) (int, error) {
 		}
 	}
 	return updated, nil
+}
+
+// coveredByRecord reports whether the newest record filed under slotKey
+// already holds every transaction of legacyID - i.e. the legacy record is
+// a duplicate snapshot from a key change, not history of its own.
+func coveredByRecord(s *store.Store, metas []store.StatementMeta, slotKey, legacyID string) (bool, error) {
+	targetID := ""
+	for _, m := range metas {
+		if m.Source == store.SourceSms && m.SimID == slotKey && m.ID != legacyID {
+			targetID = m.ID
+			break
+		}
+	}
+	if targetID == "" {
+		return false, nil
+	}
+	target, err := s.Get(targetID)
+	if err != nil {
+		return false, err
+	}
+	legacy, err := s.Get(legacyID)
+	if err != nil {
+		return false, err
+	}
+	if len(legacy.Txs) == 0 {
+		return false, nil
+	}
+	seen := make(map[string]struct{}, len(target.Txs))
+	for _, tx := range target.Txs {
+		seen[tx.ID] = struct{}{}
+	}
+	for _, tx := range legacy.Txs {
+		if _, ok := seen[tx.ID]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // ListStatements returns the stored statements' metadata, newest import
