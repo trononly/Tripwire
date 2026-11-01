@@ -1284,13 +1284,16 @@ public class WailsBridge {
                 emitUssdError("sim selection required");
                 return;
             }
+            boolean multipleSims = hasMultipleActiveSims();
             if (DEBUG) {
                 Log.d(TAG, "placeUssdCall simKey=" + simKey + " account="
-                        + (account != null ? account.getId() : "null"));
+                        + (account != null ? account.getId() : "null")
+                        + " multipleSims=" + multipleSims);
             }
-            // TelecomManager.placeCall honours EXTRA_PHONE_ACCOUNT_HANDLE;
-            // Intent.ACTION_CALL + the same extra is ignored by several
-            // dialers, which is what produced the SIM chooser.
+            // TelecomManager.placeCall honours EXTRA_PHONE_ACCOUNT_HANDLE and
+            // opens the USSD dialog correctly. ACTION_CALL with the same
+            // extra is ignored by several dialers (SIM chooser) and on some
+            // MediaTek builds turns *334# into "invalid MMI code".
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 TelecomManager tm = (TelecomManager) activity.getSystemService(
                         Context.TELECOM_SERVICE);
@@ -1310,10 +1313,11 @@ public class WailsBridge {
                     }
                 }
             }
+            // Last-resort fallback: no account extra here. On MediaTek
+            // dialers ACTION_CALL + EXTRA_PHONE_ACCOUNT_HANDLE for a USSD
+            // code reports "invalid MMI code"; an unpinned dial at least
+            // opens the menu.
             Intent intent = new Intent(Intent.ACTION_CALL, uri);
-            if (account != null) {
-                intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account);
-            }
             activity.startActivity(intent);
             emitEvent("common:ussd", new JSONObject().put("ok", true).toString());
         } catch (Exception e) {
@@ -1626,6 +1630,21 @@ public class WailsBridge {
         }
         try {
             MpesaUssdService.arm(session);
+            if (!MpesaUssdService.isConnected()) {
+                // Listed in Settings but never bound by the system (usual
+                // right after an update): say so instead of dialling into a
+                // menu nothing will drive.
+                MpesaUssdService.disarm();
+                Log.w(TAG, "automation component enabled but not connected");
+                emitEvent("common:ussd-auto",
+                        new JSONObject().put("state", "aborted")
+                                .put("reason",
+                                        "automation is not running - turn it "
+                                        + "off and on in Settings, or restart "
+                                        + "the phone")
+                                .toString());
+                return;
+            }
             emitEvent("common:ussd",
                     new JSONObject().put("ok", true).put("listening", true).toString());
             placeUssdCall("*334#", simKey);

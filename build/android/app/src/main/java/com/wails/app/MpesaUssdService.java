@@ -8,6 +8,7 @@ import android.text.InputType;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import org.json.JSONObject;
 
 /**
@@ -64,7 +65,9 @@ public class MpesaUssdService extends AccessibilityService {
     };
     /** Words on a dialog that is still loading (English + Kiswahili). */
     private static final String[] LOADING_WORDS = {
-        "loading", "please wait", "inapakia", "subira"
+        "loading", "please wait", "inapakia", "subira",
+        // The phone app says this while the gateway is still replying.
+        "code running", "ussd code running"
     };
     /** Distinct unknown prompts in a row before giving up. */
     private static final int ABORT_AFTER_UNKNOWN = 4;
@@ -85,6 +88,8 @@ public class MpesaUssdService extends AccessibilityService {
 
     private static final Object LOCK = new Object();
     private static volatile UssdSession armed = null;
+    /** The live service instance, so arm() can start polling immediately. */
+    private static volatile MpesaUssdService instance = null;
 
     // Per-attempt state (this service is effectively single-threaded: all
     // callbacks arrive on the main thread).
@@ -135,6 +140,11 @@ public class MpesaUssdService extends AccessibilityService {
         pollHandler.removeCallbacks(pollTask);
     }
 
+    /** True once the system has actually bound this service. */
+    public static boolean isConnected() {
+        return instance != null;
+    }
+
     /** Arm a session (replaces any previous one). Called by WailsBridge. */
     public static void arm(UssdSession session) {
         synchronized (LOCK) {
@@ -142,6 +152,18 @@ public class MpesaUssdService extends AccessibilityService {
         }
         if (DEBUG) Log.d(TAG, "session armed: kind=" + session.kind
                 + " steps=" + session.steps.size());
+        // Do not wait for an accessibility event: the system USSD dialog is
+        // a TYPE_SYSTEM window and often produces no event the service sees.
+        // Poll from the moment the session is armed.
+        MpesaUssdService svc = instance;
+        if (svc != null) {
+            svc.ensurePolling();
+        } else {
+            // The component is listed in Settings but the system never bound
+            // it (common right after an app update): nothing can be automated
+            // until the user toggles it off and on again.
+            Log.w(TAG, "session armed but service is not connected");
+        }
     }
 
     /** Disarm silently (timeout/complete/abort paths emit first). */
@@ -175,6 +197,10 @@ public class MpesaUssdService extends AccessibilityService {
     @Override
     public void onServiceConnected() {
         Log.i(TAG, "connected");
+        instance = this;
+        synchronized (LOCK) {
+            if (armed != null) ensurePolling();
+        }
     }
 
     @Override
@@ -191,6 +217,7 @@ public class MpesaUssdService extends AccessibilityService {
     @Override
     public void onDestroy() {
         stopPolling();
+        instance = null;
         super.onDestroy();
     }
 
@@ -228,17 +255,31 @@ public class MpesaUssdService extends AccessibilityService {
             lastActionAt = 0;
             pinAnnounced = false;
         }
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
+        AccessibilityNodeInfo root = findPhoneRoot();
+        if (root == null) {
+            if (DEBUG) Log.d(TAG, "no phone window in " + describeWindows());
+            return;
+        }
         try {
             CharSequence pkgSeq = root.getPackageName();
             String pkg = pkgSeq != null ? pkgSeq.toString() : "";
             // Never touch our own UI (or anything that is not the phone app).
-            if (pkg.equals(getPackageName()) || !isPhonePackage(pkg)) return;
+            if (pkg.equals(getPackageName()) || !isPhonePackage(pkg)) {
+                if (DEBUG) Log.d(TAG, "ignoring package=" + pkg);
+                return;
+            }
 
             String prompt = collectText(root, new StringBuilder(), 0);
-            if (prompt.isEmpty()) return;
+            if (prompt.isEmpty()) {
+                if (DEBUG) Log.d(TAG, "empty prompt pkg=" + pkg);
+                return;
+            }
             String norm = prompt.toLowerCase();
+            if (DEBUG && !prompt.equals(lastSeenPrompt)) {
+                String flat = prompt.replace('\n', ' ').trim();
+                if (flat.length() > 160) flat = flat.substring(0, 160);
+                Log.d(TAG, "prompt pkg=" + pkg + " text=" + flat);
+            }
 
             // Dialog still loading (spinner / "please wait", common on weak
             // networks): wait for the real prompt. Not an error, and not an
@@ -324,6 +365,65 @@ public class MpesaUssdService extends AccessibilityService {
         }
     }
 
+    /**
+     * Root of the window showing the USSD dialog.
+     *
+     * <p>The dialog is a {@code TYPE_SYSTEM_DIALOG} owned by the phone app
+     * that sits on top of whatever is underneath. On several OEM builds it
+     * does not become the "active" window, so {@link #getRootInActiveWindow()}
+     * hands back our own WebView and the phone dialog is never seen. Prefer a
+     * window whose package is a phone package, and fall back to the active
+     * window only when no phone window is present.
+     */
+    private AccessibilityNodeInfo findPhoneRoot() {
+        try {
+            java.util.List<AccessibilityWindowInfo> windows = getWindows();
+            if (windows != null) {
+                AccessibilityNodeInfo best = null;
+                for (AccessibilityWindowInfo w : windows) {
+                    AccessibilityNodeInfo r = w.getRoot();
+                    if (r == null) continue;
+                    CharSequence p = r.getPackageName();
+                    String pkg = p != null ? p.toString() : "";
+                    if (!pkg.equals(getPackageName()) && isPhonePackage(pkg)) {
+                        // Later windows are higher up; keep the topmost.
+                        if (best != null) best.recycle();
+                        best = r;
+                    } else {
+                        r.recycle();
+                    }
+                }
+                if (best != null) return best;
+            }
+        } catch (Exception e) {
+            if (DEBUG) Log.d(TAG, "getWindows failed: " + e);
+        }
+        return getRootInActiveWindow();
+    }
+
+    /** Debug helper: packages of every retrievable window, topmost last. */
+    private String describeWindows() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            java.util.List<AccessibilityWindowInfo> windows = getWindows();
+            if (windows == null) return "(none)";
+            for (AccessibilityWindowInfo w : windows) {
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r == null) continue;
+                try {
+                    CharSequence p = r.getPackageName();
+                    sb.append(p != null ? p.toString() : "?")
+                      .append(":t").append(w.getType()).append(' ');
+                } finally {
+                    r.recycle();
+                }
+            }
+        } catch (Exception e) {
+            return "(error " + e + ")";
+        }
+        return sb.length() == 0 ? "(none)" : sb.toString().trim();
+    }
+
     private static boolean isPhonePackage(String pkg) {
         String lower = pkg.toLowerCase();
         for (String hint : PHONE_HINTS) {
@@ -398,7 +498,7 @@ public class MpesaUssdService extends AccessibilityService {
             input.recycle();
         }
         // Re-resolve: the tree may have changed after typing.
-        AccessibilityNodeInfo fresh = getRootInActiveWindow();
+        AccessibilityNodeInfo fresh = findPhoneRoot();
         if (fresh == null) return false;
         try {
             AccessibilityNodeInfo send = findSendButton(fresh);
