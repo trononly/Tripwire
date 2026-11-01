@@ -133,7 +133,11 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
             ? "Call permission was denied."
             : data?.error === "automation disabled"
               ? "Automation was switched off."
-              : "Could not start the transaction.",
+              : data?.error === "sim access required"
+                ? "Allow phone access in Settings so Tripwire can use your SIM."
+                : data?.error === "sim selection required"
+                  ? "Tripwire could not select your SIM. Allow phone access in Settings, then try again."
+                  : "Could not start the transaction.",
         );
       }
     });

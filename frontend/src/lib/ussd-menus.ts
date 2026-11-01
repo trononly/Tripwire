@@ -1,3 +1,5 @@
+import { isAutoConfirmEnabled } from "@/lib/payment-settings";
+
 // M-PESA *334# menu map - owner-confirmed 2026-10-13 (English handset).
 // The app dials plain *334# (Safaricom drops stacked suffixes) and the
 // Android automation service walks the live menus step by step, stopping at
@@ -20,6 +22,8 @@ export type SendKind = "send" | "pochi";
 export interface UssdStep {
   match: string[];
   input: string;
+  /** The final "1 = Yes" prompt; the native service may leave it to the user. */
+  confirm?: boolean;
 }
 
 /** Frontend-owned, versioned script handed to the automation service. */
@@ -28,6 +32,8 @@ export interface QuickEntryScript {
   kind: "send" | "pochi" | "paybill" | "till";
   /** Armed window in seconds; the service disarms on expiry. */
   timeoutSec: number;
+  /** Explicit opt-in: answer the final confirmation prompt for the user. */
+  confirmAfterPin: boolean;
   steps: UssdStep[];
 }
 
@@ -93,12 +99,17 @@ export function buildSendScript(
     version: 1,
     kind,
     timeoutSec: DEFAULT_TIMEOUT_SEC,
+    confirmAfterPin: isAutoConfirmEnabled(),
     steps: [
       { match: ["send money"], input: USSD_MENUS.send.rootOption },
       { match: subMatch, input: sub },
       { match: ["phone", "number", "namba"], input: p },
       { match: ["amount", "kiasi"], input: String(Number(a)) },
-      { match: ["yes", "confirm", "thibitisha"], input: USSD_MENUS.confirmYes },
+      {
+        match: ["yes", "confirm", "thibitisha"],
+        input: USSD_MENUS.confirmYes,
+        confirm: true,
+      },
     ],
   };
 }
@@ -119,13 +130,18 @@ export function buildPaybillScript(
     version: 1,
     kind: "paybill",
     timeoutSec: DEFAULT_TIMEOUT_SEC,
+    confirmAfterPin: isAutoConfirmEnabled(),
     steps: [
       { match: ["lipa na m-pesa", "lipa"], input: USSD_MENUS.lipa.rootOption },
       { match: ["pay bill", "paybill"], input: USSD_MENUS.lipa.paybill },
       { match: ["business", "paybill number", "biashara"], input: b },
       { match: ["account", "akaunti"], input: acc },
       { match: ["amount", "kiasi"], input: String(Number(a)) },
-      { match: ["yes", "confirm", "thibitisha"], input: USSD_MENUS.confirmYes },
+      {
+        match: ["yes", "confirm", "thibitisha"],
+        input: USSD_MENUS.confirmYes,
+        confirm: true,
+      },
     ],
   };
 }
@@ -142,12 +158,17 @@ export function buildTillScript(
     version: 1,
     kind: "till",
     timeoutSec: DEFAULT_TIMEOUT_SEC,
+    confirmAfterPin: isAutoConfirmEnabled(),
     steps: [
       { match: ["lipa na m-pesa", "lipa"], input: USSD_MENUS.lipa.rootOption },
       { match: ["buy goods", "till", "nunua"], input: USSD_MENUS.lipa.till },
       { match: ["till number", "till"], input: t },
       { match: ["amount", "kiasi"], input: String(Number(a)) },
-      { match: ["yes", "confirm", "thibitisha"], input: USSD_MENUS.confirmYes },
+      {
+        match: ["yes", "confirm", "thibitisha"],
+        input: USSD_MENUS.confirmYes,
+        confirm: true,
+      },
     ],
   };
 }

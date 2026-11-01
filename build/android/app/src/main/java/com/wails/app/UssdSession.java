@@ -31,23 +31,30 @@ public final class UssdSession {
     public static final class Step {
         public final List<String> match;
         public final String input;
+        /** The final "1 = Yes" prompt; service may leave it to the user. */
+        public final boolean confirm;
 
-        Step(List<String> match, String input) {
+        Step(List<String> match, String input, boolean confirm) {
             this.match = Collections.unmodifiableList(match);
             this.input = input;
+            this.confirm = confirm;
         }
     }
 
     public final String kind;
     public final List<Step> steps;
+    /** Whether the service answers the final confirmation prompt for the user. */
+    public final boolean confirmAfterPin;
     public final long timeoutMs;
     public final long createdAtMs;
     /** Index of the step currently waiting for its prompt. Service-owned. */
     public volatile int stepIndex = 0;
 
-    private UssdSession(String kind, List<Step> steps, long timeoutMs) {
+    private UssdSession(String kind, List<Step> steps, boolean confirmAfterPin,
+            long timeoutMs) {
         this.kind = kind;
         this.steps = Collections.unmodifiableList(steps);
+        this.confirmAfterPin = confirmAfterPin;
         this.timeoutMs = timeoutMs;
         this.createdAtMs = System.currentTimeMillis();
     }
@@ -95,13 +102,14 @@ public final class UssdSession {
                     char c = input.charAt(k);
                     if (c < 0x20 || c == '*' || c == '#') return null;
                 }
-                steps.add(new Step(match, input));
+                steps.add(new Step(match, input, s.optBoolean("confirm", false)));
             }
             int timeoutSec = o.optInt("timeoutSec", 90);
             if (timeoutSec < MIN_TIMEOUT_SEC || timeoutSec > MAX_TIMEOUT_SEC) {
                 timeoutSec = 90;
             }
-            return new UssdSession(kind, steps, timeoutSec * 1000L);
+            return new UssdSession(kind, steps,
+                    o.optBoolean("confirmAfterPin", false), timeoutSec * 1000L);
         } catch (Exception e) {
             return null;
         }

@@ -49,6 +49,10 @@ import {
 	normalizePhone,
 } from "@/lib/ussd-menus";
 import { paySimKey } from "@/lib/pay-sim";
+import {
+	AUTO_CONFIRM_KEY,
+	setAutoConfirmEnabled,
+} from "@/lib/payment-settings";
 import type { RecurringPayment } from "../bindings/mpesa-analyzer/internal/recurring/models";
 import type { Transaction } from "../bindings/mpesa-analyzer/internal/parser/models";
 import {
@@ -506,6 +510,23 @@ describe("ussd-menus", () => {
 			"500",
 			"1",
 		]);
+	});
+
+	it("leaves the final confirmation to the user by default", () => {
+		localStorage.removeItem(AUTO_CONFIRM_KEY);
+		const s = buildSendScript("send", "0722123456", "500");
+		expect(s?.confirmAfterPin).toBe(false);
+		expect(s?.steps[s.steps.length - 1]).toMatchObject({
+			input: "1",
+			confirm: true,
+		});
+	});
+
+	it("opts into auto-confirmation", () => {
+		setAutoConfirmEnabled(true);
+		const s = buildPaybillScript("123456", "rent", "1000");
+		expect(s?.confirmAfterPin).toBe(true);
+		setAutoConfirmEnabled(false);
 	});
 
 	it("builds a pochi script selecting option 3", () => {

@@ -122,7 +122,7 @@ export function smsPermissions(): SmsPermissions {
 
 /** Progress events from the automation service (common:ussd-auto). */
 export interface UssdAutoEvent {
-	state: "step" | "awaiting-pin" | "complete" | "aborted";
+	state: "step" | "awaiting-pin" | "awaiting-confirm" | "complete" | "aborted";
 	kind?: string;
 	step?: number;
 	steps?: number;

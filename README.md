@@ -169,6 +169,18 @@ The same APK is built by the **Android debug APK** workflow
 to an optional `nightly` branch. Download the `tripwire-debug-apk` artifact
 from the run summary.
 
+## Guided payments
+
+Tripwire stops at the PIN screen and, by default, also stops at the final
+"Safaricom: 1 = Yes" confirmation. Enter the PIN and tap the confirmation
+yourself. If you prefer the old behaviour, turn on **Settings → Preferences →
+Auto-confirm after PIN**; Tripwire will then answer that final prompt for you.
+
+On a dual-SIM phone, grant phone-state access when asked. The payment is
+placed on the SIM that owns the active wallet; without that access the phone
+may show its "Call with SIM 1 / SIM 2" chooser, which the menu automation
+cannot drive.
+
 ## Install on a device
 
 Enable Developer options + USB debugging, then either:

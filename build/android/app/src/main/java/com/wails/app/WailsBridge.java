@@ -32,6 +32,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.BatteryManager;
+import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -1271,27 +1272,66 @@ public class WailsBridge {
 
     private void placeUssdCall(String ussd, String simKey, boolean allowPin) {
         PhoneAccountHandle account = null;
+        Uri uri = Uri.parse("tel:" + Uri.encode(ussd));
         try {
-            Intent intent = new Intent(
-                    Intent.ACTION_CALL,
-                    Uri.parse("tel:" + Uri.encode(ussd)));
             account = allowPin ? phoneAccountForSimKey(simKey) : null;
+            // On a dual-SIM phone an unpinned call opens the system "Call
+            // with SIM 1/SIM 2" chooser. The accessibility service only
+            // watches the phone/dialer windows, so that chooser stalls the
+            // script forever. Refuse the unpinned path and tell the user.
+            if (account == null && hasMultipleActiveSims()) {
+                Log.w(TAG, "dual SIM and no phone account; refusing unpinned USSD");
+                emitUssdError("sim selection required");
+                return;
+            }
+            if (DEBUG) {
+                Log.d(TAG, "placeUssdCall simKey=" + simKey + " account="
+                        + (account != null ? account.getId() : "null"));
+            }
+            // TelecomManager.placeCall honours EXTRA_PHONE_ACCOUNT_HANDLE;
+            // Intent.ACTION_CALL + the same extra is ignored by several
+            // dialers, which is what produced the SIM chooser.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                TelecomManager tm = (TelecomManager) activity.getSystemService(
+                        Context.TELECOM_SERVICE);
+                if (tm != null) {
+                    Bundle extras = new Bundle();
+                    if (account != null) {
+                        extras.putParcelable(
+                                TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account);
+                    }
+                    try {
+                        tm.placeCall(uri, extras);
+                        emitEvent("common:ussd",
+                                new JSONObject().put("ok", true).toString());
+                        return;
+                    } catch (Exception e) {
+                        Log.w(TAG, "TelecomManager.placeCall failed, falling back", e);
+                    }
+                }
+            }
+            Intent intent = new Intent(Intent.ACTION_CALL, uri);
             if (account != null) {
                 intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account);
             }
             activity.startActivity(intent);
             emitEvent("common:ussd", new JSONObject().put("ok", true).toString());
         } catch (Exception e) {
-            if (account != null) {
-                // An OEM refused the pinned account. A default-SIM dial is
-                // still better than no dial at all, so try once more.
+            if (account != null && !hasMultipleActiveSims()) {
+                // Single SIM: a default-line dial is still useful.
                 Log.w(TAG, "pinned ussd call failed, retrying unpinned", e);
                 placeUssdCall(ussd, simKey, false);
                 return;
             }
             Log.e(TAG, "placeUssdCall failed", e);
-            emitUssdError("ussd call failed");
+            emitUssdError(account != null ? "sim selection required" : "ussd call failed");
         }
+    }
+
+    /** True when the phone has more than one active subscription. */
+    private boolean hasMultipleActiveSims() {
+        java.util.List<SubscriptionInfo> infos = activeSubscriptions();
+        return infos != null && infos.size() > 1;
     }
 
     /** Active subscriptions, or null when permissions/OEM block the read. */

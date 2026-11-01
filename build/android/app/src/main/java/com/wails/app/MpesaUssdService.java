@@ -35,9 +35,11 @@ import org.json.JSONObject;
  * </ul>
  *
  * <p>Progress is reported to the frontend as {@code common:ussd-auto}
- * events: {state:"step"|"awaiting-pin"|"complete"|"aborted",
- * step?, steps?, reason?}. "complete" means every value was entered - the
- * payment itself is only confirmed by the SMS receipt, never by us.
+ * events: {state:"step"|"awaiting-pin"|"awaiting-confirm"|"complete"|"aborted",
+ * step?, steps?, reason?}. "awaiting-confirm" means the script asked us to
+ * stop at the final "1 = Yes" prompt so the user confirms it manually;
+ * "complete" means every value (including that confirmation) was entered.
+ * The payment itself is only confirmed by the SMS receipt, never by us.
  *
  * <p>Note on filtering: the service config intentionally lists no packages
  * so OEM dialers are not silently excluded; the hard package filter below
@@ -278,6 +280,15 @@ public class MpesaUssdService extends AccessibilityService {
                 }
                 if (System.currentTimeMillis() - lastActionAt
                         < ACTION_DEBOUNCE_MS) {
+                    return;
+                }
+                // The final "1 = Yes" prompt is the user's confirmation
+                // unless they explicitly opted into auto-confirm. Leave the
+                // dialog on screen and hand control back.
+                if (step.confirm && !session.confirmAfterPin) {
+                    disarm();
+                    emit("awaiting-confirm", session, null);
+                    Log.i(TAG, "confirmation left to user");
                     return;
                 }
                 if (doStep(root, step.input)) {

@@ -21,6 +21,10 @@ import {
   useReduceMotionEnabled,
 } from "@/lib/motion-settings";
 import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
+import {
+  setAutoConfirmEnabled,
+  useAutoConfirmEnabled,
+} from "@/lib/payment-settings";
 import { cn } from "@/lib/utils";
 import { simName } from "@/components/sim-switcher";
 import { useKonamiCode } from "@/hooks/use-konami-code";
@@ -190,6 +194,7 @@ export default function Settings({
   updater: Updater;
 }) {
   const debug = useKonamiCode();
+  const autoConfirm = useAutoConfirmEnabled();
   const toastedRef = useRef(debug.unlocked);
   useEffect(() => {
     if (debug.unlocked && !toastedRef.current) {
@@ -231,12 +236,22 @@ export default function Settings({
 
       <Card>
         <CardHeader>
-          <CardTitle>Appearance</CardTitle>
+          <CardTitle>Preferences</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <ThemeSelector />
           <MotionSettings />
           <PrivacySetting />
+          {isAndroid && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm">Auto-confirm after PIN</span>
+              <Switch
+                checked={autoConfirm}
+                onCheckedChange={setAutoConfirmEnabled}
+                label="Auto-confirm after PIN"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

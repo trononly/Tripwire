@@ -101,6 +101,7 @@ const STATUS_TEXT: Record<string, string> = {
   starting: "Opening the M-PESA menu…",
   step: "Filling the menu…",
   "awaiting-pin": "Enter your M-PESA PIN in the phone dialog.",
+  "awaiting-confirm": "Confirm the payment in the phone dialog.",
   complete: "Menu ready - finish with your PIN.",
   aborted: "Payment stopped.",
 };
@@ -286,7 +287,11 @@ export function RecurringPayments({
             ? "Call permission was denied."
             : data?.error === "automation disabled"
               ? "Automation was switched off."
-              : "Could not start the transaction.",
+              : data?.error === "sim access required"
+                ? "Allow phone access in Settings so Tripwire can use your SIM."
+                : data?.error === "sim selection required"
+                  ? "Tripwire could not select your SIM. Allow phone access in Settings, then try again."
+                  : "Could not start the transaction.",
         );
       }
     });
