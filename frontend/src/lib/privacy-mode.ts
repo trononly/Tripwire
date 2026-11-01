@@ -51,8 +51,9 @@ export function usePrivacyMode(): boolean {
 
 /**
  * One figure's veil state. Returns whether it should currently be blurred and
- * a reveal action. Reveals are per-mount and reset whenever Privacy Mode is
- * switched off, so the next time it is enabled everything is hidden again.
+ * a toggle action. A revealed figure blurs again when tapped, so Privacy Mode
+ * is a repeatable veil, not a one-way reveal. Reveals are per-mount and reset
+ * whenever Privacy Mode is switched off.
  */
 export function useReveal() {
 	const privacy = usePrivacyMode();
@@ -61,10 +62,10 @@ export function useReveal() {
 		if (!privacy) setRevealed(false);
 	}, [privacy]);
 	const blurred = privacy && !revealed;
-	const reveal = useCallback(() => {
-		if (!blurred) return;
+	const toggle = useCallback(() => {
+		if (!privacy) return;
 		vibrateIfEnabled(8);
-		setRevealed(true);
-	}, [blurred]);
-	return { blurred, reveal, revealed };
+		setRevealed((open) => !open);
+	}, [privacy]);
+	return { blurred, toggle, reveal: toggle, revealed, enabled: privacy };
 }

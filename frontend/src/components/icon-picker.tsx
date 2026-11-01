@@ -29,7 +29,7 @@ export function IconPicker({
 	const searching = query.trim() !== "";
 
 	return (
-		<div className="overflow-hidden rounded-md border border-border">
+		<div className="overflow-hidden rounded-none border border-border">
 			<div className="relative border-b border-border p-2">
 				<Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
 				<Input
@@ -90,7 +90,7 @@ function IconGrid({
 						aria-pressed={active}
 						onClick={() => onSelect(def.name)}
 						className={cn(
-							"flex aspect-square items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+							"flex aspect-square items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
 							active && "bg-accent text-foreground ring-1 ring-primary/50",
 						)}
 					>

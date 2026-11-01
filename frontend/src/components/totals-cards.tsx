@@ -25,7 +25,7 @@ function KpiCell({
   emphasis?: "primary" | "secondary";
   className?: string;
 }) {
-  const { blurred, reveal } = useReveal();
+  const { blurred, toggle, enabled } = useReveal();
   const isPrimary = emphasis === "primary";
   const toneClass =
     tone === "in"
@@ -40,14 +40,15 @@ function KpiCell({
         blurred && "cursor-pointer",
         className,
       )}
-      onClick={reveal}
-      role={blurred ? "button" : undefined}
-      tabIndex={blurred ? 0 : undefined}
-      aria-label={blurred ? `Reveal ${label}` : undefined}
+      onClick={toggle}
+      role={enabled ? "button" : undefined}
+      tabIndex={enabled ? 0 : undefined}
+      aria-pressed={enabled ? !blurred : undefined}
+      aria-label={enabled ? (blurred ? `Reveal ${label}` : `Hide ${label}`) : undefined}
       onKeyDown={(e) => {
-        if (blurred && (e.key === "Enter" || e.key === " ")) {
+        if (enabled && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          reveal();
+          toggle();
         }
       }}
     >
@@ -75,7 +76,14 @@ function KpiCell({
       </p>
       {hint ? (
         <p className="mt-1.5 truncate text-[12px] text-muted-foreground">
-          {hint}
+          <span
+            className={cn(
+              "transition-[filter,opacity] duration-200",
+              blurred && "blur-[7px] select-none opacity-80",
+            )}
+          >
+            {hint}
+          </span>
         </p>
       ) : null}
     </div>

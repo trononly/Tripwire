@@ -11,11 +11,8 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-	CategoryIcon,
-	resolveCategoryIcon,
-} from "@/components/category-icon";
-import { IconPicker } from "@/components/icon-picker";
+import { resolveCategoryIcon } from "@/components/category-icon";
+import { CategoryIconField } from "@/components/category-icon-field";
 import { formatMoney } from "@/lib/format";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { bumpCategories } from "@/lib/category-refresh";
@@ -64,7 +61,6 @@ export function CategoryEditSheet({
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [pickerOpen, setPickerOpen] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	useEffect(() => {
@@ -73,7 +69,6 @@ export function CategoryEditSheet({
 		setName(category?.name ?? "");
 		setError(null);
 		setBusy(false);
-		setPickerOpen(false);
 		setConfirmDelete(false);
 	}, [open, category]);
 
@@ -135,45 +130,26 @@ export function CategoryEditSheet({
 					<DrawerTitle>
 						{category ? "Edit category" : "New category"}
 					</DrawerTitle>
-					<DrawerDescription>
-						{usage && usage.count > 0
-							? `${usage.count} ${
-									usage.count === 1 ? "transaction" : "transactions"
-								} · ${formatMoney(usage.amount)} in this dataset`
-							: "Labels follow the transaction, not the import."}
-					</DrawerDescription>
+					{usage && usage.count > 0 ? (
+						<DrawerDescription>
+							{`${usage.count} ${
+								usage.count === 1 ? "transaction" : "transactions"
+							} · ${formatMoney(usage.amount)}`}
+						</DrawerDescription>
+					) : null}
 				</DrawerHeader>
 
 				<form onSubmit={save} className="space-y-3 overflow-y-auto px-4 pb-2">
-					<Input
-						aria-label="Category name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						placeholder="Food & groceries"
-						maxLength={40}
-					/>
-
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="w-full justify-start gap-2"
-						aria-expanded={pickerOpen}
-						onClick={() => setPickerOpen((v) => !v)}
-					>
-						<CategoryIcon icon={icon} className="size-4" />
-						{pickerOpen ? "Hide icons" : "Choose an icon"}
-					</Button>
-
-					{pickerOpen && (
-						<IconPicker
-							value={icon}
-							onSelect={(value) => {
-								setIcon(value);
-								setPickerOpen(false);
-							}}
+					<div className="flex items-center gap-2">
+						<CategoryIconField value={icon} onChange={setIcon} />
+						<Input
+							aria-label="Category name"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="Food & groceries"
+							maxLength={40}
 						/>
-					)}
+					</div>
 
 					{error && <p className="text-xs text-destructive">{error}</p>}
 
@@ -201,7 +177,7 @@ export function CategoryEditSheet({
 												usage.count === 1
 													? "transaction goes"
 													: "transactions go"
-											} back to the M-Pesa category. This cannot be undone.`
+											} back to the standard category. This cannot be undone.`
 										: "This cannot be undone."}
 								</p>
 								{error && <p className="text-xs text-destructive">{error}</p>}

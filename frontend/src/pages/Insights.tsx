@@ -29,7 +29,6 @@ import {
   type PlanDraft,
 } from "@/lib/recurring-plans";
 import { formatMoney } from "@/lib/format";
-import { maxDayOf } from "@/lib/date-window";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 
@@ -55,7 +54,6 @@ function TileEmpty({ children }: { children: React.ReactNode }) {
  * otherwise only bills paid within 30 days of the newest activity. */
 function BillsTile({
   result,
-  month,
   plans,
   lastPaid,
   bands,
@@ -66,7 +64,6 @@ function BillsTile({
   onSkipPlan,
 }: {
   result: analysis.AnalysisResult | null;
-  month: string;
   plans: store.RecurringPlan[];
   lastPaid: Record<string, LastPaid | null>;
   bands: Record<string, AmountBand[]>;
@@ -76,30 +73,10 @@ function BillsTile({
   onDeletePlan: (id: string) => Promise<boolean>;
   onSkipPlan: (id: string, due: string) => Promise<boolean>;
 }) {
-  const payments = useMemo(() => {
-    const all = result?.recurringPayments ?? [];
-    if (all.length === 0) return [];
-    if (month !== "all") {
-      return all.filter(
-        (p) =>
-          p.firstDate.slice(0, 7) <= month && month <= p.lastDate.slice(0, 7),
-      );
-    }
-    // Live bills only. Monthly bills show while last paid within two
-    // months; other cadences show while their next round is due (or became
-    // due within the last week), so a lapsed weekly pattern stays hidden.
-    // "Now" is the newest bill activity, not today - datasets are
-    // historical.
-    const latest = maxDayOf(all.map((p) => p.lastDate));
-    const nowMs = Date.parse(`${latest}T00:00:00Z`);
-    const twoMonthsMs = 60 * 86400000;
-    const graceMs = 7 * 86400000;
-    return all.filter((p) => {
-      const lastMs = Date.parse(`${p.lastDate.slice(0, 10)}T00:00:00Z`);
-      if (p.cadence === "monthly") return nowMs - lastMs <= twoMonthsMs;
-      return lastMs + p.medianGapDays * 86400000 + graceMs >= nowMs;
-    });
-  }, [result, month]);
+  // Detection always runs on the full history and the suggestions are not
+  // scoped to the month picker: a bill paid last month must stay visible when
+  // the user walks the calendar forward.
+  const payments = useMemo(() => result?.recurringPayments ?? [], [result]);
   return (
     <RecurringPayments
       payments={payments}
@@ -530,7 +507,6 @@ export default function Insights({
         <div className="space-y-5">
           <BillsTile
             result={result}
-            month={month}
             plans={plans}
             lastPaid={lastPaid}
             bands={bands}

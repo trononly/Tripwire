@@ -43,6 +43,16 @@ export function counterpartyDisplayName(name: string): string {
   return kept.length > 0 ? kept.join(" ") : name;
 }
 
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
 function CounterpartyRow({
   name,
   number,
@@ -75,6 +85,12 @@ function CounterpartyRow({
       }}
       className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
     >
+      <span
+        aria-hidden
+        className="flex size-8 shrink-0 items-center justify-center bg-primary/10 text-[11px] font-semibold tracking-wide text-primary"
+      >
+        {initialsOf(display)}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{display}</span>
         <span className="block truncate text-xs tabular-nums text-muted-foreground">
@@ -153,7 +169,7 @@ export function CounterpartyCard({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <CardTitle>Top Counterparties</CardTitle>
+            <CardTitle>Top counterparties</CardTitle>
           </div>
           <div className="flex gap-1" role="group" aria-label="Money direction">
             {directions.map((d) => (

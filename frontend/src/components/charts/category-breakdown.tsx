@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
  * One spending label, already normalised by the caller. The built-in M-Pesa
@@ -49,19 +50,17 @@ export function CategoryBreakdown({
     <Card className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle>Where it went</CardTitle>
-            <CardDescription className="mt-0.5">
-              {description ??
-                (total > 0
-                  ? `${formatMoney(total)} across ${rows.length} ${
-                      rows.length === 1 ? "category" : "categories"
-                    }`
-                  : "No spending in this period.")}
-            </CardDescription>
-          </div>
+          <CardTitle>Where it went</CardTitle>
           {toolbar}
         </div>
+        <CardDescription>
+          {description ??
+            (total > 0
+              ? `${formatMoney(total)} across ${rows.length} ${
+                  rows.length === 1 ? "category" : "categories"
+                }`
+              : "No spending in this period.")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex-1">
         {empty ? (
@@ -93,7 +92,12 @@ export function CategoryBreakdown({
                     <span className="flex items-center gap-2">
                       <span className="h-1.5 min-w-0 flex-1 bg-muted">
                         <span
-                          className="block h-full bg-foreground/75 transition-[width] duration-300 group-hover:bg-foreground"
+                          className={cn(
+                            "block h-full transition-[width] duration-300",
+                            row === rows[0]
+                              ? "bg-primary group-hover:bg-primary/90"
+                              : "bg-muted-foreground/35 group-hover:bg-muted-foreground/50",
+                          )}
                           style={{ width: `${width}%` }}
                         />
                       </span>

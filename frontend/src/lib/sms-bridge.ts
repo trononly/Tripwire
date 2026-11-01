@@ -73,6 +73,14 @@ export interface SmsBridgeResult {
 	error?: string;
 }
 
+/** True for a debug Android build (the bridge exposes BuildConfig.DEBUG). */
+export function isDebugBuild(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.wails?.isDebug?.())
+  );
+}
+
 /** True only when the injected Android bridge with the SMS methods exists. */
 export function isAndroidBridge(): boolean {
 	return (

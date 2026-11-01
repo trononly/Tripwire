@@ -25,7 +25,7 @@ import {
 import { CounterpartyCard } from "@/components/counterparty-card";
 import { PageHeader } from "@/components/page-header";
 import { TotalsCards } from "@/components/totals-cards";
-import { Private } from "@/components/privacy";
+import { Private, PrivateText } from "@/components/privacy";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
 import { maxDayOf } from "@/lib/date-window";
 import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
@@ -208,7 +208,7 @@ export default function Dashboard({
     const fee = visible.totals.totalFees;
     const bits: string[] = [];
     if (fee > 0) bits.push(`Fees ${formatMoneyShort(fee)}`);
-    if (top && top.name !== "Fees") bits.push(`Top outflow ${top.name}`);
+    if (top && top.name !== "Fees") bits.push(`Most went to ${top.name}`);
     if (bits.length === 0) {
       return visible.totals.count > 0
         ? "No spending in this window."
@@ -216,9 +216,6 @@ export default function Dashboard({
     }
     return `${bits.join(" · ")}.`;
   }, [visible]);
-
-  const importLabel = smsMode ? "Import SMS" : "Import statement";
-  const onImportAction = smsMode ? onImportSms : onImport;
 
   if (transactions.length === 0) {
     return (
@@ -277,33 +274,18 @@ export default function Dashboard({
     <>
       <PageHeader
         title="Dashboard"
-        subtitle={finding}
+        subtitle={<PrivateText label="Tap to reveal the summary">{finding}</PrivateText>}
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setFilterOpen(true)}
-            >
-              <Calendar className="size-4" />
-              {rangeLabel}
-              <ChevronDown className="size-4 opacity-60" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={onImportAction}
-            >
-              {smsMode ? (
-                <MessageSquareText className="size-4" />
-              ) : (
-                <FileUp className="size-4" />
-              )}
-              {importLabel}
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setFilterOpen(true)}
+          >
+            <Calendar className="size-4" />
+            {rangeLabel}
+            <ChevronDown className="size-4 opacity-60" />
+          </Button>
         }
       />
       <FilterSheet
@@ -419,8 +401,8 @@ export default function Dashboard({
                       >
                         {(
                           [
-                            { key: "mpesa", label: "M-Pesa" },
-                            { key: "custom", label: "Mine" },
+                            { key: "mpesa", label: "Standard" },
+                            { key: "custom", label: "Custom" },
                           ] as const
                         ).map((option) => (
                           <button

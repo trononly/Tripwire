@@ -5,6 +5,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { HistorySheet } from "@/components/history-sheet";
 import { SimSwitcher } from "@/components/sim-switcher";
+import { BrandMark } from "@/components/brand-mark";
 import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { DataMode } from "@/lib/data-mode";
@@ -73,11 +74,7 @@ export function AppHeader(props: AppHeaderProps) {
 				<div className="flex min-w-0 items-center gap-2">
 					<SidebarTrigger className="hidden lg:inline-flex" />
 					{/* One brand only: the sidebar owns it from lg up. */}
-					<img
-						src="/tripwire.svg"
-						alt="Tripwire"
-						className="size-6 shrink-0 lg:hidden"
-					/>
+					<BrandMark className="size-6 shrink-0 lg:hidden" />
 					<span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline lg:hidden">
 						Tripwire
 					</span>
