@@ -43,6 +43,7 @@
     --color-sidebar-ring: var(--sidebar-ring);
     --color-surface: var(--surface);
     --color-brand: var(--brand);
+    --color-brand-strong: var(--brand-strong);
     --color-money-in: var(--money-in);
     --color-money-out: var(--money-out);
     --color-pay-action: var(--pay-action);
@@ -53,86 +54,93 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Tripwire palette: warm stone in light, near-black in dark, and one coral
+ * brand. The brand coral (#F04A48) is the mark and the highlight; the primary
+ * action is a deeper coral that reaches 5:1 with white. Money in/out are
+ * separate, softer data colours so a red action never means "you spent".
+ */
 :root {
     --radius: 0.625rem;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.148 0.004 228.8);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.148 0.004 228.8);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.148 0.004 228.8);
-    --primary: #F04A48;
-    --primary-foreground: oklch(0.979 0.021 166.113);
-    --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
-    --muted: oklch(0.963 0.002 197.1);
-    --muted-foreground: oklch(0.56 0.021 213.5);
-    --accent: oklch(0.963 0.002 197.1);
-    --accent-foreground: oklch(0.218 0.008 223.9);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.925 0.005 214.3);
-    --input: oklch(0.925 0.005 214.3);
-    --ring: oklch(0.723 0.014 214.4);
-    --chart-1: oklch(0.837 0.128 66.29);
-    --chart-2: oklch(0.705 0.213 47.604);
-    --chart-3: oklch(0.646 0.222 41.116);
-    --chart-4: oklch(0.553 0.195 38.402);
-    --chart-5: oklch(0.47 0.157 37.304);
-    --sidebar: oklch(0.987 0.002 197.1);
-    --sidebar-foreground: oklch(0.148 0.004 228.8);
-    --sidebar-primary: #F04A48;
-    --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
-    --sidebar-accent: oklch(0.963 0.002 197.1);
-    --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
-    --sidebar-border: oklch(0.925 0.005 214.3);
-    --sidebar-ring: oklch(0.723 0.014 214.4);
-    /* App palette (single source: zinc surfaces, rose brand, semantic money
-       in/out). Usage: bg-surface, bg-brand, text-money-in, text-money-out.
-       Green is data-status only (inflow, surplus) - never a control. */
-    --surface: oklch(1 0 0);
-    --brand: #F04A48;
-    --money-in: #10b981;
-    --money-out: #f43f5e;
-    --pay-action: #059669;
+    --background: #f4f3f0;
+    --foreground: #18181b;
+    --card: #ffffff;
+    --card-foreground: #18181b;
+    --popover: #ffffff;
+    --popover-foreground: #18181b;
+    --primary: #b9312d;
+    --primary-foreground: #ffffff;
+    --secondary: #ecebe6;
+    --secondary-foreground: #18181b;
+    --muted: #ecebe6;
+    --muted-foreground: #6b6862;
+    --accent: #ecebe6;
+    --accent-foreground: #18181b;
+    --destructive: #b3261e;
+    --border: #e2dfd8;
+    --input: #d6d2c9;
+    --ring: #b9312d;
+    --chart-1: #b23a36;
+    --chart-2: #0f766e;
+    --chart-3: #78716c;
+    --chart-4: #a16207;
+    --chart-5: #57534e;
+    --sidebar: #f4f3f0;
+    --sidebar-foreground: #18181b;
+    --sidebar-primary: #b9312d;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e7e5df;
+    --sidebar-accent-foreground: #18181b;
+    --sidebar-border: #e2dfd8;
+    --sidebar-ring: #b9312d;
+    /* App palette (single source: stone surfaces, coral brand, semantic
+       money in/out). Green is data-status only - never a control. */
+    --surface: #ffffff;
+    --brand: #f04a48;
+    --brand-strong: #b9312d;
+    --money-in: #0f766e;
+    --money-out: #b23a36;
+    --pay-action: #0f766e;
 }
 
 .dark {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --card: #18181b;
-    --card-foreground: #fafafa;
-    --popover: #18181b;
-    --popover-foreground: #fafafa;
-    --primary: #F04A48;
-    --primary-foreground: #fafafa;
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.275 0.011 216.9);
-    --muted-foreground: #a1a1aa;
-    --accent: oklch(0.275 0.011 216.9);
-    --accent-foreground: #fafafa;
-    --destructive: #f43f5e;
-    --border: #27272a;
-    --input: #27272a;
-    --ring: oklch(0.56 0.021 213.5);
-    --chart-1: #f43f5e;
-    --chart-2: #10b981;
+    --background: #0b0b0d;
+    --foreground: #f4f4f2;
+    --card: #151518;
+    --card-foreground: #f4f4f2;
+    --popover: #151518;
+    --popover-foreground: #f4f4f2;
+    --primary: #c73e38;
+    --primary-foreground: #ffffff;
+    --secondary: #1d1d21;
+    --secondary-foreground: #f4f4f2;
+    --muted: #1d1d21;
+    --muted-foreground: #9a9a94;
+    --accent: #1d1d21;
+    --accent-foreground: #f4f4f2;
+    --destructive: #f08a86;
+    --border: #2a2a2e;
+    --input: #38383e;
+    --ring: #c73e38;
+    --chart-1: #f08a86;
+    --chart-2: #3dd68c;
     --chart-3: #a1a1aa;
-    --chart-4: oklch(0.553 0.195 38.402);
-    --chart-5: oklch(0.47 0.157 37.304);
-    --sidebar: #18181b;
-    --sidebar-foreground: #fafafa;
-    --sidebar-primary: #F04A48;
-    --sidebar-primary-foreground: #fafafa;
-    --sidebar-accent: oklch(0.275 0.011 216.9);
-    --sidebar-accent-foreground: #fafafa;
-    --sidebar-border: #27272a;
-    --sidebar-ring: oklch(0.56 0.021 213.5);
-    --surface: #18181b;
-    --brand: #F04A48;
-    --money-in: #10b981;
-    --money-out: #f43f5e;
-    --pay-action: #059669;
+    --chart-4: #fbbf24;
+    --chart-5: #a8a8a0;
+    --sidebar: #0b0b0d;
+    --sidebar-foreground: #f4f4f2;
+    --sidebar-primary: #c73e38;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #1d1d21;
+    --sidebar-accent-foreground: #f4f4f2;
+    --sidebar-border: #2a2a2e;
+    --sidebar-ring: #c73e38;
+    --surface: #151518;
+    --brand: #f04a48;
+    --brand-strong: #c73e38;
+    --money-in: #3dd68c;
+    --money-out: #f08a86;
+    --pay-action: #3dd68c;
 }
 
 @layer base {
@@ -148,6 +156,18 @@
     }
     html {
         @apply font-sans;
+    }
+    /* Touch builds get honest 44px targets without stretching desktop
+       controls: the old global `button { min-height: 44px }` fought every
+       compact button in the header and the transaction toolbar. */
+    @media (pointer: coarse) {
+        button:not([data-compact]):not([role="switch"]):not([data-slot="switch"]) {
+            min-height: 44px;
+        }
+    }
+    ::selection {
+        background: color-mix(in oklch, var(--brand) 28%, transparent);
+        color: var(--foreground);
     }
 }
 
@@ -165,26 +185,25 @@ html,
        so it can stick to the viewport edge without jumping. Bottom is
        handled by the main padding + bottom nav. Only side insets belong on
        the root. */
-    padding-left: var(--safe-left,env(safe-area-inset-left));
-    padding-right: var(--safe-right,env(safe-area-inset-right));
+    padding-left: var(--safe-left, env(safe-area-inset-left));
+    padding-right: var(--safe-right, env(safe-area-inset-right));
     overflow-x: hidden;
-}
-
-button {
-    min-height: 44px;
-    min-width: 44px;
 }
 
 @layer components {
     /* Sleek square toggle tile: the single active-state language app-wide.
-       Inactive is a quiet bordered tile; active is a subtle rose tint -
-       clear without blinding. Green stays reserved for data status
-       (inflow amounts, bars, surplus badges), never controls. */
+       Inactive is a quiet bordered tile; active is a subtle coral tint -
+       clear without blinding. Green stays reserved for data status (inflow
+       amounts, surplus badges), never controls. */
     .tile {
-        @apply min-h-9 min-w-0 shrink-0 rounded-none border border-border px-3 py-1.5 text-xs font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground;
+        @apply min-h-9 min-w-0 shrink-0 rounded-none border border-border px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground;
     }
     .tile-active {
-        @apply border-rose-500/50 bg-rose-500/15 text-foreground;
+        @apply border-primary/45 bg-primary/10 text-foreground;
+    }
+    /* Quiet numeric display: every figure in a table, card or KPI. */
+    .num {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
     }
 }
-

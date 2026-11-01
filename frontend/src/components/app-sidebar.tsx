@@ -19,6 +19,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { BrandMark } from "@/components/brand-mark";
 
 // Desktop navigation. SMS is a mobile destination (bottom bar): the
 // desktop app has no SMS source.
@@ -41,7 +42,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar className="border-r border-sidebar-border" {...props}>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
-          <img src="/tripwire.svg" alt="Tripwire" className="size-6" />
+          <BrandMark className="size-6" />
           <span className="text-lg font-bold tracking-tight">
             Tripwire
           </span>

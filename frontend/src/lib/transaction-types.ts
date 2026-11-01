@@ -23,9 +23,9 @@ import {
 
 export type TypeStyle = { icon: LucideIcon; className: string; label: string };
 
-const TINT_GREEN = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-const TINT_RED = "bg-rose-500/10 text-rose-600 dark:text-rose-400";
-const TINT_AMBER = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+const TINT_GREEN = "bg-muted text-muted-foreground";
+const TINT_RED = "bg-muted text-muted-foreground";
+const TINT_AMBER = "bg-muted text-muted-foreground";
 const TINT_GRAY = "bg-muted text-muted-foreground";
 
 export const TYPE_STYLES: Record<string, TypeStyle> = {

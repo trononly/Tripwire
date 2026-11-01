@@ -5,12 +5,10 @@ import { cn } from "cn";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
-import { isAndroidBridge } from "@/lib/sms-bridge";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 
@@ -45,6 +43,16 @@ export function counterpartyDisplayName(name: string): string {
   return kept.length > 0 ? kept.join(" ") : name;
 }
 
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
 function CounterpartyRow({
   name,
   number,
@@ -77,6 +85,12 @@ function CounterpartyRow({
       }}
       className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
     >
+      <span
+        aria-hidden
+        className="flex size-8 shrink-0 items-center justify-center bg-primary/10 text-[11px] font-semibold tracking-wide text-primary"
+      >
+        {initialsOf(display)}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{display}</span>
         <span className="block truncate text-xs tabular-nums text-muted-foreground">
@@ -86,9 +100,7 @@ function CounterpartyRow({
       <span
         className={cn(
           "shrink-0 whitespace-nowrap text-sm font-medium tabular-nums",
-          direction === "in"
-            ? "text-emerald-600 dark:text-money-in"
-            : "text-rose-600 dark:text-money-out",
+          direction === "in" ? "text-money-in" : "text-money-out",
         )}
       >
         {formatMoney(amount)}
@@ -153,15 +165,11 @@ export function CounterpartyCard({
   ];
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <CardTitle>Top Counterparties</CardTitle>
-            <CardDescription>
-              {isAndroidBridge() ? "Tap" : "Click"} a name to see its
-              transactions.
-            </CardDescription>
+            <CardTitle>Top counterparties</CardTitle>
           </div>
           <div className="flex gap-1" role="group" aria-label="Money direction">
             {directions.map((d) => (
@@ -181,7 +189,7 @@ export function CounterpartyCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="flex-1 px-0">
         {data.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
             No {direction === "in" ? "money received" : "money sent"} to a

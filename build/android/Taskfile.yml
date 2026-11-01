@@ -5,6 +5,7 @@ includes:
 
 vars:
   APP_ID: '{{.APP_ID | default "com.tripwire.app"}}'
+  DEBUG_APP_ID: 'com.tripwire.app.debug'
   MIN_SDK: '21'
   TARGET_SDK: '35'
   # The emulator runs the host architecture; physical devices are arm64
@@ -154,6 +155,16 @@ tasks:
     cmds:
       - task: assemble:apk:release
 
+  package:debug:
+    summary: Packages a debug build (separate application id, blue icon) for a connected phone
+    deps:
+      - task: build
+        vars:
+          PRODUCTION: "false"
+          ARCH: '{{.ARCH | default "arm64"}}'
+    cmds:
+      - task: assemble:apk
+
   package:fat:
     summary: Packages a production build for all architectures (fat APK)
     deps:
@@ -209,8 +220,8 @@ tasks:
         # On Windows the wrapper is gradlew.bat; './gradlew' is a Unix-only
         # shell script that cmd cannot execute.
         {{if eq OS "windows"}}MSYS_NO_PATHCONV=1 cmd /c '.\gradlew.bat'{{else}}./gradlew{{end}} assembleDebug
-        cp app/build/outputs/apk/debug/app-debug.apk "../../{{.BIN_DIR}}/{{.APP_NAME}}.apk"
-        echo "APK created: {{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        cp app/build/outputs/apk/debug/app-debug.apk "../../{{.BIN_DIR}}/{{.APP_NAME}}-debug.apk"
+        echo "APK created: {{.BIN_DIR}}/{{.APP_NAME}}-debug.apk"
 
   assemble:apk:release:
     summary: Assembles a release APK using Gradle (signed with the debug keystore unless ANDROID_KEYSTORE_FILE is set)
@@ -372,8 +383,8 @@ tasks:
     cmds:
       - task: ensure-emulator
       - '"{{.ADB}}" uninstall {{.APP_ID}} 2>/dev/null || true'
-      - '"{{.ADB}}" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"'
-      - '"{{.ADB}}" shell am start -n {{.APP_ID}}/com.wails.app.MainActivity'
+      - '"{{.ADB}}" install "{{.BIN_DIR}}/{{.APP_NAME}}-debug.apk"'
+      - '"{{.ADB}}" shell am start -n {{.DEBUG_APP_ID}}/com.wails.app.MainActivity'
 
   run:
     summary: Build, install and launch a debug build in the Android Emulator
@@ -383,8 +394,8 @@ tasks:
     cmds:
       - task: assemble:apk
       - '"{{.ADB}}" uninstall {{.APP_ID}} 2>/dev/null || true'
-      - '"{{.ADB}}" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"'
-      - '"{{.ADB}}" shell am start -n {{.APP_ID}}/com.wails.app.MainActivity'
+      - '"{{.ADB}}" install "{{.BIN_DIR}}/{{.APP_NAME}}-debug.apk"'
+      - '"{{.ADB}}" shell am start -n {{.DEBUG_APP_ID}}/com.wails.app.MainActivity'
 
   device:list:
     summary: Lists connected Android devices and emulators (serials)
@@ -414,15 +425,15 @@ tasks:
           exit 1
         fi
 
-        echo "Deploying {{.BIN_DIR}}/{{.APP_NAME}}.apk to device $DEVICE..."
-        # Reinstall over the existing install so app data (statement store)
-        # and runtime permission grants survive dev iterations. Only when
-        # that fails (e.g. signature change) fall back to a clean install.
-        "{{.ADB}}" -s "$DEVICE" install -r "{{.BIN_DIR}}/{{.APP_NAME}}.apk" || {
-          "{{.ADB}}" -s "$DEVICE" uninstall {{.APP_ID}} 2>/dev/null || true
-          "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}.apk"
+        echo "Deploying {{.BIN_DIR}}/{{.APP_NAME}}-debug.apk to device $DEVICE..."
+        # Reinstall over the existing debug install so its store and runtime
+        # permission grants survive dev iterations. The debug app has its own
+        # application id, so the release Tripwire on the phone is untouched.
+        "{{.ADB}}" -s "$DEVICE" install -r "{{.BIN_DIR}}/{{.APP_NAME}}-debug.apk" || {
+          "{{.ADB}}" -s "$DEVICE" uninstall {{.DEBUG_APP_ID}} 2>/dev/null || true
+          "{{.ADB}}" -s "$DEVICE" install "{{.BIN_DIR}}/{{.APP_NAME}}-debug.apk"
         }
-        "{{.ADB}}" -s "$DEVICE" shell am start -n {{.APP_ID}}/com.wails.app.MainActivity
+        "{{.ADB}}" -s "$DEVICE" shell am start -n {{.DEBUG_APP_ID}}/com.wails.app.MainActivity
     preconditions:
       - sh: '[ -x "{{.ADB}}" ] || command -v adb'
         msg: "adb not found. Install the Android SDK platform-tools (or set ANDROID_HOME)"

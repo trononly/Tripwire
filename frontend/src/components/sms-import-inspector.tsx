@@ -46,13 +46,13 @@ const KINDS: { value: KindFilter; label: string }[] = [
 function kindIcon(kind: string) {
   switch (kind) {
     case "imported":
-      return <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />;
+      return <CheckCircle2 className="size-4 shrink-0 text-money-in" />;
     case "unsupported":
       return <CircleSlash className="size-4 shrink-0 text-amber-600" />;
     case "malformed":
       return <FileWarning className="size-4 shrink-0 text-destructive" />;
     case "non_transactional":
-      return <Info className="size-4 shrink-0 text-sky-600" />;
+      return <Info className="size-4 shrink-0 text-muted-foreground" />;
     default:
       return <Ban className="size-4 shrink-0 text-muted-foreground" />;
   }
@@ -181,11 +181,14 @@ export function SmsImportInspector({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] text-muted-foreground">
+          {filtered.length.toLocaleString()} of{" "}
+          {results.length.toLocaleString()} messages · {scopeLabel}
+        </p>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-9"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(
@@ -197,7 +200,7 @@ export function SmsImportInspector({
             }
           }}
         >
-          Copy {scopeLabel} report
+          Copy report
         </Button>
       </div>
 
@@ -319,7 +322,7 @@ export function SmsImportInspector({
 
       {/* One-line rows, windowed; tap to expand inline like the
           Transactions list - no fullscreen takeover. */}
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-hidden border">
         {filtered.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted-foreground">
             No messages match this filter.
@@ -365,7 +368,7 @@ export function SmsImportInspector({
                   </button>
                   {expanded && (
                     <div className="space-y-2 border-t border-border/60 bg-muted/40 px-3 py-2.5 text-[13px] select-text">
-                      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border bg-background/60 p-2 font-mono text-xs">
+                      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap border bg-background/60 p-2 font-mono text-[12px]">
                         {r.body || "(empty body)"}
                       </pre>
                       <AuditRow label="Provider ID" value={r.sourceId || "-"} mono />
@@ -386,7 +389,7 @@ export function SmsImportInspector({
                         Generated transactions ({txs.length})
                       </p>
                       {txs.length > 0 && (
-                        <ul className="divide-y rounded-md border bg-background/40">
+                        <ul className="divide-y border bg-background/40">
                           {txs.map((tx) => (
                             <li
                               key={tx.id}
@@ -427,25 +430,6 @@ export function SmsImportInspector({
             </Button>
           </div>
         )}
-        {/* Sticky bottom bar for pagination */}
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:border-0 md:bg-transparent md:backdrop-blur-0"
-          style={{ paddingBottom: "var(--safe-bottom,env(safe-area-inset-bottom))" }}
-        >
-          <div className="flex items-center justify-between gap-2 px-4 py-2">
-            <span className="text-sm text-muted-foreground">
-              {filtered.length} message{filtered.length === 1 ? "" : "s"}
-            </span>
-            {filtered.length > visible && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setVisible((v) => v + PAGE_STEP)}
-              >
-                Show more ({filtered.length - visible} hidden)
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );

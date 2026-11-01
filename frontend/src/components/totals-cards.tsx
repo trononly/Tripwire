@@ -1,11 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { formatMoney } from "@/lib/format";
+import { formatDay, formatMoney } from "@/lib/format";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useInView } from "@/hooks/use-in-view";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
@@ -14,87 +7,109 @@ import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 import type * as analysis from "../../bindings/mpesa-analyzer/internal/analysis/models";
 
-function KpiCard({
+type Tone = "in" | "out" | "neutral";
+
+function KpiCell({
   label,
   value,
   hint,
-  tone,
+  tone = "neutral",
   emphasis,
+  className,
 }: {
   label: string;
   value: string;
   hint?: string;
-  tone?: "in" | "out" | "neutral";
-  /** "primary" = large bold, "secondary" = smaller muted. */
+  tone?: Tone;
+  /** "primary" = the answer figure; "secondary" = a sibling. */
   emphasis?: "primary" | "secondary";
+  className?: string;
 }) {
+  const { blurred, toggle, enabled } = useReveal();
+  const isPrimary = emphasis === "primary";
   const toneClass =
     tone === "in"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-money-in"
       : tone === "out"
-        ? "text-rose-600 dark:text-rose-400"
+        ? "text-money-out"
         : "text-foreground";
-  const isPrimary = emphasis !== "secondary";
-  // Privacy Mode: the whole card is the tap target, but only the figure is
-  // blurred - labels stay readable.
-  const { blurred, reveal } = useReveal();
   return (
-    <Card
-      className={cn("@container gap-2 min-w-0", blurred && "cursor-pointer")}
-      onClick={reveal}
-      role={blurred ? "button" : undefined}
-      tabIndex={blurred ? 0 : undefined}
-      aria-label={blurred ? `Reveal ${label}` : undefined}
+    <div
+      className={cn(
+        "min-w-0 bg-card px-4 py-4 sm:px-5",
+        blurred && "cursor-pointer",
+        className,
+      )}
+      onClick={toggle}
+      role={enabled ? "button" : undefined}
+      tabIndex={enabled ? 0 : undefined}
+      aria-pressed={enabled ? !blurred : undefined}
+      aria-label={enabled ? (blurred ? `Reveal ${label}` : `Hide ${label}`) : undefined}
       onKeyDown={(e) => {
-        if (blurred && (e.key === "Enter" || e.key === " ")) {
+        if (enabled && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          reveal();
+          toggle();
         }
       }}
     >
-      <CardHeader className="min-w-0">
-        <CardDescription className="truncate font-medium text-neutral-500 dark:text-neutral-400">{label}</CardDescription>
-        <CardTitle
-          className={`whitespace-nowrap tabular-nums ${isPrimary ? "text-2xl font-bold tracking-tight text-neutral-900 dark:text-white" : "text-lg font-semibold"} ${isPrimary ? "" : toneClass}`}
+      <p className="truncate text-[13px] font-medium text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "num mt-1.5 whitespace-nowrap font-semibold tracking-tight",
+          isPrimary
+            ? "text-[clamp(20px,6vw,30px)] leading-none"
+            : "text-[clamp(16px,4.6vw,20px)] leading-tight",
+          toneClass,
+        )}
+      >
+        <span
+          aria-hidden={blurred || undefined}
+          className={cn(
+            "inline-block transition-[filter,opacity] duration-200",
+            blurred && "blur-[7px] select-none opacity-80",
+          )}
         >
+          {value}
+        </span>
+      </p>
+      {hint ? (
+        <p className="mt-1.5 truncate text-[12px] text-muted-foreground">
           <span
-            aria-hidden={blurred || undefined}
             className={cn(
-              "inline-block transition-[filter,opacity] duration-200",
+              "transition-[filter,opacity] duration-200",
               blurred && "blur-[7px] select-none opacity-80",
             )}
           >
-            {value}
+            {hint}
           </span>
-        </CardTitle>
-      </CardHeader>
-      {hint && (
-        <CardContent>
-          <p className="text-xs text-muted-foreground">{hint}</p>
-        </CardContent>
-      )}
-    </Card>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
 export function TotalsCards({
   totals,
   currentBalance,
+  asOf,
 }: {
   totals: analysis.Totals | null;
   currentBalance?: number;
+  asOf?: string;
 }) {
   const { ref, inView } = useInView<HTMLDivElement>({ once: true });
-  // Count-ups only run once the row of KPIs is actually on screen.
   const totalIn = useCountUp(totals?.totalIn ?? 0, 800, inView);
   const totalOut = useCountUp(totals?.totalOut ?? 0, 800, inView);
-  const netValue = (totals?.totalIn ?? 0) - (totals?.totalOut ?? 0);
+  const netValue = totals?.net ?? (totals?.totalIn ?? 0) - (totals?.totalOut ?? 0);
   const net = useCountUp(netValue, 800, inView);
   const closingBalance = useCountUp(
     currentBalance ?? totals?.closingBalance ?? 0,
     800,
     inView,
   );
+  const fees = totals?.totalFees ?? 0;
 
   useEffect(() => {
     if (!totals) return;
@@ -103,37 +118,43 @@ export function TotalsCards({
 
   if (!totals) {
     return (
-      <div ref={ref} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {["Total In", "Total Out", "Net Flow", "Current Balance"].map((l) => (
-          <KpiCard key={l} label={l} value="-" hint="No data yet" />
+      <div ref={ref} className="grid grid-cols-2 gap-px border bg-border lg:grid-cols-4">
+        {["Balance", "Money in", "Money out", "Net"].map((l) => (
+          <KpiCell key={l} label={l} value="—" hint="No data yet" />
         ))}
       </div>
     );
   }
 
   return (
-    <div ref={ref} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <KpiCard
-        label="Current Balance"
+    <div
+      ref={ref}
+      className="grid grid-cols-2 gap-px overflow-hidden border bg-border lg:grid-cols-4"
+    >
+      <KpiCell
+        label="Balance"
         value={formatMoney(closingBalance)}
+        hint={asOf ? `as of ${formatDay(asOf)}` : "Latest transaction"}
         emphasis="primary"
       />
-      <KpiCard
-        label="Net Flow"
-        value={formatMoney(net)}
-        tone={netValue >= 0 ? "in" : "out"}
-        emphasis="secondary"
-      />
-      <KpiCard
-        label="Total In"
+      <KpiCell
+        label="Money in"
         value={formatMoney(totalIn)}
         tone="in"
         emphasis="secondary"
       />
-      <KpiCard
-        label="Total Out"
+      <KpiCell
+        label="Money out"
         value={formatMoney(totalOut)}
+        hint={fees > 0 ? `+ ${formatMoney(fees)} M-Pesa fees` : undefined}
         tone="out"
+        emphasis="secondary"
+      />
+      <KpiCell
+        label="Net"
+        value={formatMoney(net)}
+        hint={fees > 0 ? "after fees" : "in − out"}
+        tone={netValue < 0 ? "out" : "neutral"}
         emphasis="secondary"
       />
     </div>

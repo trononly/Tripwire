@@ -155,6 +155,41 @@ or downloadable platform + build-tools; the first run can take a while.
   root `Taskfile.yml` already defaults `PACKAGE_MANAGER` to pnpm - always
   build via the root task (`android:package`), not the inner Taskfile.
 
+## Debug builds (coexists with the release app)
+
+The debug build has its own application id (`com.tripwire.app.debug`), a
+blue launcher icon and the label **Tripwire Debug**, so it installs beside
+the Tripwire you actually use; uninstalling one never removes the other.
+
+    wails3 task android:package:debug   # -> bin/tripwire-debug.apk
+    wails3 task android:run:device      # build, install and launch on adb
+
+The same APK is built by the **Android debug APK** workflow
+(`.github/workflows/android-debug.yml`) on `workflow_dispatch` and on pushes
+to an optional `nightly` branch. Download the `tripwire-debug-apk` artifact
+from the run summary.
+
+## Guided payments
+
+Tripwire stops at the PIN screen and, by default, also stops at the final
+"Safaricom: 1 = Yes" confirmation. Enter the PIN and tap the confirmation
+yourself. If you prefer the old behaviour, turn on **Settings → Preferences →
+Auto-confirm after PIN**; Tripwire will then answer that final prompt for you.
+
+On a dual-SIM phone, grant phone-state access when asked. The payment is
+placed on the SIM that owns the active wallet; without that access the phone
+may show its "Call with SIM 1 / SIM 2" chooser, which the menu automation
+cannot drive.
+
+The service drives the phone app's USSD window only, never Tripwire's own
+window: the USSD dialog is an overlay that is often not the focused window, so
+reading only the active window would leave the menu untouched.
+
+If Android ever reports the service as enabled but no longer runs it, Send
+says "automation is not running" instead of dialling into a menu nothing will
+drive. Toggling the service off and on in system accessibility settings
+rebinds it; restart the phone only if that does not.
+
 ## Install on a device
 
 Enable Developer options + USB debugging, then either:

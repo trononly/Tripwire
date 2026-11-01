@@ -17,18 +17,32 @@ export function Private({
 	className?: string;
 	label?: string;
 }) {
-	const { blurred, reveal } = useReveal();
+	const { blurred, toggle, enabled } = useReveal();
 	return (
 		<div
 			role={blurred ? "button" : undefined}
 			tabIndex={blurred ? 0 : undefined}
 			aria-label={blurred ? label : undefined}
 			title={blurred ? label : undefined}
-			onClick={reveal}
+			onClick={(event) => {
+				if (!enabled) return;
+				// While veiled any tap reveals. Once revealed, re-blur on a
+				// blank-area tap, but never steal a click from a real control
+				// inside the figure (a chart tab, a counterparty row).
+				if (blurred) {
+					toggle();
+					return;
+				}
+				const target = event.target as HTMLElement;
+				if (target.closest("button, a, input, select, textarea, [role='button'], [role='tab']")) {
+					return;
+				}
+				toggle();
+			}}
 			onKeyDown={(e) => {
 				if (blurred && (e.key === "Enter" || e.key === " ")) {
 					e.preventDefault();
-					reveal();
+					toggle();
 				}
 			}}
 			className={cn("relative", blurred && "cursor-pointer", className)}
@@ -45,5 +59,40 @@ export function Private({
 				{children}
 			</div>
 		</div>
+	);
+}
+
+/**
+ * Inline variant for a sentence that carries a money figure (the dashboard
+ * finding). Tapping toggles the veil like a card does.
+ */
+export function PrivateText({
+	children,
+	label = "Tap to reveal",
+}: {
+	children: ReactNode;
+	label?: string;
+}) {
+	const { blurred, toggle, enabled } = useReveal();
+	return (
+		<span
+			role={enabled ? "button" : undefined}
+			tabIndex={enabled ? 0 : undefined}
+			aria-pressed={enabled ? !blurred : undefined}
+			aria-label={enabled ? (blurred ? label : "Hide figure") : undefined}
+			onClick={enabled ? toggle : undefined}
+			onKeyDown={(e) => {
+				if (enabled && (e.key === "Enter" || e.key === " ")) {
+					e.preventDefault();
+					toggle();
+				}
+			}}
+			className={cn(
+				"rounded-sm transition-[filter,opacity] duration-200",
+				blurred && "cursor-pointer blur-[7px] select-none opacity-80",
+			)}
+		>
+			{children}
+		</span>
 	);
 }

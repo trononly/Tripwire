@@ -9,4 +9,24 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Launch splash, held over the WebView until the app is ready
+         (wails.hideSplash()) or the fallback timeout fires. Same mark and
+         size as the pre-12 launch drawable, so the hand-off does not move. -->
+    <FrameLayout
+        android:id="@+id/splash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/tripwire_bg"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no">
+
+        <ImageView
+            android:layout_width="192dp"
+            android:layout_height="192dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:src="@drawable/splash_mark" />
+    </FrameLayout>
+
 </FrameLayout>

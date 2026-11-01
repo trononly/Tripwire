@@ -50,7 +50,7 @@ export function HistorySheet({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetTrigger asChild>
-          <Button variant="outline" size="sm" className="max-w-[38vw] gap-1.5 sm:max-w-60">
+          <Button variant="outline" size="sm" className="max-w-[48vw] gap-1.5 sm:max-w-60">
             <span className="truncate">
               {active ? `${active.name} · ${active.txCount} txns` : "No statement active"}
             </span>
@@ -86,8 +86,8 @@ export function HistorySheet({
                   key={s.id}
                   className={`group flex items-center gap-2 rounded-md border px-3 py-2 ${
                     isActive
-                      ? "border-rose-500/50 bg-rose-500/15"
-                      : "hover:bg-rose-500/5"
+                      ? "border-primary/45 bg-primary/10"
+                      : "hover:bg-muted"
                   }`}
                 >
                   <button

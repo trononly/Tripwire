@@ -688,3 +688,120 @@ func TestParseServiceCategoryAssignment(t *testing.T) {
 	}
 	assertAssigned(groups)
 }
+
+// TestRefreshSmsImportAdoptsSubKeyedRecord pins the other half of the
+// grant-later path: the SIM label refresh is not the only thing that runs
+// after the phone-state grant, and a plain import used to open a second
+// wallet under the slot key while the subscription-keyed one stayed behind.
+// The import itself must file into the record that already exists.
+func TestRefreshSmsImportAdoptsSubKeyedRecord(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	body := fixtureBody(t, "01-send-p2p.txt")
+	ts := nairobiMilli(t, 2026, time.September, 12, 11, 53)
+
+	first, err := p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: ts, Body: body,
+			Slot: -1, SubID: 7, TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+	if len(first.Sims) != 1 || first.Sims[0].SimID != "sub-7" {
+		t.Fatalf("want one sub-keyed SIM, got %+v", first.Sims)
+	}
+	id := first.Sims[0].Record.ID
+
+	// Same inbox, now with the slot resolved: still one SIM, same record.
+	second, err := p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA", DateMs: ts, Body: body,
+			Slot: 0, SubID: 7, SimLabel: "Calvin", TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("second refresh: %v", err)
+	}
+	if len(second.Sims) != 1 {
+		t.Fatalf("want one SIM, got %+v", second.Sims)
+	}
+	if second.Sims[0].Record.ID != id {
+		t.Errorf("post-grant import must adopt the sub-keyed record, got %q want %q",
+			second.Sims[0].Record.ID, id)
+	}
+	if second.Sims[0].SimID != "sim-0" {
+		t.Errorf("want the slot key, got %q", second.Sims[0].SimID)
+	}
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(metas) != 1 {
+		t.Fatalf("a dual-SIM phone must not gain a second wallet per SIM, got %+v", metas)
+	}
+	if metas[0].SimID != "sim-0" || metas[0].SimLabel != "Calvin" {
+		t.Errorf("record must move to the slot key with the new name: %+v", metas[0])
+	}
+}
+
+// TestRefreshSimLabelsDropsDuplicateSubKeyedRecord heals the wallets the
+// old ordering already produced: an import before the grant and another
+// after it, both holding the same inbox. The subscription-keyed copy adds
+// nothing, so it goes; a copy with history of its own stays.
+func TestRefreshSimLabelsDropsDuplicateSubKeyedRecord(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	first, err := p.RefreshSmsImport([]SmsMessage{
+		{ID: "a", Address: "MPESA",
+			DateMs: nairobiMilli(t, 2026, time.September, 12, 11, 53),
+			Body:   fixtureBody(t, "01-send-p2p.txt"),
+			Slot:   -1, SubID: 7, TzOffsetMinutes: &tz},
+	})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	legacy, err := s.Get(first.Sims[0].Record.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	// The wallet the import after the grant opened under the slot key.
+	dup := newSmsRecord(legacy.Txs, "sim-0", "Calvin")
+	if err := s.Add(dup); err != nil {
+		t.Fatalf("add duplicate: %v", err)
+	}
+
+	n, err := p.RefreshSimLabels([]SimCard{{SubID: 7, Slot: 0, SimLabel: "Calvin"}})
+	if err != nil {
+		t.Fatalf("labels: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("want 1 change, got %d", n)
+	}
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(metas) != 1 {
+		t.Fatalf("the duplicate wallet must be dropped, got %+v", metas)
+	}
+	if metas[0].ID != dup.ID || metas[0].SimID != "sim-0" {
+		t.Errorf("the slot-keyed wallet is the one that survives: %+v", metas[0])
+	}
+	rec, err := s.Get(dup.ID)
+	if err != nil {
+		t.Fatalf("get survivor: %v", err)
+	}
+	if rec.TxCount != 1 || len(rec.Txs) != 1 {
+		t.Errorf("dropping a duplicate must not touch transactions: %+v", rec)
+	}
+}

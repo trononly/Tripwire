@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ draws the launcher icon as the system splash. The window
+     background must not draw a second, smaller copy of the same mark while
+     the WebView loads; keep it to the brand colour. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/tripwire_bg" />
+</layer-list>

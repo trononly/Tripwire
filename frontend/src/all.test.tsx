@@ -1,7 +1,7 @@
 // The single home for every frontend test. One file on purpose: the suite
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
@@ -15,6 +15,7 @@ import {
 } from "@/components/category-icon";
 import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
+import { AutomationStoppedNotice } from "@/components/automation-gate";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
   counterpartyDisplayName,
@@ -49,6 +50,10 @@ import {
 	normalizePhone,
 } from "@/lib/ussd-menus";
 import { paySimKey } from "@/lib/pay-sim";
+import {
+	AUTO_CONFIRM_KEY,
+	setAutoConfirmEnabled,
+} from "@/lib/payment-settings";
 import type { RecurringPayment } from "../bindings/mpesa-analyzer/internal/recurring/models";
 import type { Transaction } from "../bindings/mpesa-analyzer/internal/parser/models";
 import {
@@ -506,6 +511,23 @@ describe("ussd-menus", () => {
 			"500",
 			"1",
 		]);
+	});
+
+	it("leaves the final confirmation to the user by default", () => {
+		localStorage.removeItem(AUTO_CONFIRM_KEY);
+		const s = buildSendScript("send", "0722123456", "500");
+		expect(s?.confirmAfterPin).toBe(false);
+		expect(s?.steps[s.steps.length - 1]).toMatchObject({
+			input: "1",
+			confirm: true,
+		});
+	});
+
+	it("opts into auto-confirmation", () => {
+		setAutoConfirmEnabled(true);
+		const s = buildPaybillScript("123456", "rent", "1000");
+		expect(s?.confirmAfterPin).toBe(true);
+		setAutoConfirmEnabled(false);
 	});
 
 	it("builds a pochi script selecting option 3", () => {
@@ -1619,5 +1641,52 @@ describe("recurring plans", () => {
 		expect(script?.kind).toBe("paybill");
 		expect(script?.steps.map((s) => s.input)).toEqual(["6", "1", "888880", "01450540651", "250", "1"]);
 		expect(planScript(plan({ kind: "till", number: "12" }), "250")).toBeNull();
+	});
+});
+
+describe("AutomationStoppedNotice", () => {
+	const bridge = (enabled: boolean, running: boolean) => {
+		Object.defineProperty(window, "wails", {
+			configurable: true,
+			value: {
+				platform: () => "android",
+				hasSmsPermission: () => true,
+				getSms: () => undefined,
+				isUssdAutomationEnabled: () => enabled,
+				isUssdAutomationRunning: () => running,
+			},
+		});
+	};
+
+	afterEach(() => {
+		Object.defineProperty(window, "wails", {
+			configurable: true,
+			value: undefined,
+		});
+	});
+
+	it("offers a re-enable shortcut when the switch is on but nothing runs", async () => {
+		bridge(true, false);
+		render(<AutomationStoppedNotice />);
+		expect(
+			await screen.findByText("Automation isn’t running"),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: "Accessibility broken? Re-enable here",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("stays out of the way while the service is running", () => {
+		bridge(true, true);
+		const { container } = render(<AutomationStoppedNotice />);
+		expect(container).toBeEmptyDOMElement();
+	});
+
+	it("stays out of the way when automation is switched off", () => {
+		bridge(false, false);
+		const { container } = render(<AutomationStoppedNotice />);
+		expect(container).toBeEmptyDOMElement();
 	});
 });

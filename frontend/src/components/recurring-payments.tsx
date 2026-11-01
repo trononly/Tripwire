@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Smartphone, Store, Undo2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Banknote, Check, ChevronDown, Loader2, Pencil, Plus, Receipt, Smartphone, Store, Undo2, X } from "lucide-react";
 import { Events } from "@wailsio/runtime";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -46,7 +47,6 @@ import {
   type PlanDraft,
 } from "@/lib/recurring-plans";
 import { formatMoney, formatMoneyShort, formatFullDate } from "@/lib/format";
-import { useReduceMotionEnabled } from "@/lib/motion-settings";
 import {
   isAndroidBridge,
   openUssdAutomationSettings,
@@ -57,22 +57,10 @@ import type { RecurringPayment } from "../../bindings/mpesa-analyzer/internal/re
 import type { RecurringPlan } from "../../bindings/mpesa-analyzer/internal/store/models";
 
 const cadenceStyles: Record<string, { label: string; className: string }> = {
-  weekly: {
-    label: "Weekly",
-    className: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  },
-  "bi-weekly": {
-    label: "Bi-weekly",
-    className: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  },
-  monthly: {
-    label: "Monthly",
-    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  },
-  quarterly: {
-    label: "Quarterly",
-    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  },
+  weekly: { label: "Weekly", className: "bg-muted text-muted-foreground" },
+  "bi-weekly": { label: "Bi-weekly", className: "bg-muted text-muted-foreground" },
+  monthly: { label: "Monthly", className: "bg-muted text-muted-foreground" },
+  quarterly: { label: "Quarterly", className: "bg-muted text-muted-foreground" },
 };
 
 function cadenceStyle(cadence: string) {
@@ -113,6 +101,7 @@ const STATUS_TEXT: Record<string, string> = {
   starting: "Opening the M-PESA menu…",
   step: "Filling the menu…",
   "awaiting-pin": "Enter your M-PESA PIN in the phone dialog.",
+  "awaiting-confirm": "Confirm the payment in the phone dialog.",
   complete: "Menu ready - finish with your PIN.",
   aborted: "Payment stopped.",
 };
@@ -182,9 +171,6 @@ export function RecurringPayments({
     [payments, dismissed],
   );
 
-  const reduceMotion = useReduceMotionEnabled();
-  const scroller = useRef<HTMLDivElement>(null);
-  const [index, setIndex] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringPlan | null>(null);
   const [prefill, setPrefill] = useState<PlanDraft | null>(null);
@@ -193,12 +179,6 @@ export function RecurringPayments({
   const [payError, setPayError] = useState<string | null>(null);
   const [runningPlan, setRunningPlan] = useState<string | null>(null);
   const qe = useQuickEntry();
-
-  // Adding or removing a plan changes the page count; start from the first.
-  useEffect(() => {
-    setIndex(0);
-    scroller.current?.scrollTo({ left: 0, behavior: "auto" });
-  }, [planRows.length]);
 
   useEffect(() => {
     if (qe.status === "aborted") {
@@ -217,17 +197,6 @@ export function RecurringPayments({
     window.addEventListener("mpesa:transactions", onTransaction);
     return () => window.removeEventListener("mpesa:transactions", onTransaction);
   }, []);
-
-  function goTo(i: number) {
-    const el = scroller.current;
-    if (!el) return;
-    const next = Math.max(0, Math.min(planRows.length - 1, i));
-    el.scrollTo({
-      left: next * el.clientWidth,
-      behavior: reduceMotion ? "auto" : "smooth",
-    });
-    setIndex(next);
-  }
 
   function openAdd() {
     setEditing(null);
@@ -318,7 +287,11 @@ export function RecurringPayments({
             ? "Call permission was denied."
             : data?.error === "automation disabled"
               ? "Automation was switched off."
-              : "Could not start the transaction.",
+              : data?.error === "sim access required"
+                ? "Allow phone access in Settings so Tripwire can use your SIM."
+                : data?.error === "sim selection required"
+                  ? "Tripwire could not select your SIM. Allow phone access in Settings, then try again."
+                  : "Could not start the transaction.",
         );
       }
     });
@@ -337,111 +310,52 @@ export function RecurringPayments({
   const activeStatus = runningPlan ? STATUS_TEXT[qe.status] ?? null : null;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Recurring payments</CardTitle>
+    <Card className="h-full">
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div className="min-w-0">
+          <CardTitle>Recurring payments</CardTitle>
+          {planRows.length > 0 ? (
+            <CardDescription>
+              {planRows.length}{" "}
+              {planRows.length === 1 ? "payment" : "payments"} · next due{" "}
+              {dueLabel(planRows[0].due).toLowerCase()}
+            </CardDescription>
+          ) : null}
+        </div>
         <Button variant="outline" size="sm" onClick={openAdd} className="gap-1.5">
           <Plus className="size-4" aria-hidden />
           Add
         </Button>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="pt-0">
         {loading && planRows.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden />
             Loading your payments…
           </p>
         ) : planRows.length === 0 ? (
-          <div className="space-y-3 py-5 text-center">
-            <p className="text-sm text-muted-foreground">
-              Nothing set up yet.
-            </p>
-            <Button size="sm" onClick={openAdd} className="gap-1.5">
-              <Plus className="size-4" aria-hidden />
-              Add a payment
-            </Button>
-          </div>
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No recurring payments yet.
+          </p>
         ) : (
-          <>
-            <div className="relative">
-              <div
-                ref={scroller}
-                onScroll={(e) => {
-                  const el = e.currentTarget;
-                  if (el.clientWidth === 0) return;
-                  const next = Math.round(el.scrollLeft / el.clientWidth);
-                  if (next !== index) setIndex(next);
-                }}
-                className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                aria-live="polite"
-              >
-                {planRows.map((row) => (
-                  <div key={row.plan.id} className="min-w-full snap-center">
-                    <PlanPage
-                      plan={row.plan}
-                      lastPaid={row.lastPaid}
-                      due={row.due}
-                      status={runningPlan === row.plan.id ? activeStatus : null}
-                      busy={busy}
-                      onPlay={() => openPay(row.plan)}
-                      onEdit={() => openEdit(row.plan)}
-                      onSkip={() => void skipCycle(row.plan)}
-                      onUnskip={() => void onSkipPlan(row.plan.id, "")}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {planRows.length > 1 && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Previous payment"
-                    disabled={index <= 0}
-                    onClick={() => goTo(index - 1)}
-                    className="absolute top-1/2 left-0 hidden size-8 -translate-y-1/2 md:inline-flex"
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Next payment"
-                    disabled={index >= planRows.length - 1}
-                    onClick={() => goTo(index + 1)}
-                    className="absolute top-1/2 right-0 hidden size-8 -translate-y-1/2 md:inline-flex"
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </>
-              )}
-            </div>
-
-            {planRows.length > 1 && (
-              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-4">
-                {planRows.map((row, i) => (
-                  <button
-                    key={row.plan.id}
-                    type="button"
-                    onClick={() => goTo(i)}
-                    aria-label={`${row.plan.name}, ${i + 1} of ${planRows.length}`}
-                    aria-current={i === index ? "true" : undefined}
-                    className="group -m-2 p-2"
-                  >
-                    <span
-                      className={`block h-1.5 rounded-full transition-all ${
-                        i === index
-                          ? "w-5 bg-foreground"
-                          : "w-1.5 bg-muted-foreground/30 group-hover:bg-muted-foreground/50"
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
+          <ul className="divide-y divide-border">
+            {planRows.map((row) => (
+              <li key={row.plan.id}>
+                <PlanRow
+                  plan={row.plan}
+                  lastPaid={row.lastPaid}
+                  due={row.due}
+                  status={runningPlan === row.plan.id ? activeStatus : null}
+                  busy={busy}
+                  onPlay={() => openPay(row.plan)}
+                  onEdit={() => openEdit(row.plan)}
+                  onSkip={() => void skipCycle(row.plan)}
+                  onUnskip={() => void onSkipPlan(row.plan.id, "")}
+                />
+              </li>
+            ))}
+          </ul>
         )}
 
         {suggestions.length > 0 && (
@@ -452,7 +366,7 @@ export function RecurringPayments({
               aria-expanded={suggestionsOpen}
               className="flex w-full items-center justify-between gap-2 py-1 text-left"
             >
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-[13px] font-medium text-muted-foreground">
                 From your statements
               </span>
               <span className="flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
@@ -539,7 +453,7 @@ export function RecurringPayments({
   );
 }
 
-function PlanPage({
+function PlanRow({
   plan,
   lastPaid,
   due,
@@ -563,91 +477,102 @@ function PlanPage({
   const Icon = planIcon(plan.kind);
   const cadence = cadenceStyle(plan.cadence);
   const amount = plan.amount > 0 ? plan.amount : lastPaid?.amount ?? null;
+  const skipped = Boolean(plan.skippedFor);
 
   return (
-    <div className="space-y-4 px-1 py-1">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={plan.name}>
-            {plan.name}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {planTarget(toPlanLike(plan))}
-          </p>
+    <div className="flex items-start gap-3 py-4">
+      <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-none bg-muted text-muted-foreground">
+        <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium" title={plan.name}>
+              {plan.name}
+            </p>
+            <p className="truncate text-[12px] text-muted-foreground">
+              {planTarget(toPlanLike(plan))}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="num text-lg font-semibold tracking-tight">
+              {amount !== null ? formatMoney(amount) : "Variable"}
+            </p>
+            <span
+              className={`mt-0.5 inline-block px-1.5 py-0.5 text-[11px] font-medium ${cadence.className}`}
+            >
+              {cadence.label}
+            </span>
+          </div>
         </div>
-        {plan.skippedFor && (
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
+          <span>{dueLabel(due)}</span>
+          <span aria-hidden>·</span>
+          <span>
+            {lastPaid
+              ? `Last paid ${formatFullDate(lastPaid.date)}`
+              : "Not paid yet"}
+          </span>
+          {reminderLabel(toPlanLike(plan)) ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>{reminderLabel(toPlanLike(plan))}</span>
+            </>
+          ) : null}
+          {skipped ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>Skipped {shortDay(plan.skippedFor)}</span>
+            </>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <Button size="sm" onClick={onPlay} disabled={busy} className="gap-1.5">
+            {busy ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Smartphone className="size-3.5" aria-hidden />
+            )}
+            {busy ? "Paying…" : "Pay now"}
+          </Button>
+          {skipped ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onUnskip}
+              className="gap-1.5 text-muted-foreground"
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+              Undo skip
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onSkip}
+              disabled={busy}
+              aria-label="Skip this cycle"
+            >
+              Skip
+            </Button>
+          )}
           <Button
             variant="ghost"
-            size="icon"
-            aria-label={`Undo skip for ${shortDay(plan.skippedFor)}`}
-            title={`Undo skip for ${shortDay(plan.skippedFor)}`}
-            onClick={onUnskip}
-            className="size-8 shrink-0 text-muted-foreground"
+            size="icon-sm"
+            aria-label={`Edit ${plan.name}`}
+            title={`Edit ${plan.name}`}
+            onClick={onEdit}
+            className="text-muted-foreground"
           >
-            <Undo2 className="size-4" />
+            <Pencil className="size-4" />
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Edit ${plan.name}`}
-          onClick={onEdit}
-          className="size-8 shrink-0"
-        >
-          <Pencil className="size-4" />
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p className="text-2xl font-semibold tabular-nums tracking-tight">
-          {amount !== null ? formatMoney(amount) : "Variable amount"}
-        </p>
-        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cadence.className}`}>
-          {cadence.label}
-        </span>
-        {plan.amount === 0 && (
-          <span className="text-xs text-muted-foreground">asked each time</span>
+        </div>
+        {status && (
+          <p className="text-[12px] text-muted-foreground">{status}</p>
         )}
       </div>
-
-      <div className="grid gap-3 text-sm sm:grid-cols-2">
-        <div>
-          <p className="text-xs text-muted-foreground">Last paid</p>
-          <p className="truncate">
-            {lastPaid
-              ? `${formatFullDate(lastPaid.date)} · ${formatMoney(lastPaid.amount)}`
-              : "Not paid yet"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">{dueLabel(due)}</p>
-          <p className="truncate">{reminderLabel(toPlanLike(plan))}</p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Button onClick={onPlay} disabled={busy} className="flex-1">
-          {busy ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <Smartphone className="size-4" aria-hidden />
-          )}
-          {busy ? "Paying…" : "Pay now"}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={onSkip}
-          disabled={busy}
-          aria-label="Skip this cycle"
-          className="shrink-0"
-        >
-          Skip
-        </Button>
-      </div>
-      {status && <p className="text-xs text-muted-foreground">{status}</p>}
     </div>
   );
 }

@@ -17,12 +17,12 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { formatBucketLabel, formatMoney } from "@/lib/format";
+import { formatBucketLabel, formatMoney, formatMoneyShort } from "@/lib/format";
 import type * as analysis from "../../../bindings/mpesa-analyzer/internal/analysis/models";
 
 const chartConfig = {
-  in: { label: "In", color: "var(--chart-2)" },
-  out: { label: "Out", color: "var(--chart-1)" },
+  in: { label: "Money in", color: "var(--money-in)" },
+  out: { label: "Money out", color: "var(--money-out)" },
 } satisfies ChartConfig;
 
 export type Granularity = "day" | "week" | "month";
@@ -74,7 +74,16 @@ export function CashflowChart({
   onGranularityChange: (g: Granularity) => void;
 }) {
 
-  const chartData = useMemo(() => binBuckets(buckets), [buckets]);
+  const chartData = useMemo(
+    () =>
+      binBuckets(buckets).map((bucket) => ({
+        ...bucket,
+        // Recharts draws one flow bar per day: money in above zero, money out
+        // below it. The tooltip restores the positive value.
+        out: -bucket.out,
+      })),
+    [buckets],
+  );
   const { ref, inView } = useInView<HTMLDivElement>({ once: true });
   // Draw-in animation, replayed whenever the dataset or cadence changes
   // (the key remounts the chart). Reduced motion disables it entirely, and it
@@ -86,7 +95,7 @@ export function CashflowChart({
     : "static";
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -112,15 +121,16 @@ export function CashflowChart({
       </CardHeader>
       <CardContent>
         <div ref={ref}>
-          <ChartContainer config={chartConfig} className="h-75 w-full">
+          <ChartContainer config={chartConfig} className="h-[260px] w-full">
           <BarChart
             key={animationKey}
             data={chartData}
+            stackOffset="sign"
+            barCategoryGap="18%"
             margin={{ left: 4, right: 8, top: 8 }}
           >
             <CartesianGrid
               vertical={false}
-              strokeDasharray="3 3"
               stroke="var(--border)"
             />
             <XAxis
@@ -135,9 +145,11 @@ export function CashflowChart({
               tickLine={false}
               axisLine={false}
               tickMargin={4}
-              width={96}
+              width={84}
               tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-              tickFormatter={(v: number) => formatMoney(v * 100)}
+              tickFormatter={(v: number) =>
+                `${v < 0 ? "-" : ""}${formatMoneyShort(Math.abs(v) * 100)}`
+              }
             />
             <ChartTooltip
               cursor={{ fill: "var(--muted)", opacity: 0.4 }}
@@ -155,10 +167,10 @@ export function CashflowChart({
                                 : "var(--color-out)",
                           }}
                         />
-                        {name === "in" ? "In" : "Out"}
+                        {name === "in" ? "Money in" : "Money out"}
                       </span>
                       <span className="tabular-nums">
-                        {formatMoney(Number(value) * 100)}
+                        {formatMoney(Math.abs(Number(value)) * 100)}
                       </span>
                     </span>
                   )}
@@ -171,22 +183,27 @@ export function CashflowChart({
               animationDuration={700}
               animationEasing="ease-out"
               dataKey="in"
+              stackId="flow"
               fill="var(--color-in)"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={32}
+              radius={0}
+              maxBarSize={22}
             />
             <Bar
               isAnimationActive={animate}
               animationDuration={700}
               animationEasing="ease-out"
               dataKey="out"
+              stackId="flow"
               fill="var(--color-out)"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={32}
+              radius={0}
+              maxBarSize={22}
             />
           </BarChart>
         </ChartContainer>
         </div>
+        <p className="mt-2 text-[12px] text-muted-foreground">
+          Bars exclude M-Pesa charges; fees are counted on Insights.
+        </p>
       </CardContent>
     </Card>
   );

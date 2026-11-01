@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   Smartphone,
   Sun,
+  Tags,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +21,10 @@ import {
   useReduceMotionEnabled,
 } from "@/lib/motion-settings";
 import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
+import {
+  setAutoConfirmEnabled,
+  useAutoConfirmEnabled,
+} from "@/lib/payment-settings";
 import { cn } from "@/lib/utils";
 import { simName } from "@/components/sim-switcher";
 import { useKonamiCode } from "@/hooks/use-konami-code";
@@ -32,6 +37,8 @@ import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Updater } from "@/hooks/use-updater";
 import { ChangelogButton } from "@/components/changelog-dialog";
+import { PageHeader } from "@/components/page-header";
+import { AutomationStoppedNotice } from "@/components/automation-gate";
 import { ResetData } from "../../bindings/mpesa-analyzer/parseservice";
 import {
   Card,
@@ -143,8 +150,8 @@ function PrivacySetting() {
           label="Privacy Mode"
         />
       </div>
-      <p className="text-xs text-muted-foreground">
-        Blurs balances and chart figures. Tap a card or figure to reveal it.
+      <p className="text-[12px] text-muted-foreground">
+        Blur balances until you tap them.
       </p>
     </div>
   );
@@ -188,6 +195,7 @@ export default function Settings({
   updater: Updater;
 }) {
   const debug = useKonamiCode();
+  const autoConfirm = useAutoConfirmEnabled();
   const toastedRef = useRef(debug.unlocked);
   useEffect(() => {
     if (debug.unlocked && !toastedRef.current) {
@@ -225,14 +233,55 @@ export default function Settings({
   return (
     <div className="space-y-6">
       <div onClick={debug.tap} className="select-none" aria-hidden="true" />
+      <PageHeader title="Settings" />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preferences</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ThemeSelector />
+          <MotionSettings />
+          <PrivacySetting />
+          {isAndroid && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm">Auto-confirm after PIN</span>
+              <Switch
+                checked={autoConfirm}
+                onCheckedChange={setAutoConfirmEnabled}
+                label="Auto-confirm after PIN"
+              />
+            </div>
+          )}
+          {isAndroid && <AutomationStoppedNotice />}
+        </CardContent>
+      </Card>
+
+      <Card className="lg:hidden">
+        <CardHeader>
+          <CardTitle>Categories</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline">
+            <Link to="/categories">
+              <Tags />
+              Manage categories
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
       {isAndroid && (
         <Card>
           <CardHeader>
-            <CardTitle>Data mode</CardTitle>
+            <CardTitle>Data source</CardTitle>
+            <CardDescription>
+              PDF statements, or this phone&rsquo;s M-Pesa inbox.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <ModeSelector mode={mode} onModeChange={onModeChange} />
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="outline" size="sm">
               <Link to="/sms">
                 <MessageSquareText />
                 SMS import details
@@ -242,13 +291,15 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
-      {/* Every SIM the inbox import detected, one wallet each. Shown even
-          for a single SIM so it is visible that detection worked; tapping
-          switches the wallet Dashboard/Transactions/Insights analyze. */}
+
       {isAndroid && smsRecords.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Wallet SIM</CardTitle>
+            <CardTitle>Wallets</CardTitle>
+            <CardDescription>
+              One wallet per SIM. Switching keeps balances and cashflow from
+              different wallets apart.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {smsRecords.map((sim) => {
@@ -261,16 +312,14 @@ export default function Settings({
                   aria-pressed={isActive}
                   onClick={() => onSwitchSim(sim)}
                   className={cn(
-                    "flex w-full min-w-0 items-center gap-3 rounded-md border p-3 text-left transition-colors hover:bg-accent/50",
-                    isActive && "border-primary bg-accent",
+                    "flex w-full min-w-0 items-center gap-3 rounded-none border p-3 text-left transition-colors hover:bg-muted/50",
+                    isActive && "border-primary/50 bg-primary/10",
                   )}
                 >
                   <Smartphone
                     className={cn(
                       "size-5 shrink-0",
-                      isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground",
+                      isActive ? "text-foreground" : "text-muted-foreground",
                     )}
                   />
                   <span className="min-w-0 flex-1">
@@ -278,19 +327,17 @@ export default function Settings({
                       {simName(sim)}
                     </span>
                     {number && (
-                      <span className="block truncate text-xs text-muted-foreground tabular-nums">
+                      <span className="block truncate text-[12px] text-muted-foreground tabular-nums">
                         {number}
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
                     {sim.txCount.toLocaleString()} txs
                   </span>
                 </button>
               );
             })}
-            {/* Installs that denied the phone-state half of the import
-                prompt get one tap-only path to real SIM names/numbers. */}
             {!phoneState && (
               <Button
                 variant="outline"
@@ -305,6 +352,50 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
+
+      {isAndroid && (
+        <Card>
+          <CardHeader>
+            <CardTitle>App updates</CardTitle>
+            <CardDescription>
+              {updater.current
+                ? `Tripwire ${updater.current} installed`
+                : "Tripwire"}
+              {updater.status === "checking"
+                ? " - checking…"
+                : updater.status === "available" && updater.release
+                  ? ` - ${updater.release.version} ready`
+                  : updater.status === "up-to-date"
+                    ? " - you're up to date"
+                    : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {updater.status === "error" && updater.error && (
+              <p className="text-sm text-destructive">{updater.error}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updater.check(true)}
+                disabled={updater.status === "checking"}
+              >
+                {updater.status === "checking"
+                  ? "Checking…"
+                  : "Check for updates"}
+              </Button>
+              <ChangelogButton />
+              {updater.status === "available" && updater.release && (
+                <Button size="sm" onClick={updater.reopen}>
+                  View update
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Support</CardTitle>
@@ -313,22 +404,13 @@ export default function Settings({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={() => openExternalUrl(SODA_URL)}>
+          <Button variant="outline" onClick={() => openExternalUrl(SODA_URL)}>
             <CupSoda />
             Buy me a soda
           </Button>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ThemeSelector />
-          <MotionSettings />
-          <PrivacySetting />
-        </CardContent>
-      </Card>
+
       {debug.unlocked && (
         <Card className="border-dashed">
           <CardHeader>
@@ -387,48 +469,7 @@ export default function Settings({
           </CardContent>
         </Card>
       )}
-      {isAndroid && (
-        <Card>
-          <CardHeader>
-            <CardTitle>App updates</CardTitle>
-            <CardDescription>
-              {updater.current
-                ? `Tripwire ${updater.current} installed`
-                : "Tripwire"}
-              {updater.status === "checking"
-                ? " - checking…"
-                : updater.status === "available" && updater.release
-                  ? ` - ${updater.release.version} ready`
-                  : updater.status === "up-to-date"
-                    ? " - you're up to date"
-                    : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {updater.status === "error" && updater.error && (
-              <p className="text-sm text-destructive">{updater.error}</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => updater.check(true)}
-                disabled={updater.status === "checking"}
-              >
-                {updater.status === "checking"
-                  ? "Checking…"
-                  : "Check for updates"}
-              </Button>
-              <ChangelogButton />
-              {updater.status === "available" && updater.release && (
-                <Button size="sm" onClick={updater.reopen}>
-                  View update
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
       <ResetSetting />
     </div>
   );
@@ -484,7 +525,7 @@ function ResetSetting() {
           {busy
             ? "Erasing…"
             : confirm
-              ? "Tap again to erase everything"
+              ? "Confirm erase"
               : "Reset app"}
         </Button>
       </CardContent>

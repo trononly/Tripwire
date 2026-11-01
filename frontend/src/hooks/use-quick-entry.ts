@@ -11,6 +11,7 @@ export type QuickEntryStatus =
   | "starting"
   | "step"
   | "awaiting-pin"
+  | "awaiting-confirm"
   | "complete"
   | "aborted";
 
@@ -49,14 +50,20 @@ export function useQuickEntry() {
       if (
         current !== "starting" &&
         current !== "step" &&
-        current !== "awaiting-pin"
+        current !== "awaiting-pin" &&
+        current !== "awaiting-confirm"
       ) {
         return;
       }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const now = statusRef.current;
-        if (now === "starting" || now === "step" || now === "awaiting-pin") {
+        if (
+          now === "starting" ||
+          now === "step" ||
+          now === "awaiting-pin" ||
+          now === "awaiting-confirm"
+        ) {
           cleanup();
           setStatus("idle");
           setReason(null);
@@ -90,6 +97,10 @@ export function useQuickEntry() {
             break;
           case "awaiting-pin":
             setStatus("awaiting-pin");
+            break;
+          case "awaiting-confirm":
+            setStatus("awaiting-confirm");
+            cleanup();
             break;
           case "complete":
             setStatus("complete");

@@ -28,6 +28,7 @@ import {
   openUssdAutomationSettings,
 } from "@/lib/sms-bridge";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
+import { PageHeader } from "@/components/page-header";
 import { useLipaFavourites } from "@/hooks/use-lipa-favourites";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 
@@ -132,7 +133,11 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
             ? "Call permission was denied."
             : data?.error === "automation disabled"
               ? "Automation was switched off."
-              : "Could not start the transaction.",
+              : data?.error === "sim access required"
+                ? "Allow phone access in Settings so Tripwire can use your SIM."
+                : data?.error === "sim selection required"
+                  ? "Tripwire could not select your SIM. Allow phone access in Settings, then try again."
+                  : "Could not start the transaction.",
         );
       }
     });
@@ -141,12 +146,10 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Pay a bill or buy goods with till.
-      </p>
+    <div className="mx-auto w-full max-w-xl space-y-5">
+      <PageHeader title="Pay a bill" />
 
-      <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1" role="tablist">
+      <div className="grid grid-cols-2 gap-1 border bg-muted p-1" role="tablist">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -154,9 +157,9 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
             aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={cn(
-              "flex items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs font-medium transition-colors",
+              "flex items-center justify-center gap-1.5 px-2 py-2 text-sm font-medium transition-colors",
               tab === id
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-card text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -181,7 +184,6 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
               onPick: () => pickFavourite(f),
             }))}
             emptyTitle="Save your regular bills"
-            emptyHint="Add a paybill or till for one-tap filling"
             onManage={() => setFavOpen(true)}
           />
 
@@ -190,7 +192,7 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
               <div className="space-y-1.5">
                 <label
                   htmlFor="lipa-paybill"
-                  className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+                  className="text-[13px] font-medium text-foreground"
                 >
                   Paybill number
                 </label>
@@ -223,7 +225,7 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
               <div className="space-y-1.5">
                 <label
                   htmlFor="lipa-account"
-                  className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+                  className="text-[13px] font-medium text-foreground"
                 >
                   Account number
                 </label>
@@ -247,7 +249,7 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
             <div className="space-y-1.5">
               <label
                 htmlFor="lipa-till"
-                className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+                className="text-[13px] font-medium text-foreground"
               >
                 Till number
               </label>

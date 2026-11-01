@@ -57,6 +57,11 @@ android {
         }
         debug {
             debuggable true
+            // Coexists with the Play/sideload build on the same phone: a
+            // debug APK never replaces the Tripwire the user actually uses,
+            // and the launcher icon/label are blue so the two are obvious.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
         }
     }
 

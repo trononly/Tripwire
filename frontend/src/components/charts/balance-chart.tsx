@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { formatMoney } from "@/lib/format";
+import { formatDay, formatMoney, formatMoneyShort } from "@/lib/format";
 import { safeFormatTick, safeFormatFull } from "@/lib/safe-date";
 import { useReduceMotionEnabled } from "@/lib/motion-settings";
 import { useInView } from "@/hooks/use-in-view";
@@ -50,9 +51,22 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
     : "static";
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle>Balance Trajectory</CardTitle>
+        <CardTitle>Balance</CardTitle>
+        {points.length > 1 ? (
+          <CardDescription>
+            {formatDay(points[0].date)} → {formatDay(points[points.length - 1].date)} ·{" "}
+            {(() => {
+              const delta =
+                points[points.length - 1].balance - points[0].balance;
+              if (delta === 0) return "no change";
+              return `${delta > 0 ? "+" : "−"}${formatMoneyShort(
+                Math.abs(delta) * 100,
+              )}`;
+            })()}
+          </CardDescription>
+        ) : null}
       </CardHeader>
       <CardContent>
         <div ref={ref}>
@@ -62,20 +76,6 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
             data={points}
             margin={{ left: 8, right: 8, top: 8 }}
           >
-            <defs>
-              <linearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="0%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.45}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.02}
-                />
-              </linearGradient>
-            </defs>
             <XAxis
               dataKey="date"
               hide={false}
@@ -91,8 +91,8 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
               tickLine={false}
               axisLine={false}
               tickMargin={4}
-              width={96}
-              tickFormatter={(v: number) => formatMoney(v * 100)}
+              width={76}
+              tickFormatter={(v: number) => formatMoneyShort(v * 100)}
             />
             <ChartTooltip
               cursor={{ stroke: "var(--border)" }}
@@ -107,15 +107,16 @@ export function BalanceChart({ data }: { data: analysis.BalancePoint[] }) {
             />
             <Area
               dataKey="balance"
-              type="monotone"
-              stroke="var(--primary)"
+              type="linear"
+              stroke="var(--money-in)"
               strokeWidth={2}
-              fill="url(#balanceFill)"
+              fill="var(--money-in)"
+              fillOpacity={0.12}
               isAnimationActive={animate}
               animationDuration={700}
               animationEasing="ease-out"
               dot={false}
-              activeDot={{ r: 4 }}
+              activeDot={{ r: 4, fill: "var(--money-in)" }}
             />
           </AreaChart>
         </ChartContainer>

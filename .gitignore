@@ -34,3 +34,6 @@ build/linux/*.desktop
 # Windows findstr redirect artifact
 nul
 .pi
+
+# Local design-review screenshots and notes
+.taste-skill/

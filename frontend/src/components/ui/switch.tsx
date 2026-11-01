@@ -45,7 +45,7 @@ export function Switch({
         aria-hidden
         style={{ width: 20, height: 20, top: 2 }}
         className={cn(
-          "absolute rounded-full bg-background shadow transition-all",
+          "absolute rounded-full bg-white transition-[left]",
           checked ? "left-[22px]" : "left-0.5",
         )}
       />

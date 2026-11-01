@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Loader2, Smartphone } from "lucide-react";
+import { ArrowDown, Loader2, MessageSquareText, Smartphone } from "lucide-react";
 
 import type { SmsImportResult } from "../../bindings/mpesa-analyzer/models";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SmsImportInspector } from "@/components/sms-import-inspector";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
 
 /**
  * SMS - the source-data view, mobile only: import M-Pesa texts, see the
@@ -96,11 +98,17 @@ export default function Sms({
           )}
         </div>
       )}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Import and audit M-Pesa SMS messages.
-        </p>
-      </div>
+      <PageHeader
+        title="SMS import"
+        actions={
+          isAndroid ? (
+            <Button onClick={onImport} disabled={importing}>
+              <MessageSquareText className="size-4" />
+              {importing ? "Reading…" : "Import SMS"}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {result ? (
         <SmsImportInspector result={result} bridgeCount={bridgeCount} />
@@ -110,15 +118,12 @@ export default function Sms({
           <Skeleton className="h-64" />
         </div>
       ) : (
-        <Card className="flex min-h-64 items-center justify-center border-dashed">
-          <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-6 text-center">
+        <Card className="flex w-full max-w-xl items-center justify-center">
+          <CardContent className="flex max-w-sm flex-col items-center gap-4 pt-2 text-center">
             {isAndroid ? (
               <>
                 <p className="text-lg font-medium">No SMS imported yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Pull down to read the M-Pesa messages from this phone&rsquo;s
-                  inbox and import them as transactions.
-                </p>
+
               </>
             ) : (
               <>

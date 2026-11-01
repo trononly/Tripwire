@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { typeStyle } from "@/lib/transaction-types";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/category-icon";
-import { IconPicker } from "@/components/icon-picker";
+import { CategoryIconField } from "@/components/category-icon-field";
 import { useCategories } from "@/hooks/use-categories";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
@@ -60,7 +60,6 @@ export function CategoryPickerSheet({
 	const [applySimilar, setApplySimilar] = useState(true);
 	const [busy, setBusy] = useState(false);
 	const [creating, setCreating] = useState(false);
-	const [pickerOpen, setPickerOpen] = useState(false);
 	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
@@ -69,7 +68,6 @@ export function CategoryPickerSheet({
 		if (!open) return;
 		setApplySimilar(true);
 		setCreating(false);
-		setPickerOpen(false);
 		setIcon("tag");
 		setName("");
 		setFormError(null);
@@ -143,7 +141,7 @@ export function CategoryPickerSheet({
 				<DrawerHeader className="text-left">
 					<DrawerTitle>Category for {title}</DrawerTitle>
 					<p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-						Currently
+						Currently:&nbsp;
 						{shown.customCategoryId ? (
 							<>
 								<CategoryIcon
@@ -153,7 +151,7 @@ export function CategoryPickerSheet({
 								{shown.customCategoryName}
 							</>
 						) : (
-							`Automatic · ${shown.category}`
+							shown.category
 						)}
 					</p>
 				</DrawerHeader>
@@ -165,19 +163,19 @@ export function CategoryPickerSheet({
 						aria-pressed={!shown.customCategoryId}
 						onClick={() => void apply("")}
 						className={cn(
-							"flex min-h-14 w-full items-center gap-3 rounded-md border p-3 text-left transition-colors disabled:opacity-60",
+							"flex min-h-14 w-full items-center gap-3 rounded-none border p-3 text-left transition-colors disabled:opacity-60",
 							!shown.customCategoryId
 								? "border-primary bg-accent"
 								: "hover:bg-accent/50",
 						)}
 					>
-						<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+						<span className="flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
 							<TypeIcon className="size-4.5" strokeWidth={1.75} />
 						</span>
 						<span className="min-w-0 flex-1">
-							<span className="block text-sm font-medium">Automatic</span>
+							<span className="block text-sm font-medium">Standard</span>
 							<span className="block truncate text-xs text-muted-foreground">
-								{shown.category} · the built-in M-Pesa category
+								{shown.category}
 							</span>
 						</span>
 						{!shown.customCategoryId && <Check className="size-4 shrink-0" />}
@@ -199,13 +197,13 @@ export function CategoryPickerSheet({
 									aria-pressed={active}
 									onClick={() => void apply(category.id)}
 									className={cn(
-										"flex min-h-14 w-full items-center gap-3 rounded-md border p-3 text-left transition-colors disabled:opacity-60",
+										"flex min-h-14 w-full items-center gap-3 rounded-none border p-3 text-left transition-colors disabled:opacity-60",
 										active
 											? "border-primary bg-accent"
 											: "hover:bg-accent/50",
 									)}
 								>
-									<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+									<span className="flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
 										<CategoryIcon
 											icon={category.icon}
 											className="size-4.5"
@@ -234,8 +232,9 @@ export function CategoryPickerSheet({
 							New category
 						</Button>
 					) : (
-						<form onSubmit={create} className="space-y-2 rounded-md border p-3">
-							<div className="flex gap-2">
+						<form onSubmit={create} className="space-y-2 rounded-none border p-3">
+							<div className="flex items-center gap-2">
+								<CategoryIconField value={icon} onChange={setIcon} />
 								<Input
 									aria-label="Category name"
 									value={name}
@@ -251,26 +250,6 @@ export function CategoryPickerSheet({
 									)}
 								</Button>
 							</div>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								className="w-full justify-start gap-2"
-								aria-expanded={pickerOpen}
-								onClick={() => setPickerOpen((v) => !v)}
-							>
-								<CategoryIcon icon={icon} className="size-4" />
-								{pickerOpen ? "Hide icons" : "Choose an icon"}
-							</Button>
-							{pickerOpen && (
-								<IconPicker
-									value={icon}
-									onSelect={(value) => {
-										setIcon(value);
-										setPickerOpen(false);
-									}}
-								/>
-							)}
 							{formError && (
 								<p className="text-xs text-destructive">{formError}</p>
 							)}

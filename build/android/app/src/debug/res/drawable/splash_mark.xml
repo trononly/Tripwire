@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug splash mark: same rounded tile, blue. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#12305F"
+        android:pathData="M39.96,27 H68.04 A12.96,12.96 0 0 1 81,39.96 V68.04 A12.96,12.96 0 0 1 68.04,81 H39.96 A12.96,12.96 0 0 1 27,68.04 V39.96 A12.96,12.96 0 0 1 39.96,27 Z" />
+    <path
+        android:fillColor="#60A5FA"
+        android:pathData="M48.65,48.75 H59.15 V59.25 H48.65 Z" />
+    <path
+        android:fillColor="#DBEAFE"
+        android:pathData="M32.95,52.89 H46.15 V55.11 H32.95 Z" />
+    <path
+        android:fillColor="#DBEAFE"
+        android:pathData="M61.46,52.89 H74.66 V55.11 H61.46 Z" />
+</vector>

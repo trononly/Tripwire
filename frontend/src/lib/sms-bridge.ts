@@ -13,7 +13,9 @@ interface WailsAndroidBridge {
 	requestPhoneStatePermission?(): void;
 	startUssdSession?(code: string): void;
 	isUssdAutomationEnabled?(): boolean;
+	isUssdAutomationRunning?(): boolean;
 	openUssdAutomationSettings?(): void;
+	hideSplash?(): void;
 	startUssdQuickEntry?(scriptJson: string, simKey?: string): void;
 	scheduleReminders?(json: string): void;
 	requestNotificationPermission?(): void;
@@ -73,6 +75,14 @@ export interface SmsBridgeResult {
 	error?: string;
 }
 
+/** True for a debug Android build (the bridge exposes BuildConfig.DEBUG). */
+export function isDebugBuild(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.wails?.isDebug?.())
+  );
+}
+
 /** True only when the injected Android bridge with the SMS methods exists. */
 export function isAndroidBridge(): boolean {
 	return (
@@ -114,7 +124,7 @@ export function smsPermissions(): SmsPermissions {
 
 /** Progress events from the automation service (common:ussd-auto). */
 export interface UssdAutoEvent {
-	state: "step" | "awaiting-pin" | "complete" | "aborted";
+	state: "step" | "awaiting-pin" | "awaiting-confirm" | "complete" | "aborted";
 	kind?: string;
 	step?: number;
 	steps?: number;
@@ -127,9 +137,24 @@ export function ussdAutomationEnabled(): boolean {
 	return window.wails?.isUssdAutomationEnabled?.() ?? false;
 }
 
+/**
+ * True when the system has actually bound the automation service. The setting
+ * above can say "enabled" while nothing is running; Android calls that state
+ * "malfunctioning" and only a re-enable in system Settings clears it.
+ */
+export function ussdAutomationRunning(): boolean {
+	if (!isAndroidBridge()) return false;
+	return window.wails?.isUssdAutomationRunning?.() ?? false;
+}
+
 /** Open system Settings at the accessibility page (user opts in there). */
 export function openUssdAutomationSettings(): void {
 	window.wails?.openUssdAutomationSettings?.();
+}
+
+/** Dismiss the Android launch splash once the UI has painted. */
+export function hideSplash(): void {
+	window.wails?.hideSplash?.();
 }
 
 /**
