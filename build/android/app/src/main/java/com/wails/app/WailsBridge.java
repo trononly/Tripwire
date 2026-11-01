@@ -1557,6 +1557,23 @@ public class WailsBridge {
         }
     }
 
+    /**
+     * True when the system has actually bound the automation service. The
+     * secure setting can say "enabled" while nothing is running - Android
+     * shows that state as "This service is malfunctioning" and only a
+     * re-enable in system Settings (or a restart) clears it.
+     */
+    public boolean isUssdAutomationRunning() {
+        return MpesaUssdService.isConnected();
+    }
+
+    /** Drop the launch splash once the UI has painted (see MainActivity). */
+    public void hideSplash() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).hideSplash();
+        }
+    }
+
     /** Open system Settings at the accessibility page (user opts in there). */
     public void openUssdAutomationSettings() {
         try {

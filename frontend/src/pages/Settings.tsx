@@ -38,6 +38,7 @@ import type * as store from "../../bindings/mpesa-analyzer/internal/store/models
 import type { Updater } from "@/hooks/use-updater";
 import { ChangelogButton } from "@/components/changelog-dialog";
 import { PageHeader } from "@/components/page-header";
+import { AutomationStoppedNotice } from "@/components/automation-gate";
 import { ResetData } from "../../bindings/mpesa-analyzer/parseservice";
 import {
   Card,
@@ -252,6 +253,7 @@ export default function Settings({
               />
             </div>
           )}
+          {isAndroid && <AutomationStoppedNotice />}
         </CardContent>
       </Card>
 

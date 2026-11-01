@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ system splash icon: nothing. The app draws its own splash
+     (activity_main.xml) with the branded tile, held until the UI is ready.
+     Letting the system draw the launcher icon too would hand off from a
+     masked launcher icon to a different, differently sized mark. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="1dp" android:height="1dp" />
+</shape>

@@ -297,12 +297,30 @@ public class WailsJSBridge {
     }
 
     /**
-     * True when the M-Pesa automation service is enabled in system Settings.
+     * True when the automation service is enabled in system Settings.
      * Called from JavaScript: wails.isUssdAutomationEnabled()
      */
     @JavascriptInterface
     public boolean isUssdAutomationEnabled() {
         return bridge.isUssdAutomationEnabled();
+    }
+
+    /**
+     * True when that service is actually running, not just switched on.
+     * Called from JavaScript: wails.isUssdAutomationRunning()
+     */
+    @JavascriptInterface
+    public boolean isUssdAutomationRunning() {
+        return bridge.isUssdAutomationRunning();
+    }
+
+    /**
+     * Remove the launch splash once the UI has painted its first frame.
+     * Called from JavaScript: wails.hideSplash()
+     */
+    @JavascriptInterface
+    public void hideSplash() {
+        bridge.hideSplash();
     }
 
     /**

@@ -18,9 +18,11 @@
         <!-- Window background: branded launch drawable, which also covers
              the WebView first-paint flash. -->
         <item name="android:windowBackground">@drawable/launch_background</item>
-        <!-- Android 12+ splash: Tripwire background + launcher icon.
-             Ignored on older releases. -->
+        <!-- Android 12+ splash: brand background only. The icon is the app's
+             own splash overlay (see activity_main.xml), so the system must
+             not draw a second, differently masked mark first. Ignored on
+             older releases. -->
         <item name="android:windowSplashScreenBackground">@color/tripwire_bg</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_blank</item>
     </style>
 </resources>

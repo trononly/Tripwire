@@ -24,6 +24,7 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.util.Log;
+import android.view.View;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -59,6 +60,14 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private WailsBridge bridge;
+    /** Launch splash held over the WebView until the UI paints. */
+    private View splash;
+    /**
+     * Belt and braces: if the UI never reports a painted frame (a JS error
+     * before the first render), drop the splash anyway so the app is never
+     * stuck behind it.
+     */
+    private static final long SPLASH_FALLBACK_MS = 8000;
     // Battery: system-event receivers are registered only while the activity is
     // in the foreground (onStart) and torn down in onStop, so background battery/
     // network/screen broadcasts don't wake the app.
@@ -92,6 +101,15 @@ public class MainActivity extends AppCompatActivity {
         // flash between launch and first paint (the HTML carries the same
         // background inline as a second net).
         findViewById(R.id.webview).setBackgroundColor(Color.TRANSPARENT);
+
+        // Hold the branded splash over the WebView until the UI says it has
+        // painted. Without this the system splash leaves as soon as the
+        // window draws, and the WebView shows its own surface for the gap
+        // between that frame and React's first render.
+        splash = findViewById(R.id.splash);
+        if (splash != null) {
+            splash.postDelayed(this::hideSplash, SPLASH_FALLBACK_MS);
+        }
 
         // Initialize the native Go library
         bridge = new WailsBridge(this);
@@ -211,6 +229,23 @@ public class MainActivity extends AppCompatActivity {
         String url = WAILS_SCHEME + "://" + WAILS_HOST + "/";
         if (DEBUG) Log.d(TAG, "Loading URL: " + url);
         webView.loadUrl(url);
+    }
+
+    /**
+     * Fade the launch splash out. Called from JS once the UI has painted its
+     * first frame, and from the fallback timer in onCreate. Idempotent, and
+     * safe to call off the UI thread.
+     */
+    public void hideSplash() {
+        runOnUiThread(() -> {
+            View view = splash;
+            if (view == null || view.getVisibility() != View.VISIBLE) return;
+            view.animate()
+                    .alpha(0f)
+                    .setDuration(160)
+                    .withEndAction(() -> view.setVisibility(View.GONE))
+                    .start();
+        });
     }
 
     /**

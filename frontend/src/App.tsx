@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from "@/hooks/use-safe-area";
 import { useSystemBars } from "@/hooks/use-system-bars";
 import { loadInitialMode, saveMode, type DataMode } from "@/lib/data-mode";
 import { paySimKey } from "@/lib/pay-sim";
+import { hideSplash } from "@/lib/sms-bridge";
 import Transactions from "@/pages/Transactions";
 import Settings from "@/pages/Settings";
 import Sms from "@/pages/Sms";
@@ -71,11 +72,33 @@ function App() {
   // installed build's notes ready (and offline-capable) from the first open.
   useChangelogPrefetch();
 
+  // Still booting: the history read has not settled, or SMS mode is waiting
+  // for its wallet. Until then an empty list means "not loaded yet", so the
+  // Dashboard shows skeletons rather than claiming there is no data.
   const txs = mode === "sms" ? sms.smsTxs : stmts.statementTxs;
   const [analysisResult, setAnalysisResult] =
     useState<analysis.AnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // The analysis (not this) owns the dashboard's own skeleton: holding the
+  // splash for it would push the cold start past three seconds on a big
+  // inbox, so the splash lifts when the data is in and the skeleton covers
+  // the analysis.
+  const booting = !stmts.loaded || (mode === "sms" && !sms.smsLoaded);
+
+  // Android holds a branded splash over the WebView until the app is ready,
+  // so the first thing seen is the app itself, not an empty state or a
+  // half-painted screen. The cap keeps a failed read from trapping the user
+  // behind the splash (the native side has its own fallback too).
+  useEffect(() => {
+    if (!booting) {
+      hideSplash();
+      return;
+    }
+    const timer = window.setTimeout(hideSplash, 3000);
+    return () => window.clearTimeout(timer);
+  }, [booting]);
 
   // SMS records are one-per-SIM: the switcher lists them and the active one
   // feeds SMS mode. Newest import first, same order as History.
@@ -189,6 +212,7 @@ function App() {
                         onImport={() => setImportOpen(true)}
                         onImportSms={sms.startSmsImport}
                         importing={sms.smsImporting}
+                        booting={booting}
                         onBrowseHistory={() => setHistoryOpen(true)}
                       />
                     </Suspense>

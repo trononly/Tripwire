@@ -29,6 +29,10 @@ export function metaOf(record: store.StatementRecord): store.StatementMeta {
  */
 export function useStatements() {
 	const [statements, setStatements] = useState<store.StatementMeta[]>([]);
+	// True once the launch-time history read settles: until then an empty
+	// list means "not loaded yet", not "nothing imported", and the Dashboard
+	// must not claim there is no data.
+	const [loaded, setLoaded] = useState(false);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [statementTxs, setStatementTxs] = useState<parser.Transaction[]>([]);
 	const activeStatement = statements.find((s) => s.id === activeId) ?? null;
@@ -36,7 +40,8 @@ export function useStatements() {
 	useEffect(() => {
 		ListStatements()
 			.then((list) => setStatements(list ?? []))
-			.catch((e) => console.error("Loading statement history failed:", e));
+			.catch((e) => console.error("Loading statement history failed:", e))
+			.finally(() => setLoaded(true));
 	}, []);
 
 	function addMeta(record: store.StatementRecord) {
@@ -94,6 +99,7 @@ export function useStatements() {
 	}
 
 	return {
+		loaded,
 		statements,
 		setStatements,
 		activeId,

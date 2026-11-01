@@ -1,7 +1,7 @@
 // The single home for every frontend test. One file on purpose: the suite
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
@@ -15,6 +15,7 @@ import {
 } from "@/components/category-icon";
 import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
+import { AutomationStoppedNotice } from "@/components/automation-gate";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
   counterpartyDisplayName,
@@ -1640,5 +1641,52 @@ describe("recurring plans", () => {
 		expect(script?.kind).toBe("paybill");
 		expect(script?.steps.map((s) => s.input)).toEqual(["6", "1", "888880", "01450540651", "250", "1"]);
 		expect(planScript(plan({ kind: "till", number: "12" }), "250")).toBeNull();
+	});
+});
+
+describe("AutomationStoppedNotice", () => {
+	const bridge = (enabled: boolean, running: boolean) => {
+		Object.defineProperty(window, "wails", {
+			configurable: true,
+			value: {
+				platform: () => "android",
+				hasSmsPermission: () => true,
+				getSms: () => undefined,
+				isUssdAutomationEnabled: () => enabled,
+				isUssdAutomationRunning: () => running,
+			},
+		});
+	};
+
+	afterEach(() => {
+		Object.defineProperty(window, "wails", {
+			configurable: true,
+			value: undefined,
+		});
+	});
+
+	it("offers a re-enable shortcut when the switch is on but nothing runs", async () => {
+		bridge(true, false);
+		render(<AutomationStoppedNotice />);
+		expect(
+			await screen.findByText("Automation isn’t running"),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: "Accessibility broken? Re-enable here",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("stays out of the way while the service is running", () => {
+		bridge(true, true);
+		const { container } = render(<AutomationStoppedNotice />);
+		expect(container).toBeEmptyDOMElement();
+	});
+
+	it("stays out of the way when automation is switched off", () => {
+		bridge(false, false);
+		const { container } = render(<AutomationStoppedNotice />);
+		expect(container).toBeEmptyDOMElement();
 	});
 });

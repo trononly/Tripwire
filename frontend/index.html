@@ -7,6 +7,25 @@
             content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
         <meta name="theme-color" content="#16171b" />
+        <script>
+            // next-themes applies .dark in an effect, i.e. after the first
+            // paint, so a dark-mode phone showed the light palette for a
+            // frame before the app rendered. Decide it before paint instead.
+            // Key and values match the ThemeProvider in App.tsx.
+            (function () {
+                try {
+                    var stored = localStorage.getItem("theme");
+                    var dark =
+                        stored === "dark" ||
+                        (stored !== "light" &&
+                            window.matchMedia("(prefers-color-scheme: dark)")
+                                .matches);
+                    if (dark) document.documentElement.classList.add("dark");
+                } catch (e) {
+                    /* private mode: keep the default */
+                }
+            })();
+        </script>
         <link rel="icon" type="image/svg+xml" href="/tripwire-bg.svg" />
         <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />

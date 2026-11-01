@@ -48,6 +48,10 @@ export function useSmsEngine(deps: {
 	// startSmsImport, the bridge asks for SMS access itself when missing, and
 	// the pages show skeletons until the merged dataset lands. Denials
 	// surface as toasts - the permanently-denied case opens the guide.
+	// True once the launch-time SMS dataset load settles (loaded, empty, or
+	// not applicable): until then SMS mode has nothing to render and must
+	// not claim the wallet is empty.
+	const [smsLoaded, setSmsLoaded] = useState(false);
 	const [smsImporting, setSmsImporting] = useState(false);
 	const smsImportingRef = useRef(false);
 	const [isAndroid, setIsAndroid] = useState(false);
@@ -77,6 +81,8 @@ export function useSmsEngine(deps: {
 			localStorage.getItem(MODE_KEY) !== "statements"
 		) {
 			loadSmsRecord(latestSms.id);
+		} else {
+			setSmsLoaded(true);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [statements]);
@@ -424,7 +430,8 @@ export function useSmsEngine(deps: {
 				setSmsRecordId(id);
 				setSmsTxs(loaded ?? []);
 			})
-			.catch((e) => console.error("Loading SMS dataset failed:", e));
+			.catch((e) => console.error("Loading SMS dataset failed:", e))
+			.finally(() => setSmsLoaded(true));
 	}
 
 	// Switch SMS mode to another SIM's wallet.
@@ -442,6 +449,7 @@ export function useSmsEngine(deps: {
 	}
 
 	return {
+		smsLoaded,
 		smsTxs,
 		smsRecordId,
 		smsResult,

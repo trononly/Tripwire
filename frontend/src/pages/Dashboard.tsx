@@ -64,6 +64,7 @@ export default function Dashboard({
   onImport,
   onImportSms,
   importing = false,
+  booting = false,
   onBrowseHistory,
 }: {
   transactions: parser.Transaction[];
@@ -79,6 +80,9 @@ export default function Dashboard({
   onImportSms: () => void;
   /** True while an SMS import is in flight: show skeletons, not buttons. */
   importing?: boolean;
+  /** True until the launch-time history read settles: an empty list then
+   * means "not loaded yet", so the empty state must wait. */
+  booting?: boolean;
   onBrowseHistory: () => void;
 }) {
   const navigate = useNavigate();
@@ -217,12 +221,29 @@ export default function Dashboard({
     return `${bits.join(" · ")}.`;
   }, [visible]);
 
+  // Transactions loaded but the analysis is still running (launch, or a
+  // statement just activated): render the skeleton, never a dashboard of
+  // zeroes that fills in a moment later.
+  if (transactions.length > 0 && !result && loading) {
+    return (
+      <div className="space-y-6" aria-busy="true">
+        <PageHeader title="Dashboard" />
+        <div className="grid grid-cols-2 gap-px border bg-border lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-none" />
+          ))}
+        </div>
+        <Skeleton className="h-90 rounded-none" />
+      </div>
+    );
+  }
+
   if (transactions.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeader title="Dashboard" />
         {smsMode ? (
-          importing ? (
+          importing || booting ? (
             <div className="space-y-4" aria-busy="true">
               <div className="grid grid-cols-2 gap-px border bg-border lg:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, i) => (
