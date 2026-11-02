@@ -33,6 +33,8 @@ interface WailsAndroidBridge {
 	openUrl?(url: string): void;
 	openURL?(url: string): void;
 	pickContact?(): void;
+	/** Save a prepared database snapshot through Android's "Save to" sheet. */
+	exportDatabase?(sourcePath: string, fileName: string): void;
 }
 
 declare global {
@@ -305,6 +307,36 @@ export function canPickContact(): boolean {
 export function pickContact(): void {
 	try {
 		window.wails?.pickContact?.();
+	} catch {
+		/* ignore */
+	}
+}
+
+/** The "common:export" event payload from WailsBridge.java. */
+export interface DatabaseExportResult {
+	ok?: boolean;
+	fileName?: string;
+	size?: number;
+	error?: string;
+	cancelled?: boolean;
+}
+
+/**
+ * True when this build can hand a prepared database snapshot to Android's
+ * document provider sheet. Desktop uses the Go save dialog instead.
+ */
+export function canExportDatabase(): boolean {
+	return isAndroidBridge() && window.wails?.exportDatabase !== undefined;
+}
+
+/**
+ * Save a prepared snapshot where the user chooses. The result arrives as a
+ * "common:export" event; callers must listen before calling this.
+ */
+export function exportDatabase(sourcePath: string, fileName: string): void {
+	if (!canExportDatabase()) return;
+	try {
+		window.wails?.exportDatabase?.(sourcePath, fileName);
 	} catch {
 		/* ignore */
 	}

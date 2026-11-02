@@ -86,6 +86,177 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStoreSnapshot(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Add(sampleRecord("a")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "backup.db")
+	if err := s.Snapshot(dst); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	// The copy must open as a normal store and hold the source's records,
+	// including anything still in the WAL when it was taken.
+	copied, err := New(dst)
+	if err != nil {
+		t.Fatalf("New(snapshot): %v", err)
+	}
+	defer copied.Close()
+	metas, err := copied.List()
+	if err != nil {
+		t.Fatalf("List(snapshot): %v", err)
+	}
+	if len(metas) != 1 || metas[0].ID != "a" {
+		t.Fatalf("snapshot List = %+v, want [a]", metas)
+	}
+
+	// Later writes to the live store must not leak into the snapshot.
+	if err := s.Add(sampleRecord("b")); err != nil {
+		t.Fatalf("Add after snapshot: %v", err)
+	}
+	again, err := copied.List()
+	if err != nil {
+		t.Fatalf("List(snapshot) after source write: %v", err)
+	}
+	if len(again) != 1 {
+		t.Fatalf("snapshot changed after source write: %+v", again)
+	}
+
+	// VACUUM INTO refuses an existing destination; the store should too.
+	if err := s.Snapshot(dst); err == nil {
+		t.Fatal("Snapshot over an existing file succeeded, want an error")
+	}
+}
+
+func TestStoreRestore(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Add(sampleRecord("a")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := s.AddFavourite("Alice", "0712345678", "send"); err != nil {
+		t.Fatalf("AddFavourite: %v", err)
+	}
+	if _, err := s.AddLipaFavourite("KPLC", "paybill", "888880", "12345"); err != nil {
+		t.Fatalf("AddLipaFavourite: %v", err)
+	}
+	cat, err := s.AddCategory("Food", "utensils")
+	if err != nil {
+		t.Fatalf("AddCategory: %v", err)
+	}
+	if err := s.SetCategoryRule(RuleTx, "R1", cat.ID); err != nil {
+		t.Fatalf("SetCategoryRule: %v", err)
+	}
+	if _, err := s.AddRecurringPlan(RecurringPlan{
+		Name:      "Rent",
+		Kind:      "send",
+		Number:    "0712345678",
+		Amount:    100000,
+		Cadence:   "monthly",
+		AnchorDay: 1,
+		DueTime:   "09:00",
+		Remind:    true,
+	}); err != nil {
+		t.Fatalf("AddRecurringPlan: %v", err)
+	}
+
+	backup := filepath.Join(t.TempDir(), "backup.db")
+	if err := s.Snapshot(backup); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	summary, err := InspectBackup(backup)
+	if err != nil {
+		t.Fatalf("InspectBackup: %v", err)
+	}
+	if summary.Statements != 1 || summary.Transactions != 2 {
+		t.Fatalf("summary = %+v, want 1 statement / 2 transactions", summary)
+	}
+
+	// Move the live store away from the snapshot, then put it back.
+	if err := s.Add(sampleRecord("b")); err != nil {
+		t.Fatalf("Add after snapshot: %v", err)
+	}
+	if _, err := s.AddFavourite("Bob", "0723456789", "send"); err != nil {
+		t.Fatalf("AddFavourite after snapshot: %v", err)
+	}
+	if _, err := s.AddCategory("Travel", "plane"); err != nil {
+		t.Fatalf("AddCategory after snapshot: %v", err)
+	}
+	if err := s.Restore(backup); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	metas, err := s.List()
+	if err != nil {
+		t.Fatalf("List after restore: %v", err)
+	}
+	if len(metas) != 1 || metas[0].ID != "a" {
+		t.Fatalf("List after restore = %+v, want [a]", metas)
+	}
+	rec, err := s.Get("a")
+	if err != nil {
+		t.Fatalf("Get after restore: %v", err)
+	}
+	if len(rec.Txs) != 2 {
+		t.Fatalf("restored txs = %d, want 2", len(rec.Txs))
+	}
+	favourites, err := s.ListFavourites("send")
+	if err != nil {
+		t.Fatalf("ListFavourites after restore: %v", err)
+	}
+	if len(favourites) != 1 || favourites[0].Name != "Alice" {
+		t.Fatalf("favourites after restore = %+v, want [Alice]", favourites)
+	}
+	lipa, err := s.ListLipaFavourites("paybill")
+	if err != nil {
+		t.Fatalf("ListLipaFavourites after restore: %v", err)
+	}
+	if len(lipa) != 1 || lipa[0].Name != "KPLC" {
+		t.Fatalf("lipa favourites after restore = %+v, want [KPLC]", lipa)
+	}
+	categories, err := s.ListCategories()
+	if err != nil {
+		t.Fatalf("ListCategories after restore: %v", err)
+	}
+	if len(categories) != 1 || categories[0].Name != "Food" {
+		t.Fatalf("categories after restore = %+v, want [Food]", categories)
+	}
+	rules, err := s.ListCategoryRules()
+	if err != nil {
+		t.Fatalf("ListCategoryRules after restore: %v", err)
+	}
+	if len(rules) != 1 || rules[0].Key != "R1" {
+		t.Fatalf("rules after restore = %+v, want one R1 rule", rules)
+	}
+	plans, err := s.ListRecurringPlans()
+	if err != nil {
+		t.Fatalf("ListRecurringPlans after restore: %v", err)
+	}
+	if len(plans) != 1 || plans[0].Name != "Rent" {
+		t.Fatalf("plans after restore = %+v, want [Rent]", plans)
+	}
+
+	// A non-database file must be rejected without touching the live data.
+	junk := filepath.Join(t.TempDir(), "junk.db")
+	if err := os.WriteFile(junk, []byte("not a database"), 0o600); err != nil {
+		t.Fatalf("write junk: %v", err)
+	}
+	if _, err := InspectBackup(junk); err == nil {
+		t.Fatal("InspectBackup accepted a non-database")
+	}
+	if err := s.Restore(junk); err == nil {
+		t.Fatal("Restore accepted a non-database")
+	}
+	metas, err = s.List()
+	if err != nil {
+		t.Fatalf("List after rejected restore: %v", err)
+	}
+	if len(metas) != 1 || metas[0].ID != "a" {
+		t.Fatalf("live data changed after rejected restore: %+v", metas)
+	}
+}
+
 func TestStoreMissingFileIsEmpty(t *testing.T) {
 	s := newTestStore(t)
 	metas, err := s.List()

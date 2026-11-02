@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -250,8 +251,9 @@ CREATE TABLE IF NOT EXISTS recurring_plans (
 
 // Store wraps the SQLite database.
 type Store struct {
-	mu sync.Mutex
-	db *sql.DB
+	mu   sync.Mutex
+	db   *sql.DB
+	path string
 }
 
 // New opens (creating if needed) the store at path. A missing file is an
@@ -316,7 +318,7 @@ func New(path string) (*Store, error) {
 		return nil, err
 	}
 
-	s := &Store{db: db}
+	s := &Store{db: db, path: path}
 	if err := s.migrateLegacyJSON(path); err != nil {
 		db.Close()
 		return nil, err
@@ -449,6 +451,308 @@ func (s *Store) Reset() error {
 // Close releases the database handle.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// Snapshot writes a consistent copy of the live database to path using
+// SQLite's VACUUM INTO. Unlike copying the file, this includes everything
+// still sitting in the WAL, so a backup taken while the app is open is
+// complete and safe to reopen elsewhere. The destination must not exist.
+func (s *Store) Snapshot(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("backup destination already exists")
+	}
+	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+		return fmt.Errorf("could not write backup: %w", err)
+	}
+	return nil
+}
+
+// BackupSummary describes a Tripwire database file before it is restored.
+type BackupSummary struct {
+	FileName     string `json:"fileName"`
+	Size         int64  `json:"size"`
+	Statements   int    `json:"statements"`
+	Sms          int    `json:"sms"`
+	Transactions int    `json:"transactions"`
+	LatestImport string `json:"latestImport"`
+}
+
+// backupTables is every table a backup must carry. Order matters on insert:
+// statements before their transactions.
+var backupTables = []string{
+	"statements",
+	"transactions",
+	"favourites",
+	"lipa_favourites",
+	"categories",
+	"category_rules",
+	"recurring_plans",
+}
+
+// InspectBackup validates a file without changing anything and reports what
+// it holds, so the restore confirmation can be specific about what the user
+// is about to replace.
+func InspectBackup(path string) (*BackupSummary, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	db, err := sql.Open("sqlite", readOnlyDSN(path))
+	if err != nil {
+		return nil, fmt.Errorf("could not open backup: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+
+	if err := checkIntegrity(db, "main"); err != nil {
+		return nil, err
+	}
+	for _, table := range backupTables {
+		if err := requireTable(db, "main", table); err != nil {
+			return nil, err
+		}
+	}
+
+	summary := &BackupSummary{FileName: filepath.Base(path), Size: info.Size()}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM statements`).Scan(&summary.Statements); err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM statements WHERE source = 'sms'`).Scan(&summary.Sms); err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM transactions`).Scan(&summary.Transactions); err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COALESCE(MAX(imported_at), '') FROM statements`).Scan(&summary.LatestImport); err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	return summary, nil
+}
+
+// Restore replaces every row in the live store with the rows in a backup.
+// It runs under the store's write lock, so no other store call can read a
+// half-restored database, and the copy is one transaction: a bad file or a
+// failed insert leaves the current data untouched.
+//
+// The backup is opened read-only and copied row by row instead of attaching
+// it. ATTACH/DETACH makes SQLite manage a second journal; on some Android
+// filesystems the detach cleanup returns SQLITE_IOERR_DELETE_NOENT (6410)
+// after the commit has already happened, which surfaced as a false failure.
+func (s *Store) Restore(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if filepath.Clean(path) == filepath.Clean(s.path) {
+		return fmt.Errorf("that is the live database; choose a backup copy")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("could not read backup: %w", err)
+	}
+	backup, err := sql.Open("sqlite", readOnlyDSN(path))
+	if err != nil {
+		return fmt.Errorf("could not open backup: %w", err)
+	}
+	backup.SetMaxOpenConns(1)
+	defer backup.Close()
+
+	if err := checkIntegrity(backup, "main"); err != nil {
+		return err
+	}
+	for _, table := range backupTables {
+		if err := requireTable(backup, "main", table); err != nil {
+			return err
+		}
+	}
+
+	// Work out the columns to copy before touching the live data. Columns the
+	// backup predates are left out so the current schema's defaults apply.
+	copiers := make([]tableCopier, 0, len(backupTables))
+	for _, table := range backupTables {
+		target, err := tableColumns(s.db, "main", table)
+		if err != nil {
+			return err
+		}
+		source, err := tableColumns(backup, "main", table)
+		if err != nil {
+			return err
+		}
+		present := make(map[string]bool, len(source))
+		for _, column := range source {
+			present[column.name] = true
+		}
+		columns := make([]string, 0, len(target))
+		for _, column := range target {
+			if present[column.name] {
+				columns = append(columns, column.name)
+				continue
+			}
+			if column.notNull != 0 && !column.defaultValue.Valid {
+				return fmt.Errorf("this backup is missing %s.%s", table, column.name)
+			}
+		}
+		if len(columns) == 0 {
+			return fmt.Errorf("this backup has no usable %s data", table)
+		}
+		copiers = append(copiers, tableCopier{table: table, columns: columns})
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start restore: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+	for _, table := range []string{
+		"transactions",
+		"statements",
+		"favourites",
+		"lipa_favourites",
+		"recurring_plans",
+		"category_rules",
+		"categories",
+	} {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("could not clear %s: %w", table, err)
+		}
+	}
+	for _, copier := range copiers {
+		if err := copyTableRows(tx, backup, copier); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("could not finish restore: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+type tableCopier struct {
+	table   string
+	columns []string
+}
+
+// copyTableRows reads one table from the read-only backup and inserts each
+// row into the live transaction. Column names are schema constants, never
+// user input.
+func copyTableRows(tx *sql.Tx, backup *sql.DB, copier tableCopier) error {
+	quoted := make([]string, len(copier.columns))
+	placeholders := make([]string, len(copier.columns))
+	for i, column := range copier.columns {
+		quoted[i] = quoteIdent(column)
+		placeholders[i] = "?"
+	}
+	rows, err := backup.Query(fmt.Sprintf(
+		"SELECT %s FROM %s",
+		strings.Join(quoted, ", "), quoteIdent(copier.table),
+	))
+	if err != nil {
+		return fmt.Errorf("could not read backup %s: %w", copier.table, err)
+	}
+	defer rows.Close()
+
+	insert := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s)",
+		quoteIdent(copier.table), strings.Join(quoted, ", "),
+		strings.Join(placeholders, ", "),
+	)
+	for rows.Next() {
+		values := make([]any, len(copier.columns))
+		targets := make([]any, len(copier.columns))
+		for i := range values {
+			targets[i] = &values[i]
+		}
+		if err := rows.Scan(targets...); err != nil {
+			return fmt.Errorf("could not read backup %s: %w", copier.table, err)
+		}
+		if _, err := tx.Exec(insert, values...); err != nil {
+			return fmt.Errorf("could not restore %s: %w", copier.table, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("could not read backup %s: %w", copier.table, err)
+	}
+	return nil
+}
+
+// readOnlyDSN opens a backup without giving SQLite permission to write a
+// journal next to it. A URL keeps paths with spaces or a '?' intact.
+func readOnlyDSN(path string) string {
+	absolute, err := filepath.Abs(path)
+	if err == nil {
+		path = absolute
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	query := u.Query()
+	query.Set("mode", "ro")
+	u.RawQuery = query.Encode()
+	return u.String()
+}
+
+func checkIntegrity(db *sql.DB, schema string) error {
+	var result string
+	if err := db.QueryRow("PRAGMA " + schema + ".integrity_check").Scan(&result); err != nil {
+		return fmt.Errorf("this file is not a Tripwire backup")
+	}
+	if result != "ok" {
+		return fmt.Errorf("this backup is damaged")
+	}
+	return nil
+}
+
+func requireTable(db *sql.DB, schema, table string) error {
+	var n int
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s.sqlite_master WHERE type = 'table' AND name = ?", schema)
+	if err := db.QueryRow(query, table).Scan(&n); err != nil {
+		return fmt.Errorf("could not read backup: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("this file is not a Tripwire backup")
+	}
+	return nil
+}
+
+type columnInfo struct {
+	name         string
+	notNull      int
+	defaultValue sql.NullString
+}
+
+func tableColumns(db *sql.DB, schema, table string) ([]columnInfo, error) {
+	query := fmt.Sprintf("PRAGMA %s.table_info(%s)", schema, quoteIdent(table))
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("could not read backup schema: %w", err)
+	}
+	defer rows.Close()
+	columns := make([]columnInfo, 0, 16)
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, fmt.Errorf("could not read backup schema: %w", err)
+		}
+		columns = append(columns, columnInfo{
+			name:         name,
+			notNull:      notNull,
+			defaultValue: defaultValue,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("could not read backup schema: %w", err)
+	}
+	return columns, nil
+}
+
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // normalizeSource maps the empty legacy source to a statement.

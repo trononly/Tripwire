@@ -79,9 +79,13 @@ public class MainActivity extends AppCompatActivity {
     private static final int PHOTO_CAPTURE_REQUEST = 7002;
     private static final int VIDEO_CAPTURE_REQUEST = 7003;
     private static final int CONTACT_PICKER_REQUEST = 7004;
+    private static final int EXPORT_DOCUMENT_REQUEST = 7005;
     private static final int CAMERA_PERMISSION_REQUEST = 7010;
     private File pendingCaptureFile;
     private boolean pendingCaptureIsVideo;
+    /** In-flight backup save: the app-private snapshot and its display name. */
+    private String pendingExportSourcePath;
+    private String pendingExportFileName;
 
     // System-event sources (battery/power, screen lock, network). Registered in
     // onCreate, torn down in onDestroy. Each forwards a "system:*" event to JS
@@ -487,6 +491,86 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Launch the system "Save to" sheet for the prepared database snapshot.
+     * ACTION_CREATE_DOCUMENT is what puts Google Drive, Downloads and the
+     * other document providers in front of the user; no storage permission is
+     * involved because the returned URI is a one-off write grant.
+     */
+    public void launchDocumentCreator(String sourcePath, String fileName) {
+        if (sourcePath == null || sourcePath.isEmpty()) {
+            bridge.exportDatabaseError("The backup file is missing.");
+            return;
+        }
+        synchronized (this) {
+            if (pendingExportSourcePath != null) {
+                bridge.exportDatabaseError("A save is already open.");
+                return;
+            }
+            pendingExportSourcePath = sourcePath;
+            pendingExportFileName = fileName != null && !fileName.isEmpty()
+                    ? fileName : "tripwire-backup.db";
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/octet-stream");
+        intent.putExtra(Intent.EXTRA_TITLE, pendingExportFileName);
+        try {
+            startActivityForResult(intent, EXPORT_DOCUMENT_REQUEST);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to launch document creator", e);
+            synchronized (this) {
+                pendingExportSourcePath = null;
+                pendingExportFileName = null;
+            }
+            bridge.exportDatabaseError("No file manager can save this backup.");
+        }
+    }
+
+    /** Copy the snapshot to the URI the user chose, then report the result. */
+    private void handleExportResult(int resultCode, @Nullable Intent data) {
+        final String sourcePath;
+        final String fileName;
+        synchronized (this) {
+            sourcePath = pendingExportSourcePath;
+            fileName = pendingExportFileName;
+            pendingExportSourcePath = null;
+            pendingExportFileName = null;
+        }
+        if (sourcePath == null) {
+            return;
+        }
+        final File source = new File(sourcePath);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            source.delete();
+            bridge.exportDatabaseCancelled();
+            return;
+        }
+        final Uri target = data.getData();
+        new Thread(() -> {
+            long copied = 0;
+            try (InputStream in = new java.io.FileInputStream(source);
+                 OutputStream out = getContentResolver().openOutputStream(target)) {
+                if (out == null) {
+                    throw new java.io.IOException("document provider returned no stream");
+                }
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    copied += n;
+                }
+                out.flush();
+                bridge.exportDatabaseResult(fileName, copied);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to save backup", e);
+                bridge.exportDatabaseError("Could not save the backup. Try another folder.");
+            } finally {
+                source.delete();
+            }
+        }).start();
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -496,6 +580,10 @@ public class MainActivity extends AppCompatActivity {
         }
         if (requestCode == CONTACT_PICKER_REQUEST) {
             handleContactResult(resultCode, data);
+            return;
+        }
+        if (requestCode == EXPORT_DOCUMENT_REQUEST) {
+            handleExportResult(resultCode, data);
             return;
         }
         if (requestCode != FILE_PICKER_REQUEST) {

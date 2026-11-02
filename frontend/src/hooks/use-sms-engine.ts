@@ -18,6 +18,15 @@ import {
 	type SmsBridgeResult,
 } from "@/lib/sms-bridge";
 import { MODE_KEY } from "@/lib/data-mode";
+import {
+	SMS_AUTO_PAUSED_KEY,
+	SMS_FULL_READ_KEY,
+	SMS_SEEDED_KEY,
+} from "@/lib/sms-state";
+import {
+	clearPendingGuidedPayment,
+	peekPendingGuidedPayment,
+} from "@/lib/pending-payment";
 
 /**
  * The whole SMS side: inbox import, the catcher-queue realtime engine, the
@@ -27,12 +36,20 @@ import { MODE_KEY } from "@/lib/data-mode";
  */
 export function useSmsEngine(deps: {
 	statements: store.StatementMeta[];
+	/** True once the launch-time history read settles. */
+	statementsLoaded: boolean;
 	upsertMeta: (record: store.StatementRecord) => void;
 	refreshPerms: () => void;
 	/** Move the app into SMS mode (persists the choice). */
 	enterSmsMode: () => void;
 }) {
-	const { statements, upsertMeta, refreshPerms, enterSmsMode } = deps;
+	const {
+		statements,
+		statementsLoaded,
+		upsertMeta,
+		refreshPerms,
+		enterSmsMode,
+	} = deps;
 	const [smsTxs, setSmsTxs] = useState<parser.Transaction[]>([]);
 	// The SMS record currently feeding SMS mode. The ref mirrors it for the
 	// long-lived interval/silent-refresh closures, which capture the initial
@@ -69,10 +86,11 @@ export function useSmsEngine(deps: {
 	}, []);
 
 	// Launch-time seeding into SMS mode needs its dataset: the newest SMS
-	// import. Runs once the statement list first loads with content.
+	// import. Wait for the history read to settle, so an empty list means
+	// "nothing imported" (the first-run state) rather than "not loaded yet".
 	const seedAttempted = useRef(false);
 	useEffect(() => {
-		if (seedAttempted.current || statements.length === 0) return;
+		if (seedAttempted.current || !statementsLoaded) return;
 		seedAttempted.current = true;
 		const latestSms = statements.find((s) => s.source === "sms");
 		if (
@@ -84,8 +102,7 @@ export function useSmsEngine(deps: {
 		} else {
 			setSmsLoaded(true);
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [statements]);
+	}, [statements, statementsLoaded]);
 
 	// Silent SMS refresh shared by launch, resume and the foreground
 	// interval below. Queue-first: messages the catcher queued since the
@@ -94,8 +111,6 @@ export function useSmsEngine(deps: {
 	// record yet, RECEIVE_SMS missing, or no full read in the last day) does
 	// it fall back to a full inbox read. The receipt pops solely for
 	// user-initiated spends.
-	const SMS_SEEDED_KEY = "mpesa-analyzer.sms-seeded";
-	const SMS_FULL_READ_KEY = "mpesa-analyzer.sms-full-read";
 	const lastSilentRefresh = useRef(0);
 
 	// Merge one batch of messages; resolves true when anything new landed.
@@ -163,7 +178,11 @@ export function useSmsEngine(deps: {
 	// queue merges first (append-only, no permission needed); unless it
 	// already delivered the newest message, the whole inbox is re-read and
 	// Go drops anything already known. Resolves when settled.
-	function refreshSmsNow(): Promise<boolean> {
+	//
+	// force=false is the automatic foreground path: it respects the
+	// post-reset pause. A pull-to-refresh passes force=true because the user
+	// explicitly asked for the inbox.
+	function refreshSmsNow(force = false): Promise<boolean> {
 		if (!isAndroidBridge()) return Promise.resolve(false);
 		const perms = smsPermissions();
 		if (!perms.read && !perms.receive) return Promise.resolve(false);
@@ -175,6 +194,18 @@ export function useSmsEngine(deps: {
 		// A full inbox read needs READ_SMS; without it the queue drain (when
 		// RECEIVE_SMS caught the message) is the whole refresh.
 		if (!perms.read) return drained;
+		// After a reset, a foreground resume still drains genuinely new
+		// messages but must not re-read the phone's whole history. A manual
+		// pull-to-refresh passes force=true and goes all the way.
+		if (!force) {
+			try {
+				if (localStorage.getItem(SMS_AUTO_PAUSED_KEY) === "1") {
+					return drained;
+				}
+			} catch {
+				/* ignore */
+			}
+		}
 		// It was already in notifications: that batch carried the newest
 		// message, so skip the re-read. Otherwise - the usual case, since
 		// the 5s tick keeps the queue drained - re-read the whole inbox the
@@ -188,7 +219,7 @@ export function useSmsEngine(deps: {
 	const foregroundHandler = useRef(() => {});
 	foregroundHandler.current = () => {
 		refreshPerms();
-		void refreshSmsNow();
+		void refreshSmsNow(false);
 	};
 	useEffect(() => {
 		window.__mpesaOnForeground = () => foregroundHandler.current();
@@ -214,6 +245,17 @@ export function useSmsEngine(deps: {
 		}
 		// Everything below re-reads the whole inbox, which needs READ_SMS.
 		if (!perms.read) return;
+		// Resetting the app pauses the automatic full-inbox read so the
+		// phone's whole history is not poured back into the empty store.
+		// The catcher queue above still merges genuinely new messages; a
+		// manual import clears the pause.
+		let autoPaused = false;
+		try {
+			autoPaused = localStorage.getItem(SMS_AUTO_PAUSED_KEY) === "1";
+		} catch {
+			/* ignore */
+		}
+		if (autoPaused) return;
 		let seeded = false;
 		let lastFullRead = 0;
 		try {
@@ -314,8 +356,9 @@ export function useSmsEngine(deps: {
 		if (sims.length === 0) return;
 
 		const currentId = smsRecordIdRef.current;
-		const receiptSim = announce
-			? sims.find((s) => s.receipt && (s.newTxns?.length ?? 0) > 0)
+		const pending = announce ? peekPendingGuidedPayment() : null;
+		const receiptSim = pending
+			? sims.find((s) => s.receiptTx)
 			: undefined;
 		const focus =
 			receiptSim ??
@@ -326,26 +369,32 @@ export function useSmsEngine(deps: {
 			setSmsRecordId(focus.record.id);
 			setSmsTxs(focus.record.txs ?? []);
 		}
-		if (receiptSim) {
-			const fresh = receiptSim.newTxns ?? [];
-			const newest = fresh[fresh.length - 1];
-			if (newest) setReceiptTx(newest);
+		if (receiptSim?.receiptTx) {
+			setReceiptTx(receiptSim.receiptTx);
+			clearPendingGuidedPayment();
 		}
 		// An SMS record exists on this install: future refreshes can trust the
 		// catcher queue instead of re-reading the whole inbox.
 		try {
 			localStorage.setItem(SMS_SEEDED_KEY, "1");
+			localStorage.setItem(SMS_FULL_READ_KEY, String(Date.now()));
 		} catch {
 			/* ignore */
 		}
 	}
 
-	// Debug-only: pop the receipt for the newest loaded SMS transaction,
-	// so the arrival UX is testable without moving real money.
+	// Debug-only: pop the receipt for the newest loaded SMS spend, so the
+	// arrival UX is testable without moving real money. Charges are skipped
+	// here too, otherwise the preview would show the same fee row the real
+	// path is careful to avoid.
 	function testArrivalAnnouncement() {
-		const newest = smsTxs[smsTxs.length - 1];
+		const newest = [...smsTxs]
+			.reverse()
+			.find(
+				(tx) => tx.amount < 0 && !/charge|fee/i.test(tx.description),
+			);
 		if (!newest) {
-			toast.info("No SMS transactions loaded to preview.");
+			toast.info("No SMS spend loaded to preview.");
 			return;
 		}
 		setReceiptTx(newest);
@@ -359,6 +408,13 @@ export function useSmsEngine(deps: {
 		if (!isAndroidBridge() || smsImportingRef.current) return;
 		smsImportingRef.current = true;
 		setSmsImporting(true);
+		// A manual import is the user lifting the post-reset pause on the
+		// automatic full-inbox read.
+		try {
+			localStorage.removeItem(SMS_AUTO_PAUSED_KEY);
+		} catch {
+			/* ignore */
+		}
 		Events.Once("common:sms", (ev) => {
 			handleBridgeSms(ev.data as SmsBridgeResult);
 		});
@@ -461,7 +517,7 @@ export function useSmsEngine(deps: {
 		setReceiptTx,
 		isAndroid,
 		startSmsImport,
-		refreshSmsNow,
+		refreshSmsNow: () => refreshSmsNow(true),
 		handleSmsRefresh,
 		handleSwitchSim,
 		loadSmsRecord,

@@ -358,6 +358,9 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	if !sim.Receipt || len(sim.NewTxs) != 1 {
 		t.Errorf("create receipt wrong: %+v", sim)
 	}
+	if sim.ReceiptTx == nil || sim.ReceiptTx.ID != "ABCAP6H14J" {
+		t.Errorf("create receipt tx = %+v, want the send transaction", sim.ReceiptTx)
+	}
 	if sim.Record.Source != store.SourceSms || first.Result.Imported != 1 {
 		t.Errorf("record wrong: %+v", sim.Record)
 	}
@@ -392,6 +395,9 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	if sim.Receipt {
 		t.Errorf("inbound-only arrival must not pop a receipt")
 	}
+	if sim.ReceiptTx != nil {
+		t.Errorf("inbound-only arrival must not name a receipt tx: %+v", sim.ReceiptTx)
+	}
 	if sim.Record.Txs[0].ID != "ABCAP6LGYW" || sim.Record.Txs[1].ID != "ABCAP6H14J" {
 		t.Errorf("merge order wrong: %s, %s", sim.Record.Txs[0].ID, sim.Record.Txs[1].ID)
 	}
@@ -403,6 +409,45 @@ func TestRefreshSmsImportMerges(t *testing.T) {
 	}
 	if len(none.Sims) != 0 {
 		t.Errorf("empty snapshot must yield no SIMs: %+v", none.Sims)
+	}
+}
+
+// TestRefreshSmsImportReceiptPicksSpendNotCharge pins the arrival receipt to
+// the payment row, never the transaction-cost row the same SMS produces.
+func TestRefreshSmsImportReceiptPicksSpendNotCharge(t *testing.T) {
+	tz := -180
+	s, err := store.New(filepath.Join(t.TempDir(), "statements.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	p := &ParseService{store: s}
+
+	out, err := p.RefreshSmsImport([]SmsMessage{{
+		ID:              "a",
+		Address:         "MPESA",
+		DateMs:          nairobiMilli(t, 2026, time.September, 8, 12, 37),
+		Body:            fixtureBody(t, "11-paybill-with-fee.txt"),
+		TzOffsetMinutes: &tz,
+	}})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if len(out.Sims) != 1 {
+		t.Fatalf("want one SIM, got %+v", out.Sims)
+	}
+	sim := out.Sims[0]
+	if !sim.Receipt || len(sim.NewTxs) != 2 {
+		t.Fatalf("paybill with a fee should produce two rows and a receipt: %+v", sim)
+	}
+	if sim.ReceiptTx == nil {
+		t.Fatal("receipt tx missing")
+	}
+	if sim.ReceiptTx.ID != "ABCAP5Z446" {
+		t.Errorf("receipt tx = %s, want the paybill row ABCAP5Z446", sim.ReceiptTx.ID)
+	}
+	if sim.ReceiptTx.ID == "ABCAP5Z446-C" {
+		t.Error("receipt tx is the charge row")
 	}
 }
 

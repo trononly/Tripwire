@@ -21,6 +21,7 @@ import {
   useReduceMotionEnabled,
 } from "@/lib/motion-settings";
 import { setPrivacyMode, usePrivacyMode } from "@/lib/privacy-mode";
+import { SMS_AUTO_PAUSED_KEY } from "@/lib/sms-state";
 import {
   setAutoConfirmEnabled,
   useAutoConfirmEnabled,
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { simName } from "@/components/sim-switcher";
 import { useKonamiCode } from "@/hooks/use-konami-code";
 import {
+  drainPendingSms,
   hasPhoneStatePermission,
   isAndroidBridge,
   type SmsPermissions,
@@ -37,6 +39,7 @@ import { SODA_URL, openExternalUrl } from "@/lib/external-url";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 import type { Updater } from "@/hooks/use-updater";
 import { ChangelogButton } from "@/components/changelog-dialog";
+import { BackupSetting } from "@/components/backup-setting";
 import { PageHeader } from "@/components/page-header";
 import { AutomationStoppedNotice } from "@/components/automation-gate";
 import { ResetData } from "../../bindings/mpesa-analyzer/parseservice";
@@ -353,6 +356,8 @@ export default function Settings({
         </Card>
       )}
 
+      <BackupSetting />
+
       {isAndroid && (
         <Card>
           <CardHeader>
@@ -488,6 +493,9 @@ function ResetSetting() {
     setBusy(true);
     try {
       await ResetData();
+      // Drop messages the catcher queued before the reset; otherwise the
+      // launch drain would merge them into the fresh store on reload.
+      drainPendingSms();
       try {
         const keys: string[] = [];
         for (let i = 0; i < localStorage.length; i += 1) {
@@ -497,6 +505,11 @@ function ResetSetting() {
           }
         }
         keys.forEach((key) => localStorage.removeItem(key));
+        // Android does not let an app revoke its own runtime permissions.
+        // The reset still gives an empty app: automatic full-inbox reads
+        // stay paused until the user taps Import SMS, so the phone's old
+        // history does not pour straight back into the fresh store.
+        localStorage.setItem(SMS_AUTO_PAUSED_KEY, "1");
       } catch {
         /* private mode: the store reset still happened */
       }
@@ -513,7 +526,8 @@ function ResetSetting() {
         <CardTitle>Reset app</CardTitle>
         <CardDescription>
           Deletes statements, SMS imports, favourites, categories and recurring
-          payments. Your settings reset too. This cannot be undone.
+          payments. Your settings reset too. Save a backup first if you may
+          want this data back. This cannot be undone.
         </CardDescription>
       </CardHeader>
       <CardContent>
