@@ -257,6 +257,7 @@ public class MpesaUssdService extends AccessibilityService {
     public void onServiceConnected() {
         Log.i(TAG, "connected");
         instance = this;
+        stopPolling();
         lastConnectedAtMs = System.currentTimeMillis();
         lastStateReason = "connected";
         // A binding is never permission to resume a payment that was armed
