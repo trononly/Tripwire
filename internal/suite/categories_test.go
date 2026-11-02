@@ -422,3 +422,178 @@ func TestCategoryEmojiColumnMigrates(t *testing.T) {
 		t.Fatalf("categories after second open = %+v", list)
 	}
 }
+
+func TestCategoryBudgets(t *testing.T) {
+	svc, _ := newCategoryService(t)
+	food, _ := svc.Create("Food", "utensils")
+	bills, _ := svc.Create("Bills", "zap")
+	travel, _ := svc.Create("Travel", "bus")
+
+	if err := svc.SetBudget(food.ID, 100_000); err != nil { // KES 1,000
+		t.Fatalf("SetBudget food: %v", err)
+	}
+	if err := svc.SetBudget(bills.ID, 50_000); err != nil { // KES 500
+		t.Fatalf("SetBudget bills: %v", err)
+	}
+
+	txs := []parser.Transaction{
+		// July: food spends 800 of its 1,000 cap (80% = near), bills
+		// spends 600 of 500 (over). A refund assigned to food must not
+		// reduce the gross outflow the budget measures.
+		{ID: "A", Date: "2001-07-03 10:00:00", Amount: -60_000},
+		{ID: "B", Date: "2001-07-12 10:00:00", Amount: -20_000},
+		{ID: "D", Date: "2001-07-14 10:00:00", Amount: 50_000},
+		{ID: "E", Date: "2001-07-20 10:00:00", Amount: -60_000},
+		// June is outside the report month: neither row may count.
+		{ID: "C", Date: "2001-06-28 10:00:00", Amount: -90_000},
+		{ID: "F", Date: "2001-06-29 10:00:00", Amount: -90_000},
+	}
+	for _, id := range []string{"A", "B", "D"} {
+		if err := svc.Assign(id, "till", "", food.ID, false); err != nil {
+			t.Fatalf("Assign %s: %v", id, err)
+		}
+	}
+	for _, id := range []string{"E", "F"} {
+		if err := svc.Assign(id, "till", "", bills.ID, false); err != nil {
+			t.Fatalf("Assign %s: %v", id, err)
+		}
+	}
+
+	report, err := svc.BudgetReport(txs)
+	if err != nil {
+		t.Fatalf("BudgetReport: %v", err)
+	}
+	if report.Month != "2001-07" {
+		t.Errorf("month = %q, want the newest dataset month", report.Month)
+	}
+	if report.Current {
+		t.Error("a 2001 month must not be reported as current")
+	}
+	if len(report.Statuses) != 3 {
+		t.Fatalf("statuses = %+v, want one row per category", report.Statuses)
+	}
+
+	foodStatus := report.Statuses[0]
+	if foodStatus.ID != food.ID || foodStatus.Spent != 80_000 || foodStatus.Count != 2 {
+		t.Errorf("food = %+v, want gross July outflow 80000 over 2 rows", foodStatus)
+	}
+	if foodStatus.Remaining != 20_000 || foodStatus.Percent != 80 || foodStatus.State != categories.BudgetNear {
+		t.Errorf("food position = %+v, want 20000 left, 80%%, near", foodStatus)
+	}
+
+	billsStatus := report.Statuses[1]
+	if billsStatus.Spent != 60_000 || billsStatus.Remaining != -10_000 || billsStatus.State != categories.BudgetOver {
+		t.Errorf("bills = %+v, want 10000 over and over state", billsStatus)
+	}
+	if billsStatus.Percent != 120 {
+		t.Errorf("bills percent = %v, want 120", billsStatus.Percent)
+	}
+
+	travelStatus := report.Statuses[2]
+	if travelStatus.ID != travel.ID || travelStatus.Budget != 0 || travelStatus.State != categories.BudgetNone || travelStatus.Spent != 0 {
+		t.Errorf("travel = %+v, want a budgetless status", travelStatus)
+	}
+
+	// Reaching the cap exactly is "near", not "over": the user has not
+	// exceeded it until another shilling goes out.
+	if err := svc.SetBudget(food.ID, 80_000); err != nil {
+		t.Fatalf("SetBudget exact: %v", err)
+	}
+	report, err = svc.BudgetReport(txs)
+	if err != nil {
+		t.Fatalf("BudgetReport exact: %v", err)
+	}
+	if got := report.Statuses[0]; got.State != categories.BudgetNear || got.Remaining != 0 || got.Percent != 100 {
+		t.Errorf("at the cap = %+v, want near with nothing left", got)
+	}
+
+	// Clearing a budget keeps the category and its spend, but stops it
+	// counting toward a cap.
+	if err := svc.SetBudget(food.ID, 0); err != nil {
+		t.Fatalf("clear budget: %v", err)
+	}
+	report, err = svc.BudgetReport(txs)
+	if err != nil {
+		t.Fatalf("BudgetReport cleared: %v", err)
+	}
+	if got := report.Statuses[0]; got.State != categories.BudgetNone || got.Budget != 0 || got.Spent != 80_000 {
+		t.Errorf("cleared = %+v, want no cap but spend still reported", got)
+	}
+
+	// Values the UI can never send are still rejected at the service.
+	for _, bad := range []int64{-1, 50, 150, 1_000_000_100} {
+		if err := svc.SetBudget(bills.ID, bad); err == nil {
+			t.Errorf("budget %d should be rejected", bad)
+		}
+	}
+	if err := svc.SetBudget("does-not-exist", 10_000); err == nil {
+		t.Fatal("a budget on an unknown category should fail")
+	}
+
+	// An empty dataset still returns every category, for the management
+	// page before the first import.
+	empty, err := svc.BudgetReport(nil)
+	if err != nil {
+		t.Fatalf("BudgetReport(nil): %v", err)
+	}
+	if len(empty.Statuses) != 3 || empty.Month == "" {
+		t.Errorf("empty report = %+v, want the categories and a month", empty)
+	}
+}
+
+func TestCategoryBudgetColumnMigratesAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "statements.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE categories (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL,
+		icon       TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("old schema: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO categories (id, name, icon, sort_order, created_at)
+		 VALUES ('c1', 'Food', 'utensils', 1, '2026-01-01T00:00:00Z')`,
+	); err != nil {
+		t.Fatalf("old row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
+	s, err := New(path)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	list, err := s.ListCategories()
+	if err != nil {
+		t.Fatalf("ListCategories: %v", err)
+	}
+	if len(list) != 1 || list[0].Budget != 0 {
+		t.Fatalf("migrated categories = %+v, want the old row with no budget", list)
+	}
+	if err := s.SetCategoryBudget("c1", 250_000); err != nil {
+		t.Fatalf("SetCategoryBudget: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	again, err := New(path)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	t.Cleanup(func() { again.Close() })
+	list, err = again.ListCategories()
+	if err != nil {
+		t.Fatalf("ListCategories after reopen: %v", err)
+	}
+	if len(list) != 1 || list[0].Budget != 250_000 {
+		t.Fatalf("budget after reopen = %+v, want 250000", list)
+	}
+}

@@ -13,10 +13,15 @@ import (
 // imports and SMS wallets alike. SortOrder is the user's manual position in
 // the picker and the chart legend: lower shows first, and new categories are
 // appended.
+//
+// Budget is the monthly spending cap in cents; 0 means the category has no
+// budget. It is stored on the label rather than on a transaction so it
+// survives re-imports and applies to every dataset for that category.
 type Category struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Icon      string    `json:"icon"`
+	Budget    int64     `json:"budget"`
 	SortOrder int       `json:"sortOrder"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -47,7 +52,7 @@ func (s *Store) ListCategories() ([]Category, error) {
 	defer s.mu.Unlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, name, icon, sort_order, created_at
+		SELECT id, name, icon, budget, sort_order, created_at
 		FROM categories
 		ORDER BY sort_order, name COLLATE NOCASE, created_at, rowid`)
 	if err != nil {
@@ -61,7 +66,7 @@ func (s *Store) ListCategories() ([]Category, error) {
 			c       Category
 			created string
 		)
-		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.SortOrder, &created); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.Budget, &c.SortOrder, &created); err != nil {
 			return nil, fmt.Errorf("could not read category: %w", err)
 		}
 		c.CreatedAt = parseTime(created)
@@ -83,8 +88,8 @@ func (s *Store) CategoryByID(id string) (Category, error) {
 		created string
 	)
 	err := s.db.QueryRow(
-		"SELECT id, name, icon, sort_order, created_at FROM categories WHERE id = ?", id,
-	).Scan(&c.ID, &c.Name, &c.Icon, &c.SortOrder, &created)
+		"SELECT id, name, icon, budget, sort_order, created_at FROM categories WHERE id = ?", id,
+	).Scan(&c.ID, &c.Name, &c.Icon, &c.Budget, &c.SortOrder, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Category{}, fmt.Errorf("no category with id %q", id)
 	}
@@ -155,6 +160,23 @@ func (s *Store) UpdateCategory(id, name, icon string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("could not update category: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no category with id %q", id)
+	}
+	return nil
+}
+
+// SetCategoryBudget stores one category's monthly spending cap in cents. A
+// zero clears the budget. The id is the stable link, so an edit never has to
+// touch the rules or the transactions.
+func (s *Store) SetCategoryBudget(id string, budget int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, err := s.db.Exec("UPDATE categories SET budget = ? WHERE id = ?", budget, id)
+	if err != nil {
+		return fmt.Errorf("could not save category budget: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("no category with id %q", id)

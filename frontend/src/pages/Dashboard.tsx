@@ -26,6 +26,18 @@ import { CounterpartyCard } from "@/components/counterparty-card";
 import { PageHeader } from "@/components/page-header";
 import { TotalsCards } from "@/components/totals-cards";
 import { Private, PrivateText } from "@/components/privacy";
+import { BudgetAlert } from "@/components/budget-alert";
+import { toast } from "sonner";
+import { useCategoryBudgets } from "@/hooks/use-category-budgets";
+import {
+	budgetShortfall,
+	describeBudget,
+	summarizeBudgets,
+} from "@/lib/category-budgets";
+import {
+	markBudgetAlertsSeen,
+	unseenBudgetAlerts,
+} from "@/lib/budget-alerts";
 import { AnalyzeTransactions } from "../../bindings/mpesa-analyzer/parseservice";
 import { maxDayOf } from "@/lib/date-window";
 import { useDateRange, type RangeKey } from "@/hooks/use-date-range";
@@ -190,6 +202,53 @@ export default function Dashboard({
   const [donutMode, setDonutMode] = useDonutMode();
   const { totals: customTotals, loading: customLoading } =
     useCustomCategoryTotals(filteredTxs, donutMode === "custom");
+
+  // Budgets follow the dataset's newest month, not the chart filter: a cap is
+  // monthly, and spending in another window cannot answer "am I over?".
+  const { report: budgetReport } = useCategoryBudgets(transactions);
+  const budgetSummary = useMemo(
+    () => summarizeBudgets(budgetReport?.statuses ?? []),
+    [budgetReport],
+  );
+
+  useEffect(() => {
+    if (!budgetReport?.current || budgetSummary.atRisk.length === 0) return;
+    let store: Storage | null = null;
+    try {
+      store = window.sessionStorage;
+    } catch {
+      return;
+    }
+    if (!store) return;
+    const unseen = unseenBudgetAlerts(
+      budgetSummary.atRisk,
+      budgetReport.month,
+      store,
+    );
+    if (unseen.length === 0) return;
+    markBudgetAlertsSeen(budgetSummary.atRisk, budgetReport.month, store);
+
+    const first = unseen[0];
+    const title =
+      unseen.length === 1
+        ? first.state === "over"
+          ? `${first.name} is over budget`
+          : `${first.name} is close to its budget`
+        : `${unseen.length} budgets need attention`;
+    const extra =
+      unseen.length > 2 ? ` And ${unseen.length - 2} more.` : "";
+    const description =
+      unseen.length === 1
+        ? describeBudget(first)
+        : `${unseen.slice(0, 2).map(budgetShortfall).join(". ")}.${extra}`;
+    toast.warning(title, {
+      description,
+      action: {
+        label: "Review",
+        onClick: () => navigate("/categories"),
+      },
+    });
+  }, [budgetReport, budgetSummary.atRisk, navigate]);
   const builtInSlices: SpendSlice[] = (visible?.categories ?? []).map((c) => ({
     key: c.name,
     label: c.name,
@@ -348,6 +407,13 @@ export default function Dashboard({
         }}
       />
       <div className="space-y-6">
+        {budgetReport && budgetSummary.atRisk.length > 0 ? (
+          <BudgetAlert
+            summary={budgetSummary}
+            onReview={() => navigate("/categories")}
+          />
+        ) : null}
+
         {error && (
           <Card className="border-destructive">
             <CardContent className="pt-4 text-sm text-destructive">

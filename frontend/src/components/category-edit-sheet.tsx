@@ -13,13 +13,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveCategoryIcon } from "@/components/category-icon";
 import { CategoryIconField } from "@/components/category-icon-field";
-import { formatMoney } from "@/lib/format";
+import { BudgetProgress } from "@/components/budget-progress";
+import { cn } from "@/lib/utils";
+import {
+	budgetPercent,
+	budgetRemainingLabel,
+	budgetSpentLabel,
+	budgetStateOf,
+	budgetTextClass,
+	monthLabel,
+} from "@/lib/category-budgets";
+import { formatAmountInput, formatMoney } from "@/lib/format";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
 	CreateCategory,
+	SetCategoryBudget,
 	UpdateCategory,
 } from "../../bindings/mpesa-analyzer/parseservice";
+import type * as categories from "../../bindings/mpesa-analyzer/internal/categories/models";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 
 export type CategoryUsage = { count: number; amount: number };
@@ -30,6 +42,10 @@ export type CategoryEditSheetProps = {
 	category: store.Category | null;
 	/** Transactions labelled with it in the active dataset. */
 	usage?: CategoryUsage;
+	/** This month's spend and cap, for the live preview. */
+	budgetStatus?: categories.BudgetStatus;
+	/** "YYYY-MM" the preview belongs to, when known. */
+	budgetMonth?: string;
 	/** Position in the list, for the move buttons; both zero when new. */
 	index: number;
 	total: number;
@@ -50,6 +66,8 @@ export function CategoryEditSheet({
 	open,
 	category,
 	usage,
+	budgetStatus,
+	budgetMonth,
 	index,
 	total,
 	onOpenChange,
@@ -59,6 +77,7 @@ export function CategoryEditSheet({
 }: CategoryEditSheetProps) {
 	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
+	const [budget, setBudget] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState(false);
@@ -67,12 +86,42 @@ export function CategoryEditSheet({
 		if (!open) return;
 		setIcon(resolveCategoryIcon(category?.icon ?? "tag"));
 		setName(category?.name ?? "");
+		setBudget(category?.budget ? String(category.budget / 100) : "");
 		setError(null);
 		setBusy(false);
 		setConfirmDelete(false);
 	}, [open, category]);
 
-	const canSave = icon.trim() !== "" && name.trim() !== "" && !busy;
+	const budgetShillings = Number(budget || 0);
+	const budgetFinite = Number.isFinite(budgetShillings);
+	const budgetTooSmall = budget !== "" && (!budgetFinite || budgetShillings < 1);
+	const budgetTooLarge = budgetFinite && budgetShillings > 10_000_000;
+	const budgetValid = budgetFinite && !budgetTooSmall && !budgetTooLarge;
+	const budgetCents =
+		budgetValid && budget !== "" ? Math.round(budgetShillings * 100) : 0;
+	const spent = budgetStatus?.spent ?? 0;
+	const previewStatus: categories.BudgetStatus = {
+		id: category?.id ?? "new",
+		name: name.trim() || "This category",
+		icon: icon,
+		budget: budgetCents,
+		spent,
+		remaining: budgetCents - spent,
+		count: budgetStatus?.count ?? 0,
+		percent: budgetCents > 0 ? (spent / budgetCents) * 100 : 0,
+		state:
+			budgetCents <= 0
+				? "none"
+				: spent > budgetCents
+					? "over"
+					: spent * 100 >= budgetCents * 80
+						? "near"
+						: "ok",
+	};
+	const previewState = budgetStateOf(previewStatus);
+
+	const canSave =
+		icon.trim() !== "" && name.trim() !== "" && budgetValid && !busy;
 
 	async function save(e: FormEvent) {
 		e.preventDefault();
@@ -82,8 +131,10 @@ export function CategoryEditSheet({
 		try {
 			if (category) {
 				await UpdateCategory(category.id, name.trim(), icon.trim());
+				await SetCategoryBudget(category.id, budgetCents);
 			} else {
-				await CreateCategory(name.trim(), icon.trim());
+				const created = await CreateCategory(name.trim(), icon.trim());
+				await SetCategoryBudget(created.id, budgetCents);
 			}
 			bumpCategories();
 			vibrateIfEnabled(10);
@@ -149,6 +200,95 @@ export function CategoryEditSheet({
 							placeholder="Food & groceries"
 							maxLength={40}
 						/>
+					</div>
+
+					<div className="space-y-1.5 pt-1">
+						<div className="flex items-baseline justify-between gap-3">
+							<label
+								htmlFor="category-budget"
+								className="text-[13px] font-medium text-foreground"
+							>
+								Monthly budget
+							</label>
+							{budget !== "" ? (
+								<button
+									type="button"
+									onClick={() => setBudget("")}
+									className="text-[12px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+								>
+									Clear
+								</button>
+							) : null}
+						</div>
+						<div
+							className={cn(
+								"flex h-10 items-center gap-2 border border-input bg-muted/30 px-3 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50",
+								!budgetValid && "border-destructive",
+							)}
+						>
+							<span className="text-xs font-medium text-muted-foreground">
+								KES
+							</span>
+							<input
+								id="category-budget"
+								inputMode="numeric"
+								autoComplete="off"
+								maxLength={12}
+								placeholder="No budget"
+								value={formatAmountInput(budget)}
+								onChange={(e) =>
+									setBudget(e.target.value.replace(/\D/g, ""))
+								}
+								aria-invalid={!budgetValid}
+								aria-describedby="category-budget-help"
+								className="min-w-0 flex-1 bg-transparent text-sm tabular-nums outline-none placeholder:text-muted-foreground/60"
+							/>
+							<span className="shrink-0 text-[12px] text-muted-foreground">
+								/ month
+							</span>
+						</div>
+						<p
+							id="category-budget-help"
+							className="text-[12px] leading-relaxed text-muted-foreground"
+						>
+							{budgetTooSmall
+								? "Enter at least KES 1, or leave it empty."
+								: budgetTooLarge
+									? "The most you can set is KES 10,000,000."
+									: "Warns at 80% and when you pass it. Leave empty for no budget."}
+						</p>
+
+						{budgetCents > 0 ? (
+							<div className="space-y-1.5 bg-muted/40 p-3">
+								<div className="flex items-baseline justify-between gap-3 text-[12px]">
+									<span className="tabular-nums text-muted-foreground">
+										{budgetSpentLabel(previewStatus)}
+									</span>
+									<span
+										className={cn(
+											"shrink-0 tabular-nums",
+											budgetTextClass(previewState),
+										)}
+									>
+										{budgetPercent(previewStatus)}%
+									</span>
+								</div>
+								<BudgetProgress status={previewStatus} />
+								<div className="flex items-baseline justify-between gap-3 text-[12px]">
+									<span
+										className={cn(
+											"tabular-nums",
+											budgetTextClass(previewState),
+										)}
+									>
+										{budgetRemainingLabel(previewStatus)}
+									</span>
+									<span className="text-muted-foreground">
+										{budgetMonth ? monthLabel(budgetMonth) : "this month"}
+									</span>
+								</div>
+							</div>
+						) : null}
 					</div>
 
 					{error && <p className="text-xs text-destructive">{error}</p>}
