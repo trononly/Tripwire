@@ -1,6 +1,7 @@
 package com.wails.app;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -1567,6 +1568,81 @@ public class WailsBridge {
         return MpesaUssdService.isConnected();
     }
 
+    /**
+     * Safe, payment-free diagnostics for the Settings troubleshooting panel.
+     * Returns device, accessibility and power-management state as JSON.
+     */
+    public String getAutomationDiagnostics() {
+        try {
+            JSONObject root = new JSONObject();
+            root.put("device", new JSONObject()
+                    .put("manufacturer", Build.MANUFACTURER)
+                    .put("brand", Build.BRAND)
+                    .put("model", Build.MODEL)
+                    .put("android", Build.VERSION.RELEASE)
+                    .put("sdk", Build.VERSION.SDK_INT)
+                    .put("os", Build.DISPLAY));
+
+            JSONObject access = new JSONObject()
+                    .put("enabled", isUssdAutomationEnabled())
+                    .put("connected", MpesaUssdService.isConnected())
+                    .put("expected", new ComponentName(activity,
+                            MpesaUssdService.class).flattenToString());
+            JSONObject service = MpesaUssdService.diagnostics();
+            java.util.Iterator<String> keys = service.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                access.put(key, service.get(key));
+            }
+            root.put("accessibility", access);
+
+            JSONObject power = new JSONObject();
+            PowerManager pm =
+                    (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    power.put("ignoringBatteryOptimizations",
+                            pm.isIgnoringBatteryOptimizations(
+                                    activity.getPackageName()));
+                }
+                power.put("powerSaveMode", pm.isPowerSaveMode());
+            }
+            ActivityManager am = (ActivityManager) activity.getSystemService(
+                    Context.ACTIVITY_SERVICE);
+            if (am != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                power.put("backgroundRestricted", am.isBackgroundRestricted());
+            }
+            root.put("power", power);
+            root.put("at", System.currentTimeMillis());
+            return root.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "getAutomationDiagnostics failed", e);
+            return "{}";
+        }
+    }
+
+    /**
+     * Open Android's battery-optimization list. The user decides whether to
+     * exempt Tripwire; the app never asks for the exemption itself.
+     */
+    public void openBatterySettings() {
+        mainHandler.post(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Intent intent = new Intent(
+                            Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(intent);
+                    return;
+                }
+                openAppSettings();
+            } catch (Exception e) {
+                Log.e(TAG, "openBatterySettings failed", e);
+                openAppSettings();
+            }
+        });
+    }
+
     /** Drop the launch splash once the UI has painted (see MainActivity). */
     public void hideSplash() {
         if (activity instanceof MainActivity) {
@@ -1601,6 +1677,12 @@ public class WailsBridge {
             try {
                 if (!isUssdAutomationEnabled()) {
                     emitUssdError("automation disabled");
+                    return;
+                }
+                if (!isUssdAutomationRunning()) {
+                    emitUssdError("automation not connected");
+                    emitUssdAutoAborted("automation-disconnected",
+                            "automation is enabled but not connected");
                     return;
                 }
                 if (UssdSession.parse(script) == null) {
@@ -1646,20 +1728,14 @@ public class WailsBridge {
             return;
         }
         try {
-            MpesaUssdService.arm(session);
-            if (!MpesaUssdService.isConnected()) {
-                // Listed in Settings but never bound by the system (usual
-                // right after an update): say so instead of dialling into a
-                // menu nothing will drive.
-                MpesaUssdService.disarm();
+            if (!MpesaUssdService.arm(session)) {
+                // Listed in Settings but never bound by the system. Never
+                // dial into a menu nothing can drive, and never leave the
+                // session armed for a later reconnection.
                 Log.w(TAG, "automation component enabled but not connected");
-                emitEvent("common:ussd-auto",
-                        new JSONObject().put("state", "aborted")
-                                .put("reason",
-                                        "automation is not running - turn it "
-                                        + "off and on in Settings, or restart "
-                                        + "the phone")
-                                .toString());
+                emitUssdError("automation not connected");
+                emitUssdAutoAborted("automation-disconnected",
+                        "automation is enabled but not connected");
                 return;
             }
             emitEvent("common:ussd",
@@ -1688,6 +1764,18 @@ public class WailsBridge {
     private void emitSmsError(String msg) {
         try {
             emitEvent("common:sms", new JSONObject().put("ok", false).put("error", msg).toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Abort a guided session with a machine-readable reason for the UI. */
+    private void emitUssdAutoAborted(String code, String reason) {
+        try {
+            emitEvent("common:ussd-auto", new JSONObject()
+                    .put("state", "aborted")
+                    .put("code", code)
+                    .put("reason", reason)
+                    .toString());
         } catch (Exception ignored) {
         }
     }

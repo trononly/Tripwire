@@ -348,6 +348,25 @@ public class WailsJSBridge {
     }
 
     /**
+     * Device, accessibility and battery state for the troubleshooting panel.
+     * Called from JavaScript: wails.getAutomationDiagnostics()
+     */
+    @JavascriptInterface
+    public String getAutomationDiagnostics() {
+        return bridge.getAutomationDiagnostics();
+    }
+
+    /**
+     * Open Android's battery-optimization list; the user chooses whether to
+     * exempt Tripwire.
+     * Called from JavaScript: wails.openBatterySettings()
+     */
+    @JavascriptInterface
+    public void openBatterySettings() {
+        executor.execute(bridge::openBatterySettings);
+    }
+
+    /**
      * Start a guided payment: the automation service fills the *334# menus
      * from the step script (JSON, see UssdSession) and stops at the PIN.
      * Progress arrives as "common:ussd-auto" events.

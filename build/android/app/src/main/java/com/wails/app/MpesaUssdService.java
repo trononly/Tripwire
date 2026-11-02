@@ -91,6 +91,14 @@ public class MpesaUssdService extends AccessibilityService {
     /** The live service instance, so arm() can start polling immediately. */
     private static volatile MpesaUssdService instance = null;
 
+    // Connection diagnostics. These are deliberately process-local: after a
+    // process death there is no connection to claim, so zero/empty values are
+    // the honest answer until Android binds the service again.
+    private static volatile long lastConnectedAtMs = 0L;
+    private static volatile long lastDisconnectedAtMs = 0L;
+    private static volatile long lastInterruptedAtMs = 0L;
+    private static volatile String lastStateReason = "";
+
     // Per-attempt state (this service is effectively single-threaded: all
     // callbacks arrive on the main thread).
     private UssdSession lastSession = null;
@@ -145,8 +153,19 @@ public class MpesaUssdService extends AccessibilityService {
         return instance != null;
     }
 
-    /** Arm a session (replaces any previous one). Called by WailsBridge. */
-    public static void arm(UssdSession session) {
+    /**
+     * Arm a session (replaces any previous one). Called by WailsBridge.
+     *
+     * @return false when Android has not bound the service. Callers must not
+     * dial in that case: arming a payment while disconnected would let a
+     * later reconnection execute a stale action.
+     */
+    public static boolean arm(UssdSession session) {
+        MpesaUssdService svc = instance;
+        if (svc == null) {
+            Log.w(TAG, "cannot arm: service is not connected");
+            return false;
+        }
         synchronized (LOCK) {
             armed = session;
         }
@@ -155,15 +174,8 @@ public class MpesaUssdService extends AccessibilityService {
         // Do not wait for an accessibility event: the system USSD dialog is
         // a TYPE_SYSTEM window and often produces no event the service sees.
         // Poll from the moment the session is armed.
-        MpesaUssdService svc = instance;
-        if (svc != null) {
-            svc.ensurePolling();
-        } else {
-            // The component is listed in Settings but the system never bound
-            // it (common right after an app update): nothing can be automated
-            // until the user toggles it off and on again.
-            Log.w(TAG, "session armed but service is not connected");
-        }
+        svc.ensurePolling();
+        return true;
     }
 
     /** Disarm silently (timeout/complete/abort paths emit first). */
@@ -174,6 +186,11 @@ public class MpesaUssdService extends AccessibilityService {
     }
 
     private static void emit(String state, UssdSession s, String reason) {
+        emit(state, s, reason, null);
+    }
+
+    private static void emit(String state, UssdSession s, String reason,
+            String code) {
         WailsBridge bridge = WailsBridge.getInstance();
         if (bridge == null) {
             if (DEBUG) Log.d(TAG, "no bridge, dropping event: " + state);
@@ -188,9 +205,51 @@ public class MpesaUssdService extends AccessibilityService {
                  .put("steps", s.steps.size());
             }
             if (reason != null) o.put("reason", reason);
+            if (code != null) o.put("code", code);
             bridge.emitEvent("common:ussd-auto", o.toString());
         } catch (Exception e) {
             Log.e(TAG, "emit failed", e);
+        }
+    }
+
+    /** Tell the WebView that Android bound or released the service. */
+    private static void emitConnectionState(boolean connected, String reason) {
+        WailsBridge bridge = WailsBridge.getInstance();
+        if (bridge == null) return;
+        try {
+            bridge.emitEvent("common:automation", new JSONObject()
+                    .put("connected", connected)
+                    .put("reason", reason)
+                    .put("at", System.currentTimeMillis())
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "could not emit connection state", e);
+        }
+    }
+
+    /**
+     * The system has released this binding. Drop any armed payment first:
+     * reconnecting must never resume an old action. The frontend also gets an
+     * "interrupted" result so it can ask the user to verify the transaction.
+     */
+    private static void markDisconnected(String reason) {
+        MpesaUssdService svc = instance;
+        if (svc == null) return;
+        instance = null;
+        svc.stopPolling();
+
+        UssdSession interrupted;
+        synchronized (LOCK) {
+            interrupted = armed;
+            armed = null;
+        }
+        lastDisconnectedAtMs = System.currentTimeMillis();
+        lastStateReason = reason == null ? "" : reason;
+        emitConnectionState(false, lastStateReason);
+        if (interrupted != null) {
+            emit("aborted", interrupted, "accessibility disconnected",
+                    "accessibility-disconnected");
+            Log.i(TAG, "armed session interrupted by disconnect: " + reason);
         }
     }
 
@@ -198,27 +257,68 @@ public class MpesaUssdService extends AccessibilityService {
     public void onServiceConnected() {
         Log.i(TAG, "connected");
         instance = this;
+        stopPolling();
+        lastConnectedAtMs = System.currentTimeMillis();
+        lastStateReason = "connected";
+        // A binding is never permission to resume a payment that was armed
+        // before the disconnect. Disarm defensively and report it.
+        UssdSession stale;
         synchronized (LOCK) {
-            if (armed != null) ensurePolling();
+            stale = armed;
+            armed = null;
         }
+        if (stale != null) {
+            emit("aborted", stale, "accessibility reconnected",
+                    "accessibility-reconnected");
+        }
+        emitConnectionState(true, "connected");
     }
 
     @Override
     public void onInterrupt() {
+        lastInterruptedAtMs = System.currentTimeMillis();
+        lastStateReason = "interrupted";
         Log.i(TAG, "interrupted");
+        // The service can remain bound after onInterrupt; report the live
+        // state rather than pretending it disconnected.
+        emitConnectionState(instance != null, "interrupted");
     }
 
     @Override
     public boolean onUnbind(android.content.Intent intent) {
-        stopPolling();
+        markDisconnected("unbound");
         return super.onUnbind(intent);
     }
 
     @Override
     public void onDestroy() {
-        stopPolling();
-        instance = null;
+        markDisconnected("destroyed");
         super.onDestroy();
+    }
+
+    /** Diagnostics for the Settings troubleshooting panel (no payment data). */
+    public static JSONObject diagnostics() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("connected", isConnected());
+            o.put("lastConnectedAt", lastConnectedAtMs);
+            o.put("lastDisconnectedAt", lastDisconnectedAtMs);
+            o.put("lastInterruptedAt", lastInterruptedAtMs);
+            o.put("lastReason", lastStateReason);
+            UssdSession s;
+            synchronized (LOCK) {
+                s = armed;
+            }
+            o.put("armed", s != null);
+            if (s != null) {
+                o.put("kind", s.kind);
+                o.put("step", Math.min(s.stepIndex + 1, s.steps.size()));
+                o.put("steps", s.steps.size());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "diagnostics failed", e);
+        }
+        return o;
     }
 
     @Override
@@ -242,7 +342,7 @@ public class MpesaUssdService extends AccessibilityService {
     private void handleSession(UssdSession session) {
         if (session.isExpired()) {
             disarm();
-            emit("aborted", session, "timeout");
+            emit("aborted", session, "timeout", "timeout");
             Log.i(TAG, "session timed out");
             return;
         }
@@ -356,7 +456,8 @@ public class MpesaUssdService extends AccessibilityService {
                 if (DEBUG) Log.d(TAG, "unknown prompt (" + unknownStreak + ")");
                 if (unknownStreak >= ABORT_AFTER_UNKNOWN) {
                     disarm();
-                    emit("aborted", session, "unexpected prompt");
+                    emit("aborted", session, "unexpected prompt",
+                            "unexpected-prompt");
                     Log.i(TAG, "aborting on unexpected prompt");
                 }
             }

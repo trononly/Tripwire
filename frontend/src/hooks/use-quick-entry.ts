@@ -4,6 +4,7 @@ import {
   startUssdQuickEntry,
   type UssdAutoEvent,
 } from "@/lib/sms-bridge";
+import { canStartQuickEntry, isInterruptionCode } from "@/lib/automation-status";
 import type { QuickEntryScript } from "@/lib/ussd-menus";
 import {
 	clearPendingGuidedPayment,
@@ -17,7 +18,8 @@ export type QuickEntryStatus =
   | "awaiting-pin"
   | "awaiting-confirm"
   | "complete"
-  | "aborted";
+  | "aborted"
+  | "interrupted";
 
 /**
  * Runs one guided USSD session: subscribes to the service's progress events,
@@ -30,10 +32,14 @@ export function useQuickEntry() {
   const [step, setStep] = useState(0);
   const [steps, setSteps] = useState(0);
   const [reason, setReason] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const offRef = useRef<(() => void) | null>(null);
   const startOffRef = useRef<(() => void) | null>(null);
   const statusRef = useRef<QuickEntryStatus>("idle");
   statusRef.current = status;
+  // Synchronous guard: a double tap can land before React re-renders the
+  // disabled button. It must never start a second USSD session.
+  const activeRef = useRef(false);
 
   const cleanup = useCallback(() => {
     offRef.current?.();
@@ -71,9 +77,12 @@ export function useQuickEntry() {
           now === "awaiting-pin" ||
           now === "awaiting-confirm"
         ) {
+          activeRef.current = false;
           cleanup();
-          setStatus("idle");
-          setReason(null);
+          setStatus("interrupted");
+          setCode("outcome-unknown");
+          setReason("automation did not report completion");
+          clearPendingGuidedPayment();
         }
       }, 2500);
     };
@@ -86,13 +95,23 @@ export function useQuickEntry() {
     };
   }, [cleanup]);
 
+  const dismiss = useCallback(() => {
+    activeRef.current = false;
+    setStatus("idle");
+    setReason(null);
+    setCode(null);
+  }, []);
+
   const start = useCallback(
     (script: QuickEntryScript, simKey?: string | null) => {
+      if (!canStartQuickEntry(statusRef.current, activeRef.current)) return;
+      activeRef.current = true;
       cleanup();
       setStatus("starting");
       setStep(0);
       setSteps(script.steps.length);
       setReason(null);
+      setCode(null);
       // The receipt banner is only automatic for a payment this session
       // started; it stays valid for the SMS window in pending-payment.ts.
       markPendingGuidedPayment();
@@ -119,15 +138,21 @@ export function useQuickEntry() {
             cleanup();
             break;
           case "complete":
+            activeRef.current = false;
             setStatus("complete");
             cleanup();
             break;
-          case "aborted":
-            setStatus("aborted");
+          case "aborted": {
+            const abortCode = data.code ?? null;
+            const interrupted = isInterruptionCode(abortCode);
+            activeRef.current = false;
+            setStatus(interrupted ? "interrupted" : "aborted");
+            setCode(abortCode);
             setReason(data.reason ?? "aborted");
             clearPendingGuidedPayment();
             cleanup();
             break;
+          }
         }
       });
       startUssdQuickEntry(script, simKey);
@@ -135,5 +160,5 @@ export function useQuickEntry() {
     [cleanup],
   );
 
-  return { status, step, steps, reason, start };
+  return { status, step, steps, reason, code, start, dismiss };
 }

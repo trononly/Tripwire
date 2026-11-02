@@ -50,6 +50,14 @@ I'll try to get the app on Play Store but I don't have a developer account, you 
   back to its default call line or a "Call with" chooser; if that SIM cannot
   be resolved the call prefers the phone's Safaricom line, then the only SIM.
 - No fee radar by-type breakdown in v1: no Fuliza sample so no Fuliza breakdown.
+- Android 16 protects accessibility-data-sensitive views from apps that are not
+  accessibility tools. If Safaricom marks a payment view as sensitive, Tripwire
+  may not be able to read or act on it; the app does not try to bypass that
+  platform boundary.
+- OEM battery management can pause the automation even while the accessibility
+  service is connected. HyperOS in particular may need Autostart allowed and
+  its battery saver set to No restrictions. Tripwire cannot guarantee
+  uninterrupted background execution on every OEM build.
 
 ## Architecture
 
@@ -195,10 +203,14 @@ The service drives the phone app's USSD window only, never Tripwire's own
 window: the USSD dialog is an overlay that is often not the focused window, so
 reading only the active window would leave the menu untouched.
 
-If Android ever reports the service as enabled but no longer runs it, Send
-says "automation is not running" instead of dialling into a menu nothing will
-drive. Toggling the service off and on in system accessibility settings
-rebinds it; restart the phone only if that does not.
+If Android reports the service as enabled but no longer runs it, Settings →
+M-Pesa automation says so instead of dialling into a menu nothing will drive.
+Retry the connection first: another app controlling or recording the screen
+can suppress the service while it is active. If retrying does not help, turn
+the service off and on in Accessibility settings, then restart the phone only
+if that fails. On HyperOS, battery saver and Autostart restrictions can also
+pause automation; Settings shows the live battery state and a copyable
+diagnostics report.
 
 ## Install on a device
 

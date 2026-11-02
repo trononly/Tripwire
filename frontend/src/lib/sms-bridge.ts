@@ -15,6 +15,8 @@ interface WailsAndroidBridge {
 	isUssdAutomationEnabled?(): boolean;
 	isUssdAutomationRunning?(): boolean;
 	openUssdAutomationSettings?(): void;
+	getAutomationDiagnostics?(): string;
+	openBatterySettings?(): void;
 	hideSplash?(): void;
 	startUssdQuickEntry?(scriptJson: string, simKey?: string): void;
 	scheduleReminders?(json: string): void;
@@ -131,6 +133,51 @@ export interface UssdAutoEvent {
 	step?: number;
 	steps?: number;
 	reason?: string;
+	/** Machine-readable abort cause, e.g. "accessibility-disconnected". */
+	code?: string;
+}
+
+/** One automation-service connection or disconnection from Android. */
+export interface AutomationConnectionEvent {
+	connected: boolean;
+	reason?: string;
+	at?: number;
+}
+
+export interface AutomationDeviceInfo {
+	manufacturer: string;
+	brand: string;
+	model: string;
+	android: string;
+	sdk: number;
+	os: string;
+}
+
+export interface AutomationAccessibilityInfo {
+	enabled: boolean;
+	connected: boolean;
+	expected: string;
+	lastConnectedAt?: number;
+	lastDisconnectedAt?: number;
+	lastInterruptedAt?: number;
+	lastReason?: string;
+	armed?: boolean;
+	kind?: string;
+	step?: number;
+	steps?: number;
+}
+
+export interface AutomationPowerInfo {
+	ignoringBatteryOptimizations?: boolean;
+	powerSaveMode?: boolean;
+	backgroundRestricted?: boolean;
+}
+
+export interface AutomationDiagnostics {
+	device: AutomationDeviceInfo;
+	accessibility: AutomationAccessibilityInfo;
+	power: AutomationPowerInfo;
+	at: number;
 }
 
 /** True when the automation service is enabled in system Settings. */
@@ -152,6 +199,31 @@ export function ussdAutomationRunning(): boolean {
 /** Open system Settings at the accessibility page (user opts in there). */
 export function openUssdAutomationSettings(): void {
 	window.wails?.openUssdAutomationSettings?.();
+}
+
+/**
+ * Device, accessibility and battery state for troubleshooting. Returns null
+ * on desktop or when the native bridge cannot answer. Never includes payment
+ * details, USSD contents or the M-Pesa PIN.
+ */
+export function automationDiagnostics(): AutomationDiagnostics | null {
+	if (!isAndroidBridge()) return null;
+	try {
+		const raw = window.wails?.getAutomationDiagnostics?.();
+		if (!raw) return null;
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object") return null;
+		const value = parsed as Partial<AutomationDiagnostics>;
+		if (!value.device || !value.accessibility || !value.power) return null;
+		return value as AutomationDiagnostics;
+	} catch {
+		return null;
+	}
+}
+
+/** Open Android's battery-optimization list; the user decides the exemption. */
+export function openBatterySettings(): void {
+	window.wails?.openBatterySettings?.();
 }
 
 /** Dismiss the Android launch splash once the UI has painted. */

@@ -1,7 +1,7 @@
 // The single home for every frontend test. One file on purpose: the suite
 // is small (pure lib functions plus one component render), and a single
 // file keeps the whole contract visible without hunting across folders.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
@@ -15,7 +15,18 @@ import {
 } from "@/components/category-icon";
 import { filterGroups, filterByCustomCategory } from "@/lib/transaction-filter";
 import { ReleaseNotes } from "@/components/release-notes";
-import { AutomationStoppedNotice } from "@/components/automation-gate";
+import { AutomationDisconnectedPanel } from "@/components/automation-gate";
+import {
+	automationPhase,
+	batteryGuidance,
+	canStartQuickEntry,
+	batteryRiskReasons,
+	formatAutomationDiagnostics,
+	interruptedCopy,
+	isInterruptionCode,
+	isXiaomiLike,
+} from "@/lib/automation-status";
+import type { AutomationDiagnostics } from "@/lib/sms-bridge";
 import { parseInline, parseReleaseNotes } from "@/lib/release-notes";
 import {
   counterpartyDisplayName,
@@ -1666,50 +1677,110 @@ describe("recurring plans", () => {
 	});
 });
 
-describe("AutomationStoppedNotice", () => {
-	const bridge = (enabled: boolean, running: boolean) => {
-		Object.defineProperty(window, "wails", {
-			configurable: true,
-			value: {
-				platform: () => "android",
-				hasSmsPermission: () => true,
-				getSms: () => undefined,
-				isUssdAutomationEnabled: () => enabled,
-				isUssdAutomationRunning: () => running,
-			},
-		});
+describe("automation status", () => {
+	const diagnostics: AutomationDiagnostics = {
+		device: {
+			manufacturer: "Xiaomi",
+			brand: "Redmi",
+			model: "23106RN0DA",
+			android: "15",
+			sdk: 35,
+			os: "HyperOS 2.0",
+		},
+		accessibility: {
+			enabled: true,
+			connected: false,
+			expected: "com.tripwire.app/com.wails.app.MpesaUssdService",
+			lastReason: "unbound",
+			armed: false,
+		},
+		power: {
+			ignoringBatteryOptimizations: false,
+			powerSaveMode: true,
+			backgroundRestricted: false,
+		},
+		at: 1_700_000_000_000,
 	};
 
-	afterEach(() => {
-		Object.defineProperty(window, "wails", {
-			configurable: true,
-			value: undefined,
-		});
+	it("separates the switch from the live connection", () => {
+		expect(automationPhase(false, false)).toBe("off");
+		expect(automationPhase(true, false)).toBe("disconnected");
+		expect(automationPhase(true, true)).toBe("connected");
 	});
 
-	it("offers a re-enable shortcut when the switch is on but nothing runs", async () => {
-		bridge(true, false);
-		render(<AutomationStoppedNotice />);
+	it("never starts a second run while one is in flight", () => {
+		expect(canStartQuickEntry("idle", false)).toBe(true);
+		expect(canStartQuickEntry("interrupted", false)).toBe(true);
+		expect(canStartQuickEntry("idle", true)).toBe(false);
+		expect(canStartQuickEntry("awaiting-pin", false)).toBe(false);
+		expect(canStartQuickEntry("awaiting-confirm", false)).toBe(false);
+	});
+
+	it("treats connection loss and timeouts as interrupted, not failed", () => {
+		expect(isInterruptionCode("accessibility-disconnected")).toBe(true);
+		expect(isInterruptionCode("automation-disconnected")).toBe(true);
+		expect(isInterruptionCode("timeout")).toBe(true);
+		expect(isInterruptionCode("unexpected-prompt")).toBe(false);
+		expect(isInterruptionCode(undefined)).toBe(false);
+	});
+
+	it("uses safety copy that never claims the payment failed", () => {
+		const copy = interruptedCopy("accessibility-disconnected");
+		expect(copy.title).toBe("Automation was interrupted");
+		expect(copy.body).toMatch(/Check your M-Pesa transaction status/);
+		expect(copy.body.toLowerCase()).not.toContain("uiautomation");
+		expect(copy.body.toLowerCase()).not.toContain("t3");
+	});
+
+	it("flags battery restrictions and adds HyperOS steps only there", () => {
+		expect(isXiaomiLike(diagnostics)).toBe(true);
+		expect(batteryRiskReasons(diagnostics)).toEqual([
+			"Battery optimization is on for Tripwire.",
+			"Battery saver is on.",
+		]);
+		const steps = batteryGuidance(diagnostics);
+		expect(steps).toHaveLength(2);
+		expect(steps[1]).toMatch(/Autostart/);
+
+		const other = {
+			...diagnostics,
+			device: {
+				...diagnostics.device,
+				manufacturer: "Samsung",
+				brand: "samsung",
+				os: "Android 15",
+			},
+		};
+		expect(isXiaomiLike(other)).toBe(false);
+		expect(batteryGuidance(other)).toHaveLength(1);
+	});
+
+	it("formats diagnostics without payment data", () => {
+		const text = formatAutomationDiagnostics(diagnostics);
+		expect(text).toContain("Device: Xiaomi 23106RN0DA (Redmi)");
+		expect(text).toContain("Service connected: no");
+		expect(text).toContain("Battery optimization exempt: no");
+		expect(text).not.toMatch(/PIN|phone number/i);
+	});
+});
+
+describe("AutomationDisconnectedPanel", () => {
+	it("explains enabled-but-disconnected and offers recovery", () => {
+		const onRetry = vi.fn();
+		render(<AutomationDisconnectedPanel onRetry={onRetry} />);
 		expect(
-			await screen.findByText("Automation isn’t running"),
+			screen.getByText("Automation is enabled, but not connected"),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("button", {
-				name: "Accessibility broken? Re-enable here",
-			}),
+			screen.getByText(/Another app or system tool controlling your screen/),
 		).toBeInTheDocument();
-	});
-
-	it("stays out of the way while the service is running", () => {
-		bridge(true, true);
-		const { container } = render(<AutomationStoppedNotice />);
-		expect(container).toBeEmptyDOMElement();
-	});
-
-	it("stays out of the way when automation is switched off", () => {
-		bridge(false, false);
-		const { container } = render(<AutomationStoppedNotice />);
-		expect(container).toBeEmptyDOMElement();
+		fireEvent.click(
+			screen.getByRole("button", { name: "Retry connection" }),
+		);
+		expect(onRetry).toHaveBeenCalledTimes(1);
+		expect(
+			screen.getByRole("button", { name: "Open Accessibility settings" }),
+		).toBeInTheDocument();
 	});
 });
 
