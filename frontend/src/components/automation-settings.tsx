@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
@@ -15,8 +14,6 @@ import {
 } from "@/components/automation-gate";
 import { useAutomationAvailable } from "@/hooks/use-automation-available";
 import {
-	automationStatusDetail,
-	automationStatusTitle,
 	batteryGuidance,
 	batteryRiskReasons,
 	formatAutomationDiagnostics,
@@ -30,8 +27,8 @@ import {
 
 /**
  * Settings' single place for automation health: the live connection state,
- * recovery controls, battery guidance only when the service is actually
- * connected, and a copyable diagnostic report.
+ * recovery controls, battery guidance only when the service is connected, and
+ * a copyable diagnostic report. The card stays quiet when everything is fine.
  */
 export function AutomationSettingsCard() {
 	const auto = useAutomationAvailable();
@@ -73,18 +70,14 @@ export function AutomationSettingsCard() {
 		<Card>
 			<CardHeader>
 				<CardTitle>M-Pesa automation</CardTitle>
-				<CardDescription>
-					Connection status, recovery and troubleshooting.
-				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{auto.phase === "connected" ? (
 					<div className="space-y-1">
-						<p className="text-sm font-medium">
-							{automationStatusTitle(auto.phase)}
-						</p>
+						<p className="text-sm font-medium">Connected</p>
 						<p className="text-xs leading-relaxed text-muted-foreground">
-							{automationStatusDetail(auto.phase)}
+							Tripwire can fill the M-Pesa menus; your PIN stays in the phone
+							dialog.
 						</p>
 					</div>
 				) : null}
@@ -95,17 +88,12 @@ export function AutomationSettingsCard() {
 				) : null}
 
 				{auto.phase === "connected" && batteryRisks.length > 0 ? (
-					<div className="space-y-2 border border-border p-3">
+					<div className="space-y-2 bg-muted/40 p-3">
 						<p className="text-sm font-medium">
-							Battery settings may interrupt automation
+							Battery settings can pause automation
 						</p>
-						<ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-							{batteryRisks.map((reason) => (
-								<li key={reason}>{reason}</li>
-							))}
-						</ul>
 						<p className="text-xs leading-relaxed text-muted-foreground">
-							{guidance[0]}
+							{batteryRisks.join(" ")} {guidance[0]}
 						</p>
 						{xiaomi && guidance[1] ? (
 							<p className="text-xs leading-relaxed text-muted-foreground">
@@ -119,31 +107,18 @@ export function AutomationSettingsCard() {
 				) : null}
 
 				<div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-					<span className="text-xs text-muted-foreground">Diagnostics</span>
-					<div className="flex gap-2">
-						<Button variant="outline" size="sm" onClick={refresh}>
-							Refresh
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={!diagnostics}
-							onClick={() => void copyDiagnostics()}
-						>
-							Copy diagnostics
-						</Button>
-					</div>
+					<span className="text-xs text-muted-foreground">
+						{diagnostics ? "Diagnostics" : "Diagnostics unavailable"}
+					</span>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={!diagnostics}
+						onClick={() => void copyDiagnostics()}
+					>
+						Copy diagnostics
+					</Button>
 				</div>
-				{diagnostics ? (
-					<p className="text-[12px] text-muted-foreground">
-						{diagnostics.device.manufacturer} {diagnostics.device.model} ·
-						Android {diagnostics.device.android}
-					</p>
-				) : (
-					<p className="text-[12px] text-muted-foreground">
-						Diagnostics unavailable.
-					</p>
-				)}
 			</CardContent>
 		</Card>
 	);
