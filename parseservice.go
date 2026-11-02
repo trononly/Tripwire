@@ -351,6 +351,29 @@ func (p *ParseService) ReorderCategories(ids []string) error {
 	return svc.Reorder(ids)
 }
 
+// SetCategoryBudget stores a category's monthly spending cap in cents and the
+// percentage of it where warnings begin. Zero clears the cap. The Categories
+// page and the dashboard use the chosen percentage, and the dashboard repeats
+// the warning when the month is current.
+func (p *ParseService) SetCategoryBudget(id string, budget int64, warnPercent int) error {
+	svc, err := p.categoryService()
+	if err != nil {
+		return err
+	}
+	return svc.SetBudget(id, budget, warnPercent)
+}
+
+// CategoryBudgetReport returns each category's spend for the dataset's newest
+// month plus its cap and state. Categories with no cap come back with State
+// "none" so the edit sheet can still preview this month's spend.
+func (p *ParseService) CategoryBudgetReport(txs []parser.Transaction) (categories.BudgetReport, error) {
+	svc, err := p.categoryService()
+	if err != nil {
+		return categories.BudgetReport{}, err
+	}
+	return svc.BudgetReport(txs)
+}
+
 // CustomCategoryTotals sums a dataset by user category for the dashboard's
 // "My categories" donut. Unlabelled transactions come back as one bucket with
 // an empty id, so the caller can draw them as a gray Uncategorized slice.

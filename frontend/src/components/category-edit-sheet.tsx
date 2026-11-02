@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveCategoryIcon } from "@/components/category-icon";
 import { CategoryIconField } from "@/components/category-icon-field";
-import { formatMoney } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { formatAmountInput, formatMoney } from "@/lib/format";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { bumpCategories } from "@/lib/category-refresh";
 import {
 	CreateCategory,
+	SetCategoryBudget,
 	UpdateCategory,
 } from "../../bindings/mpesa-analyzer/parseservice";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
@@ -42,9 +44,10 @@ export type CategoryEditSheetProps = {
 };
 
 /**
- * Create or edit one user category: icon, name, order and deletion. The
- * picker's inline create is deliberately narrower - this is the full form
- * behind the Categories page, where renaming and reordering live.
+ * Create or edit one user category: icon, name, monthly budget, the percentage
+ * where its warning starts, order and deletion. The picker's inline create is
+ * deliberately narrower - this is the full form behind the Categories page,
+ * where renaming, budgeting and reordering live.
  */
 export function CategoryEditSheet({
 	open,
@@ -59,6 +62,8 @@ export function CategoryEditSheet({
 }: CategoryEditSheetProps) {
 	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
+	const [budget, setBudget] = useState("");
+	const [warn, setWarn] = useState("80");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState(false);
@@ -67,12 +72,38 @@ export function CategoryEditSheet({
 		if (!open) return;
 		setIcon(resolveCategoryIcon(category?.icon ?? "tag"));
 		setName(category?.name ?? "");
+		setBudget(category?.budget ? String(category.budget / 100) : "");
+		setWarn(
+			category?.warnPercent ? String(category.warnPercent) : "80",
+		);
 		setError(null);
 		setBusy(false);
 		setConfirmDelete(false);
 	}, [open, category]);
 
-	const canSave = icon.trim() !== "" && name.trim() !== "" && !busy;
+	const budgetShillings = Number(budget || 0);
+	const budgetFinite = Number.isFinite(budgetShillings);
+	const budgetTooSmall = budget !== "" && (!budgetFinite || budgetShillings < 1);
+	const budgetTooLarge = budgetFinite && budgetShillings > 10_000_000;
+	const budgetValid = budgetFinite && !budgetTooSmall && !budgetTooLarge;
+	const budgetCents =
+		budgetValid && budget !== "" ? Math.round(budgetShillings * 100) : 0;
+
+	const warnPercent = Number(warn || 0);
+	const warnValid =
+		Number.isInteger(warnPercent) &&
+		warnPercent >= 1 &&
+		warnPercent <= 100;
+	// With no cap the warning field is hidden; a leftover invalid value must
+	// not block the save. Keep a valid choice for when a cap is set again.
+	const storedWarn = warnValid ? warnPercent : 80;
+
+	const canSave =
+		icon.trim() !== "" &&
+		name.trim() !== "" &&
+		budgetValid &&
+		(budgetCents === 0 || warnValid) &&
+		!busy;
 
 	async function save(e: FormEvent) {
 		e.preventDefault();
@@ -82,8 +113,10 @@ export function CategoryEditSheet({
 		try {
 			if (category) {
 				await UpdateCategory(category.id, name.trim(), icon.trim());
+				await SetCategoryBudget(category.id, budgetCents, storedWarn);
 			} else {
-				await CreateCategory(name.trim(), icon.trim());
+				const created = await CreateCategory(name.trim(), icon.trim());
+				await SetCategoryBudget(created.id, budgetCents, storedWarn);
 			}
 			bumpCategories();
 			vibrateIfEnabled(10);
@@ -149,6 +182,108 @@ export function CategoryEditSheet({
 							placeholder="Food & groceries"
 							maxLength={40}
 						/>
+					</div>
+
+					<div className="space-y-1.5 pt-1">
+						<div className="flex items-baseline justify-between gap-3">
+							<label
+								htmlFor="category-budget"
+								className="text-[13px] font-medium text-foreground"
+							>
+								Monthly budget
+							</label>
+							{budget !== "" ? (
+								<button
+									type="button"
+									onClick={() => setBudget("")}
+									className="text-[12px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+								>
+									Clear
+								</button>
+							) : null}
+						</div>
+						<div
+							className={cn(
+								"flex h-10 items-center gap-2 border border-input bg-muted/30 px-3 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50",
+								!budgetValid && "border-destructive",
+							)}
+						>
+							<span className="text-xs font-medium text-muted-foreground">
+								KES
+							</span>
+							<input
+								id="category-budget"
+								inputMode="numeric"
+								autoComplete="off"
+								maxLength={12}
+								placeholder="No budget"
+								value={formatAmountInput(budget)}
+								onChange={(e) =>
+									setBudget(e.target.value.replace(/\D/g, ""))
+								}
+								aria-invalid={!budgetValid}
+								aria-describedby="category-budget-help"
+								className="min-w-0 flex-1 bg-transparent text-sm tabular-nums outline-none placeholder:text-muted-foreground/60"
+							/>
+							<span className="shrink-0 text-[12px] text-muted-foreground">
+								/ month
+							</span>
+						</div>
+						<p
+							id="category-budget-help"
+							className="text-[12px] leading-relaxed text-muted-foreground"
+						>
+							{budgetTooSmall
+								? "Enter at least KES 1, or leave it empty."
+								: budgetTooLarge
+									? "The most you can set is KES 10,000,000."
+									: "Leave empty for no budget."}
+						</p>
+
+						{budgetCents > 0 ? (
+							<div className="space-y-1.5 pt-1">
+								<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+									<label
+										htmlFor="category-warn"
+										className="text-[13px] font-medium text-foreground"
+									>
+										Warn me at
+									</label>
+									<div
+										className={cn(
+											"flex h-9 items-center gap-1.5 border border-input bg-muted/30 px-2.5",
+											!warnValid && "border-destructive",
+										)}
+									>
+										<input
+											id="category-warn"
+											type="text"
+											inputMode="numeric"
+											autoComplete="off"
+											maxLength={3}
+											value={warn}
+											onChange={(e) =>
+												setWarn(
+													e.target.value
+														.replace(/\D/g, "")
+														.slice(0, 3),
+												)
+											}
+											aria-invalid={!warnValid}
+											className="w-8 bg-transparent text-right text-sm tabular-nums outline-none"
+										/>
+										<span className="text-[12px] text-muted-foreground">
+											% of budget
+										</span>
+									</div>
+								</div>
+								{!warnValid ? (
+									<p className="text-[12px] text-destructive">
+										Choose 1 to 100.
+									</p>
+								) : null}
+							</div>
+						) : null}
 					</div>
 
 					{error && <p className="text-xs text-destructive">{error}</p>}

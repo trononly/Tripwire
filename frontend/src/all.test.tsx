@@ -100,6 +100,23 @@ import {
 	togglePrivacyMode,
 } from "@/lib/privacy-mode";
 import { dayEndMs, dayStartMs, filterSmsResults } from "@/lib/sms-filter";
+import { BudgetAlert } from "@/components/budget-alert";
+import { BudgetSummaryCard } from "@/components/budget-summary";
+import {
+	budgetPercent,
+	budgetRemainingLabel,
+	budgetSpentLabel,
+	budgetStateOf,
+	describeBudget,
+	monthLabel,
+	summarizeBudgets,
+} from "@/lib/category-budgets";
+import {
+	budgetAlertKey,
+	markBudgetAlertsSeen,
+	unseenBudgetAlerts,
+} from "@/lib/budget-alerts";
+import type * as categoryModels from "../bindings/mpesa-analyzer/internal/categories/models";
 
 // Keep every other import of the Wails runtime intact; only the browser
 // opener is a spy so external-url stays testable off-device.
@@ -1719,5 +1736,190 @@ describe("pending guided payment window", () => {
 		markPendingGuidedPayment();
 		clearPendingGuidedPayment();
 		expect(peekPendingGuidedPayment()).toBeNull();
+	});
+});
+
+// --- category budgets ---
+
+function budgetStatus(
+	over: Partial<categoryModels.BudgetStatus> = {},
+): categoryModels.BudgetStatus {
+	return {
+		id: "food",
+		name: "Food",
+		icon: "utensils",
+		budget: 600_000,
+		warnPercent: 80,
+		spent: 0,
+		remaining: 600_000,
+		count: 0,
+		percent: 0,
+		state: "ok",
+		...over,
+	};
+}
+
+const foodNear = budgetStatus({
+	spent: 552_000,
+	remaining: 48_000,
+	count: 12,
+	percent: 92,
+	state: "near",
+});
+const billsOver = budgetStatus({
+	id: "bills",
+	name: "Bills",
+	icon: "zap",
+	budget: 400_000,
+	spent: 430_000,
+	remaining: -30_000,
+	count: 3,
+	percent: 107.5,
+	state: "over",
+});
+
+describe("category budgets", () => {
+	it("names the month and formats the position", () => {
+		expect(monthLabel("2026-07")).toBe("July 2026");
+		expect(monthLabel("not-a-month")).toBe("not-a-month");
+		expect(budgetPercent(foodNear)).toBe(92);
+		expect(budgetPercent(budgetStatus({ budget: 0, spent: 100 }))).toBe(0);
+		expect(budgetSpentLabel(foodNear)).toBe("KES\u00a05,520 of KES\u00a06,000");
+		expect(budgetRemainingLabel(foodNear)).toBe("KES\u00a0480 left");
+		expect(budgetRemainingLabel(billsOver)).toBe("KES\u00a0300 over");
+		expect(
+			budgetRemainingLabel(
+				budgetStatus({
+					spent: 600_000,
+					remaining: 0,
+					percent: 100,
+					state: "near",
+				}),
+			),
+		).toBe("Fully used");
+	});
+
+	it("treats a category with no cap as unbudgeted", () => {
+		expect(
+			budgetStateOf(budgetStatus({ budget: 0, state: "over" })),
+		).toBe("none");
+		expect(budgetStateOf(foodNear)).toBe("near");
+		expect(budgetStateOf(budgetStatus({ state: "understood" }))).toBe("ok");
+	});
+
+	it("summarises the caps and puts the worst first", () => {
+		const summary = summarizeBudgets([foodNear, billsOver]);
+		expect(summary.budgeted).toHaveLength(2);
+		expect(summary.totalBudget).toBe(1_000_000);
+		expect(summary.totalSpent).toBe(982_000);
+		expect(summary.totalRemaining).toBe(18_000);
+		expect(summary.over).toHaveLength(1);
+		expect(summary.near).toHaveLength(1);
+		expect(summary.atRisk.map((s) => s.id)).toEqual(["bills", "food"]);
+		expect(summary.worst?.id).toBe("bills");
+	});
+
+	it("writes the warning as real figures", () => {
+		expect(describeBudget(foodNear)).toBe(
+			"Food is at 92% of its KES\u00a06,000 budget.",
+		);
+		expect(describeBudget(billsOver)).toBe(
+			"Bills is KES\u00a0300 over its KES\u00a04,000 budget.",
+		);
+		expect(
+			describeBudget(
+				budgetStatus({
+					spent: 600_000,
+					remaining: 0,
+					percent: 100,
+					state: "near",
+				}),
+			),
+		).toBe("Food has reached its KES\u00a06,000 budget.");
+	});
+});
+
+describe("budget alerts", () => {
+	it("announces each category state once per month and again when it worsens", () => {
+		const memory = new Map<string, string>();
+		const store = {
+			getItem: (key: string) => memory.get(key) ?? null,
+			setItem: (key: string, value: string) => {
+				memory.set(key, value);
+			},
+		};
+		const risk = [foodNear, billsOver];
+
+		expect(unseenBudgetAlerts(risk, "2026-07", store)).toHaveLength(2);
+		markBudgetAlertsSeen(risk, "2026-07", store);
+		expect(unseenBudgetAlerts(risk, "2026-07", store)).toHaveLength(0);
+
+		// Moving past the cap is real news even though the category was
+		// already close.
+		const worsened = [
+			{ ...foodNear, state: "over", remaining: -10_000, percent: 101.7 },
+		];
+		expect(unseenBudgetAlerts(worsened, "2026-07", store)).toHaveLength(1);
+
+		// A new month starts quiet again.
+		expect(unseenBudgetAlerts(risk, "2026-08", store)).toHaveLength(2);
+		expect(budgetAlertKey("2026-07")).toBe("tripwire.budget-alerts.2026-07");
+	});
+
+	it("survives a storage that refuses to read", () => {
+		const broken = {
+			getItem: () => {
+				throw new Error("private mode");
+			},
+			setItem: () => {
+				throw new Error("private mode");
+			},
+		};
+		expect(unseenBudgetAlerts([foodNear], "2026-07", broken)).toHaveLength(1);
+		expect(() => markBudgetAlertsSeen([foodNear], "2026-07", broken)).not.toThrow();
+	});
+});
+
+describe("budget surfaces", () => {
+	it("renders the month's summary with the cap arithmetic", () => {
+		render(
+			<BudgetSummaryCard
+				summary={summarizeBudgets([foodNear, billsOver])}
+				month="2026-07"
+			/>,
+		);
+		expect(
+			screen.getByRole("heading", { name: "Monthly budgets" }),
+		).toBeInTheDocument();
+		expect(screen.getByText("July 2026")).toBeInTheDocument();
+		expect(screen.getByText("KES 9,820")).toBeInTheDocument();
+		expect(screen.getByText("of KES 10,000")).toBeInTheDocument();
+	});
+
+	it("leads the dashboard notice with the worst category", () => {
+		const onReview = vi.fn();
+		render(
+			<BudgetAlert
+				summary={summarizeBudgets([foodNear, billsOver])}
+				onReview={onReview}
+			/>,
+		);
+		expect(screen.getByRole("alert")).toHaveTextContent("1 budget is over");
+		expect(
+			screen.getByText(/Bills is KES\s*300 over its KES\s*4,000 budget/),
+		).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Review budgets" }));
+		expect(onReview).toHaveBeenCalledTimes(1);
+	});
+
+	it("stays silent when no cap is at risk", () => {
+		const summary = summarizeBudgets([budgetStatus()]);
+		const { container } = render(
+			<BudgetAlert
+				summary={summary}
+				onReview={vi.fn()}
+			/>,
+		);
+		expect(container).toBeEmptyDOMElement();
 	});
 });

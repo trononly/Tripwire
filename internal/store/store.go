@@ -203,11 +203,13 @@ CREATE TABLE IF NOT EXISTS lipa_favourites (
 );
 
 CREATE TABLE IF NOT EXISTS categories (
-	id         TEXT PRIMARY KEY,
-	name       TEXT NOT NULL,
-	icon       TEXT NOT NULL,
-	sort_order INTEGER NOT NULL DEFAULT 0,
-	created_at TEXT NOT NULL
+	id           TEXT PRIMARY KEY,
+	name         TEXT NOT NULL,
+	icon         TEXT NOT NULL,
+	budget       INTEGER NOT NULL DEFAULT 0,
+	warn_percent INTEGER NOT NULL DEFAULT 80,
+	sort_order   INTEGER NOT NULL DEFAULT 0,
+	created_at   TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name
@@ -296,6 +298,8 @@ func New(path string) (*Store, error) {
 		`ALTER TABLE favourites ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE recurring_plans ADD COLUMN skipped_for TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE recurring_plans ADD COLUMN reminders TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE categories ADD COLUMN budget INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE categories ADD COLUMN warn_percent INTEGER NOT NULL DEFAULT 80`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -398,14 +402,16 @@ func migrateCategoriesIcon(db *sql.DB) error {
 	defer tx.Rollback()
 	for _, stmt := range []string{
 		`CREATE TABLE categories_icon_migration (
-			id         TEXT PRIMARY KEY,
-			name       TEXT NOT NULL,
-			icon       TEXT NOT NULL,
-			sort_order INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
+			id           TEXT PRIMARY KEY,
+			name         TEXT NOT NULL,
+			icon         TEXT NOT NULL,
+			budget       INTEGER NOT NULL DEFAULT 0,
+			warn_percent INTEGER NOT NULL DEFAULT 80,
+			sort_order   INTEGER NOT NULL DEFAULT 0,
+			created_at   TEXT NOT NULL
 		)`,
-		`INSERT INTO categories_icon_migration (id, name, icon, sort_order, created_at)
-		 SELECT id, name, emoji, sort_order, created_at FROM categories`,
+		`INSERT INTO categories_icon_migration (id, name, icon, budget, warn_percent, sort_order, created_at)
+		 SELECT id, name, emoji, budget, warn_percent, sort_order, created_at FROM categories`,
 		`DROP TABLE categories`,
 		`ALTER TABLE categories_icon_migration RENAME TO categories`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name

@@ -9,7 +9,6 @@ import {
   MessageSquareText,
   Smartphone,
   Sun,
-  Tags,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -257,20 +256,6 @@ export default function Settings({
             </div>
           )}
           {isAndroid && <AutomationStoppedNotice />}
-        </CardContent>
-      </Card>
-
-      <Card className="lg:hidden">
-        <CardHeader>
-          <CardTitle>Categories</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link to="/categories">
-              <Tags />
-              Manage categories
-            </Link>
-          </Button>
         </CardContent>
       </Card>
 

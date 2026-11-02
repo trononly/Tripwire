@@ -228,6 +228,7 @@ func absOf(n int64) int64 {
 // number of transactions.
 type Index struct {
 	categories   map[string]store.Category
+	order        []string
 	tx           map[string]string
 	counterparty map[string]string
 	byType       map[string]string
@@ -252,6 +253,7 @@ func (s *Service) Load() (*Index, error) {
 	}
 	for _, c := range defs {
 		ix.categories[c.ID] = c
+		ix.order = append(ix.order, c.ID)
 	}
 	for _, r := range rules {
 		switch r.Kind {
