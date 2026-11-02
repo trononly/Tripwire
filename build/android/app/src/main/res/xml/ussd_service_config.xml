@@ -10,4 +10,5 @@
     android:accessibilityFlags="flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:description="@string/ussd_service_desc"
+    android:isAccessibilityTool="false"
     android:notificationTimeout="200" />

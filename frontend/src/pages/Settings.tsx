@@ -40,7 +40,7 @@ import type { Updater } from "@/hooks/use-updater";
 import { ChangelogButton } from "@/components/changelog-dialog";
 import { BackupSetting } from "@/components/backup-setting";
 import { PageHeader } from "@/components/page-header";
-import { AutomationStoppedNotice } from "@/components/automation-gate";
+import { AutomationSettingsCard } from "@/components/automation-settings";
 import { ResetData } from "../../bindings/mpesa-analyzer/parseservice";
 import {
   Card,
@@ -255,9 +255,10 @@ export default function Settings({
               />
             </div>
           )}
-          {isAndroid && <AutomationStoppedNotice />}
         </CardContent>
       </Card>
+
+      {isAndroid && <AutomationSettingsCard />}
 
       {isAndroid && (
         <Card>

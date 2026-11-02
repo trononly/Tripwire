@@ -21,7 +21,11 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAutomationAvailable } from "@/components/automation-gate";
+import {
+  AutomationDisconnectedPanel,
+  AutomationInterruptedNotice,
+} from "@/components/automation-gate";
+import { useAutomationAvailable } from "@/hooks/use-automation-available";
 import { RecurringPlanSheet } from "@/components/recurring-plan-sheet";
 import { useQuickEntry } from "@/hooks/use-quick-entry";
 import {
@@ -51,6 +55,7 @@ import {
   isAndroidBridge,
   openUssdAutomationSettings,
 } from "@/lib/sms-bridge";
+import { interruptedCopy } from "@/lib/automation-status";
 import { isValidAmount } from "@/lib/ussd-menus";
 import { typeStyle } from "@/lib/transaction-types";
 import type { RecurringPayment } from "../../bindings/mpesa-analyzer/internal/recurring/models";
@@ -104,6 +109,7 @@ const STATUS_TEXT: Record<string, string> = {
   "awaiting-confirm": "Confirm the payment in the phone dialog.",
   complete: "Menu ready - finish with your PIN.",
   aborted: "Payment stopped.",
+  interrupted: "Automation was interrupted.",
 };
 
 export interface RecurringPaymentsProps {
@@ -182,13 +188,19 @@ export function RecurringPayments({
 
   useEffect(() => {
     if (qe.status === "aborted") {
-      toast.error(qe.reason ? `Payment stopped: ${qe.reason}` : "Payment stopped.");
+      const copy = interruptedCopy(qe.code ?? undefined);
+      toast.error(copy.title, { description: copy.body });
+      setRunningPlan(null);
+    }
+    if (qe.status === "interrupted") {
+      // The persistent notice carries the verification warning; a toast as
+      // well would say the same thing twice.
       setRunningPlan(null);
     }
     if (qe.status === "complete" || qe.status === "idle") {
       setRunningPlan(null);
     }
-  }, [qe.status, qe.reason]);
+  }, [qe.status, qe.code]);
 
   // A receipt landing means the run is over, even if the automation event
   // never reached the WebView.
@@ -279,6 +291,13 @@ export function RecurringPayments({
       });
       return;
     }
+    if (!auto.running) {
+      auto.recheck();
+      toast.error("Automation is enabled, but Android hasn't connected it yet.", {
+        action: { label: "Open settings", onClick: openUssdAutomationSettings },
+      });
+      return;
+    }
     Events.Once("common:ussd", (ev) => {
       const data = ev.data as { ok: boolean; error?: string };
       if (!data?.ok) {
@@ -329,6 +348,21 @@ export function RecurringPayments({
       </CardHeader>
 
       <CardContent className="pt-0">
+        {auto.available && !auto.running ? (
+          <div className="mb-3">
+            <AutomationDisconnectedPanel onRetry={auto.recheck} compact />
+          </div>
+        ) : null}
+
+        {qe.status === "interrupted" || qe.status === "aborted" ? (
+          <div className="mb-3">
+            <AutomationInterruptedNotice
+              code={qe.code ?? undefined}
+              onDismiss={qe.dismiss}
+            />
+          </div>
+        ) : null}
+
         {loading && planRows.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden />

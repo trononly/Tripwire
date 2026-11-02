@@ -5,7 +5,12 @@ import { Send as SendIcon, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { AutomationOffPanel, useAutomationAvailable } from "@/components/automation-gate";
+import {
+  AutomationDisconnectedPanel,
+  AutomationInterruptedNotice,
+  AutomationOffPanel,
+} from "@/components/automation-gate";
+import { useAutomationAvailable } from "@/hooks/use-automation-available";
 import AmountField from "@/components/amount-field";
 import FavouriteStar from "@/components/favourite-star";
 import FavouritesRow from "@/components/favourites-row";
@@ -70,7 +75,11 @@ export default function Send({ simKey }: { simKey?: string | null }) {
   const phoneOk = normalizePhone(phone) !== "";
   const amountOk = isValidAmount(amount);
   const valid = phoneOk && amountOk;
-  const busy = qe.status === "starting" || qe.status === "step";
+  const busy =
+    qe.status === "starting" ||
+    qe.status === "step" ||
+    qe.status === "awaiting-pin" ||
+    qe.status === "awaiting-confirm";
   const favouriteSaved =
     phoneOk &&
     fav.favourites.some((f) => normalizePhone(f.phone) === normalizePhone(phone));
@@ -78,6 +87,7 @@ export default function Send({ simKey }: { simKey?: string | null }) {
     name === number ? formatFavouritePhone(number) : name;
 
   function handleSend() {
+    if (busy) return;
     setTouched(true);
     if (!valid) {
       toast.error("Enter a valid number and amount.");
@@ -95,6 +105,13 @@ export default function Send({ simKey }: { simKey?: string | null }) {
     if (!auto.available) {
       auto.recheck();
       toast.error("Turn on M-Pesa automation first.", {
+        action: { label: "Open settings", onClick: openUssdAutomationSettings },
+      });
+      return;
+    }
+    if (!auto.running) {
+      auto.recheck();
+      toast.error("Automation is enabled, but Android hasn't connected it yet.", {
         action: { label: "Open settings", onClick: openUssdAutomationSettings },
       });
       return;
@@ -208,7 +225,18 @@ export default function Send({ simKey }: { simKey?: string | null }) {
             }
           />
 
-          {auto.available ? (
+          {qe.status === "interrupted" || qe.status === "aborted" ? (
+            <AutomationInterruptedNotice
+              code={qe.code ?? undefined}
+              onDismiss={qe.dismiss}
+            />
+          ) : null}
+
+          {!auto.available ? (
+            <AutomationOffPanel />
+          ) : !auto.running ? (
+            <AutomationDisconnectedPanel onRetry={auto.recheck} compact />
+          ) : (
             <Button
               className="w-full"
               size="lg"
@@ -218,8 +246,6 @@ export default function Send({ simKey }: { simKey?: string | null }) {
               <SendIcon className="size-4" />
               {tab === "pochi" ? "Send to Pochi" : "Send"}
             </Button>
-          ) : (
-            <AutomationOffPanel />
           )}
         </CardContent>
       </Card>

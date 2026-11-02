@@ -5,7 +5,12 @@ import { ReceiptText, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { AutomationOffPanel, useAutomationAvailable } from "@/components/automation-gate";
+import {
+  AutomationDisconnectedPanel,
+  AutomationInterruptedNotice,
+  AutomationOffPanel,
+} from "@/components/automation-gate";
+import { useAutomationAvailable } from "@/hooks/use-automation-available";
 import AmountField from "@/components/amount-field";
 import FavouriteStar from "@/components/favourite-star";
 import FavouritesRow from "@/components/favourites-row";
@@ -74,7 +79,11 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
     isValidPaybill(paybill) && isValidAccount(account) && isValidAmount(amount);
   const tillOk = isValidTill(till) && isValidAmount(amount);
   const valid = tab === "paybill" ? paybillOk : tillOk;
-  const busy = qe.status === "starting" || qe.status === "step";
+  const busy =
+    qe.status === "starting" ||
+    qe.status === "step" ||
+    qe.status === "awaiting-pin" ||
+    qe.status === "awaiting-confirm";
 
   const currentNumber = tab === "paybill" ? paybill : till;
   const currentAccount = tab === "paybill" ? account : "";
@@ -99,6 +108,7 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
   }
 
   function handleSend() {
+    if (busy) return;
     setTouched(true);
     if (!valid) {
       toast.error("Fill in all fields correctly.");
@@ -119,6 +129,13 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
     if (!auto.available) {
       auto.recheck();
       toast.error("Turn on M-Pesa automation first.", {
+        action: { label: "Open settings", onClick: openUssdAutomationSettings },
+      });
+      return;
+    }
+    if (!auto.running) {
+      auto.recheck();
+      toast.error("Automation is enabled, but Android hasn't connected it yet.", {
         action: { label: "Open settings", onClick: openUssdAutomationSettings },
       });
       return;
@@ -291,7 +308,18 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
             }
           />
 
-          {auto.available ? (
+          {qe.status === "interrupted" || qe.status === "aborted" ? (
+            <AutomationInterruptedNotice
+              code={qe.code ?? undefined}
+              onDismiss={qe.dismiss}
+            />
+          ) : null}
+
+          {!auto.available ? (
+            <AutomationOffPanel />
+          ) : !auto.running ? (
+            <AutomationDisconnectedPanel onRetry={auto.recheck} compact />
+          ) : (
             <Button
               className="w-full"
               size="lg"
@@ -301,8 +329,6 @@ export default function Lipa({ simKey }: { simKey?: string | null }) {
               <ReceiptText className="size-4" />
               {tab === "paybill" ? "Pay Bill" : "Buy Goods"}
             </Button>
-          ) : (
-            <AutomationOffPanel />
           )}
         </CardContent>
       </Card>
