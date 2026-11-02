@@ -267,6 +267,20 @@ public class WailsJSBridge {
     }
 
     /**
+     * Save the prepared Tripwire database snapshot to a document provider
+     * (Google Drive, Downloads, another app's folder). Android shows its
+     * standard "Save to" sheet, the user picks the destination, and the
+     * result arrives as a "common:export" event.
+     * Called from JavaScript: wails.exportDatabase(sourcePath, fileName)
+     */
+    @JavascriptInterface
+    public void exportDatabase(String sourcePath, String fileName) {
+        final String src = sourcePath;
+        final String name = fileName;
+        executor.execute(() -> bridge.exportDatabase(src, name));
+    }
+
+    /**
      * Check READ_PHONE_STATE without prompting (never requests it).
      * Called from JavaScript: wails.hasPhoneStatePermission()
      *

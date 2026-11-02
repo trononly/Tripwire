@@ -49,6 +49,11 @@ import {
 	buildTillScript,
 	normalizePhone,
 } from "@/lib/ussd-menus";
+import {
+	clearPendingGuidedPayment,
+	markPendingGuidedPayment,
+	peekPendingGuidedPayment,
+} from "@/lib/pending-payment";
 import { paySimKey } from "@/lib/pay-sim";
 import {
 	AUTO_CONFIRM_KEY,
@@ -1688,5 +1693,31 @@ describe("AutomationStoppedNotice", () => {
 		bridge(false, false);
 		const { container } = render(<AutomationStoppedNotice />);
 		expect(container).toBeEmptyDOMElement();
+	});
+});
+
+describe("pending guided payment window", () => {
+	beforeEach(() => {
+		localStorage.clear();
+	});
+
+	it("accepts a receipt inside the ten-minute window", () => {
+		markPendingGuidedPayment();
+		expect(peekPendingGuidedPayment()).not.toBeNull();
+	});
+
+	it("drops and clears a marker once the window has passed", () => {
+		markPendingGuidedPayment();
+		const raw = localStorage.getItem("mpesa-analyzer.pending-payment");
+		expect(raw).not.toBeNull();
+		const at = (JSON.parse(raw!) as { at: number }).at;
+		expect(peekPendingGuidedPayment(at + 10 * 60 * 1000 + 1)).toBeNull();
+		expect(localStorage.getItem("mpesa-analyzer.pending-payment")).toBeNull();
+	});
+
+	it("clears on demand", () => {
+		markPendingGuidedPayment();
+		clearPendingGuidedPayment();
+		expect(peekPendingGuidedPayment()).toBeNull();
 	});
 });

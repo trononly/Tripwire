@@ -5,6 +5,10 @@ import {
   type UssdAutoEvent,
 } from "@/lib/sms-bridge";
 import type { QuickEntryScript } from "@/lib/ussd-menus";
+import {
+	clearPendingGuidedPayment,
+	markPendingGuidedPayment,
+} from "@/lib/pending-payment";
 
 export type QuickEntryStatus =
   | "idle"
@@ -27,12 +31,15 @@ export function useQuickEntry() {
   const [steps, setSteps] = useState(0);
   const [reason, setReason] = useState<string | null>(null);
   const offRef = useRef<(() => void) | null>(null);
+  const startOffRef = useRef<(() => void) | null>(null);
   const statusRef = useRef<QuickEntryStatus>("idle");
   statusRef.current = status;
 
   const cleanup = useCallback(() => {
     offRef.current?.();
     offRef.current = null;
+    startOffRef.current?.();
+    startOffRef.current = null;
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
@@ -86,6 +93,15 @@ export function useQuickEntry() {
       setStep(0);
       setSteps(script.steps.length);
       setReason(null);
+      // The receipt banner is only automatic for a payment this session
+      // started; it stays valid for the SMS window in pending-payment.ts.
+      markPendingGuidedPayment();
+      // A failed dial (permission, automation off) must not leave the marker
+      // armed for an unrelated spend in the next ten minutes.
+      startOffRef.current = Events.Once("common:ussd", (ev) => {
+        const data = ev.data as { ok?: boolean };
+        if (data && data.ok === false) clearPendingGuidedPayment();
+      });
       offRef.current = Events.On("common:ussd-auto", (ev) => {
         const data = ev.data as UssdAutoEvent;
         if (!data || typeof data.state !== "string") return;
@@ -109,6 +125,7 @@ export function useQuickEntry() {
           case "aborted":
             setStatus("aborted");
             setReason(data.reason ?? "aborted");
+            clearPendingGuidedPayment();
             cleanup();
             break;
         }

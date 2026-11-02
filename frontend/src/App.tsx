@@ -55,6 +55,7 @@ function App() {
   const { permissions: smsPerms, refresh: refreshSmsPerms } = useSmsPermissions();
   const sms = useSmsEngine({
     statements: stmts.statements,
+    statementsLoaded: stmts.loaded,
     upsertMeta: stmts.upsertMeta,
     refreshPerms: refreshSmsPerms,
     enterSmsMode: () => setMode("sms"),

@@ -2409,6 +2409,60 @@ public class WailsBridge {
         }
     }
 
+    // MARK: - Database backup (Settings -> Backup)
+
+    /**
+     * Open Android's document creator so the user can save the prepared
+     * database snapshot to Drive, Downloads or any other provider. The
+     * result flows back through exportDatabaseResult/Cancelled/Error.
+     */
+    public void exportDatabase(String sourcePath, String fileName) {
+        mainHandler.post(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).launchDocumentCreator(sourcePath, fileName);
+            } else {
+                exportDatabaseError("saving a backup is unavailable here");
+            }
+        });
+    }
+
+    /** The snapshot was copied to the destination the user chose. */
+    void exportDatabaseResult(String fileName, long size) {
+        try {
+            emitEvent("common:export", new JSONObject()
+                    .put("ok", true)
+                    .put("fileName", fileName != null ? fileName : "")
+                    .put("size", size)
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "exportDatabaseResult failed", e);
+            exportDatabaseError("The backup was saved, but the app could not confirm it.");
+        }
+    }
+
+    /** The user dismissed the save sheet. */
+    void exportDatabaseCancelled() {
+        try {
+            emitEvent("common:export", new JSONObject()
+                    .put("cancelled", true)
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "exportDatabaseCancelled failed", e);
+        }
+    }
+
+    /** The snapshot could not be written to the chosen provider. */
+    void exportDatabaseError(String message) {
+        try {
+            emitEvent("common:export", new JSONObject()
+                    .put("ok", false)
+                    .put("error", message != null ? message : "Could not save the backup.")
+                    .toString());
+        } catch (Exception e) {
+            Log.e(TAG, "exportDatabaseError failed", e);
+        }
+    }
+
     /** Dialog button callback that no-ops once the Go side is gone. */
     private void dialogCallback(int callbackID, int buttonIndex) {
         if (initialized) nativeDialogCallback(callbackID, buttonIndex);

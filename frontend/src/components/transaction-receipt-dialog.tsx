@@ -22,7 +22,7 @@ export function TransactionReceiptDialog({
   tx,
   onClose,
   onViewAll,
-  title = "Payment received",
+  title,
   showViewAll = true,
 }: {
   tx: parser.Transaction | null;
@@ -31,6 +31,11 @@ export function TransactionReceiptDialog({
   title?: string;
   showViewAll?: boolean;
 }) {
+  // The automatic slip is for a payment this app started, which is money
+  // out; "received" would read as an inbound payment. Callers that use the
+  // slip for inspection pass their own title ("Transaction details").
+  const heading =
+    title ?? (tx && tx.amount < 0 ? "Payment sent" : "Payment received");
   return (
     <Dialog open={tx !== null} onOpenChange={(o) => !o && onClose()}>
       {/* Privacy veil: the ledger behind is blurred beyond reading while
@@ -40,7 +45,7 @@ export function TransactionReceiptDialog({
         <div className="flex flex-col items-center gap-1 pt-2 text-center">
           <CheckCircle2 className="size-10 text-emerald-500" strokeWidth={1.5} />
           <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
+            <DialogTitle>{heading}</DialogTitle>
           </DialogHeader>
         </div>
         {tx && (

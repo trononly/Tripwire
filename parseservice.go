@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"mpesa-analyzer/internal/analysis"
 	"mpesa-analyzer/internal/categories"
@@ -13,6 +14,7 @@ import (
 	"mpesa-analyzer/internal/sms"
 	"mpesa-analyzer/internal/store"
 	"mpesa-analyzer/internal/txtype"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -28,23 +30,28 @@ type ParseService struct {
 	store *store.Store
 }
 
+// storageBase is the app-private directory the database lives in:
+// getFilesDir() on Android (via the Wails bridge - xdg has no Android support
+// and $HOME is unset there, which resolves to a read-only /.local), the xdg
+// data home on desktop.
+func storageBase() string {
+	base := application.Mobile.StoragePath()
+	if base == "" {
+		if runtime.GOOS == "android" {
+			log.Println("statement store: Android storage path unavailable (bridge not ready?), falling back to xdg data home")
+		}
+		base = application.Path(application.PathDataHome)
+	}
+	return filepath.Join(base, "mpesa-analyzer")
+}
+
 // statements lazily creates the store the first time a history method
-// runs. The database lives in an app-private directory: getFilesDir() on
-// Android (via the Wails bridge - xdg has no Android support and $HOME is
-// unset there, which resolves to a read-only /.local), the xdg data home
-// on desktop.
+// runs. The database lives in an app-private directory.
 func (p *ParseService) statements() (*store.Store, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.store == nil {
-		base := application.Mobile.StoragePath()
-		if base == "" {
-			if runtime.GOOS == "android" {
-				log.Println("statement store: Android storage path unavailable (bridge not ready?), falling back to xdg data home")
-			}
-			base = application.Path(application.PathDataHome)
-		}
-		s, err := store.New(filepath.Join(base, "mpesa-analyzer", "statements.db"))
+		s, err := store.New(filepath.Join(storageBase(), "statements.db"))
 		if err != nil {
 			return nil, err
 		}
@@ -540,17 +547,18 @@ func newSmsRecord(txs []parser.Transaction, simID, simLabel string) store.Statem
 
 // SmsSimRefresh is one SIM's slice of an inbox snapshot: the SMS record
 // holding that SIM's merged dataset, how many transactions were actually
-// new, the new transactions themselves (for arrival previews), and whether
-// any of them is a user-initiated spend (till, paybill, send-money) worth
-// popping a receipt for. Record is nil and NewTxs empty when nothing new
-// came from this SIM.
+// new, the new transactions themselves (for arrival previews), and the one
+// user-initiated spend (till, paybill, send-money) worth popping a receipt
+// for. ReceiptTx skips the charge row the SMS parser may emit alongside a
+// paybill or transfer, so the banner never presents a fee as the payment.
 type SmsSimRefresh struct {
-	SimID    string                 `json:"simId"`
-	SimLabel string                 `json:"simLabel"`
-	Record   *store.StatementRecord `json:"record,omitempty"`
-	NewCount int                    `json:"newCount"`
-	NewTxs   []parser.Transaction   `json:"newTxns"`
-	Receipt  bool                   `json:"receipt"`
+	SimID     string                 `json:"simId"`
+	SimLabel  string                 `json:"simLabel"`
+	Record    *store.StatementRecord `json:"record,omitempty"`
+	NewCount  int                    `json:"newCount"`
+	NewTxs    []parser.Transaction   `json:"newTxns"`
+	Receipt   bool                   `json:"receipt"`
+	ReceiptTx *parser.Transaction    `json:"receiptTx,omitempty"`
 }
 
 // SmsRefreshResult is one inbox snapshot merged into the store: the full
@@ -701,7 +709,8 @@ func (p *ParseService) RefreshSmsImport(messages []SmsMessage) (*SmsRefreshResul
 			}
 			sim.Record = latest
 		}
-		sim.Receipt = receiptWorthy(sim.NewTxs)
+		sim.ReceiptTx = receiptTransaction(sim.NewTxs)
+		sim.Receipt = sim.ReceiptTx != nil
 		out.Sims = append(out.Sims, sim)
 	}
 	return out, nil
@@ -723,18 +732,19 @@ func latestSmsRecord(s *store.Store, metas []store.StatementMeta, simKey string)
 	return nil, nil
 }
 
-// receiptWorthy reports whether any new transaction is a user-initiated
-// spend - till/buy-goods, paybill or send-money. Only those pop the
-// arrival receipt; inbound money, airtime, fees and the rest merge
-// silently into history.
-func receiptWorthy(txs []parser.Transaction) bool {
-	for _, tx := range txs {
-		switch txtype.TypeOf(tx.Description) {
+// receiptTransaction returns the newest transaction in txs that is a
+// user-initiated spend - till/buy-goods, paybill or send-money - or nil.
+// A paybill or transfer SMS can produce a second charge row; that row is a
+// fee and must never be the one the arrival receipt presents. Walking from
+// the end keeps the pick deterministic for the day it arrived.
+func receiptTransaction(txs []parser.Transaction) *parser.Transaction {
+	for i := len(txs) - 1; i >= 0; i-- {
+		switch txtype.TypeOf(txs[i].Description) {
 		case txtype.TypeTill, txtype.TypePaybill, txtype.TypeSendMoney:
-			return true
+			return &txs[i]
 		}
 	}
-	return false
+	return nil
 }
 
 // SimCard is one SIM as currently seen by the phone: the subscription id
@@ -967,6 +977,165 @@ func (p *ParseService) ReorderFavourites(ids []string) error {
 		return err
 	}
 	return favourites.New(s).Reorder(ids)
+}
+
+// BackupFile is a prepared database snapshot. On Android the frontend hands
+// Path to the native document picker, which streams it to the folder the user
+// chooses (Google Drive, Downloads, another provider). On desktop SaveBackup
+// writes it to the path chosen in the native save dialog.
+type BackupFile struct {
+	Path      string    `json:"path"`
+	FileName  string    `json:"fileName"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// PrepareBackup writes a consistent snapshot of the live database into an
+// app-private folder and returns its path. The Android bridge copies that
+// file to the user's chosen document provider, then deletes it. Snapshots
+// left behind by a cancelled share are pruned on the next call.
+func (p *ParseService) PrepareBackup() (*BackupFile, error) {
+	s, err := p.statements()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(storageBase(), "backups")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("could not create backup folder: %w", err)
+	}
+	pruneBackups(dir)
+
+	now := time.Now()
+	name := "tripwire-" + now.Format("2006-01-02-150405") + ".db"
+	path := filepath.Join(dir, name)
+	// Two exports inside the same second would collide; VACUUM INTO refuses
+	// an existing destination, so add a suffix until the name is free.
+	for i := 2; ; i++ {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		name = fmt.Sprintf("tripwire-%s-%d.db", now.Format("2006-01-02-150405"), i)
+		path = filepath.Join(dir, name)
+	}
+	if err := s.Snapshot(path); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("could not read backup: %w", err)
+	}
+	return &BackupFile{
+		Path:      path,
+		FileName:  name,
+		Size:      info.Size(),
+		CreatedAt: now,
+	}, nil
+}
+
+// SaveBackup is the desktop path: prepare a snapshot, ask where to put it
+// with the native save dialog, then copy it there. A cancelled dialog is not
+// an error; it returns (nil, nil).
+func (p *ParseService) SaveBackup() (*BackupFile, error) {
+	if runtime.GOOS == "android" {
+		return nil, errors.New("on Android, choose the destination with the system file picker")
+	}
+	backup, err := p.PrepareBackup()
+	if err != nil {
+		return nil, err
+	}
+	target, err := application.Get().Dialog.SaveFileWithOptions(&application.SaveFileDialogOptions{
+		Title:    "Save Tripwire backup",
+		Filename: backup.FileName,
+		Filters: []application.FileFilter{
+			{DisplayName: "SQLite database (*.db)", Pattern: "*.db"},
+		},
+	}).PromptForSingleSelection()
+	if err != nil {
+		os.Remove(backup.Path)
+		return nil, err
+	}
+	if strings.TrimSpace(target) == "" {
+		os.Remove(backup.Path)
+		return nil, nil
+	}
+	if !strings.HasSuffix(strings.ToLower(target), ".db") {
+		target += ".db"
+	}
+	if err := copyFile(backup.Path, target); err != nil {
+		os.Remove(backup.Path)
+		return nil, fmt.Errorf("could not save the backup: %w", err)
+	}
+	os.Remove(backup.Path)
+	backup.Path = target
+	backup.FileName = filepath.Base(target)
+	return backup, nil
+}
+
+// PickBackupFile opens the system file picker filtered to .db files. On
+// Android the Wails bridge copies the chosen document into the app cache and
+// returns that path; desktop returns the original path. A cancelled picker
+// returns an empty string.
+func (p *ParseService) PickBackupFile() (string, error) {
+	return application.Get().Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
+		Title:          "Select a Tripwire backup",
+		CanChooseFiles: true,
+		Filters: []application.FileFilter{
+			{DisplayName: "Tripwire backup (*.db)", Pattern: "*.db"},
+		},
+	}).PromptForSingleSelection()
+}
+
+// InspectBackup validates the chosen file and reports its contents without
+// touching the live store. Settings shows this in the restore confirmation.
+func (p *ParseService) InspectBackup(path string) (*store.BackupSummary, error) {
+	return store.InspectBackup(path)
+}
+
+// RestoreBackup replaces the live data with the chosen backup. The frontend
+// reloads after this returns so every screen reads the restored store.
+func (p *ParseService) RestoreBackup(path string) error {
+	s, err := p.statements()
+	if err != nil {
+		return err
+	}
+	return s.Restore(path)
+}
+
+// pruneBackups removes snapshots a cancelled or failed share left behind.
+// They hold a full copy of the user's data, so keep the window short.
+func pruneBackups(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-time.Hour)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "tripwire-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		os.Remove(filepath.Join(dir, entry.Name()))
+	}
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // ResetData erases every stored statement, recipient, recurring plan and
