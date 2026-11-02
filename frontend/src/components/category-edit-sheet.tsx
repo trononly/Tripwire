@@ -13,16 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveCategoryIcon } from "@/components/category-icon";
 import { CategoryIconField } from "@/components/category-icon-field";
-import { BudgetProgress } from "@/components/budget-progress";
 import { cn } from "@/lib/utils";
-import {
-	budgetPercent,
-	budgetRemainingLabel,
-	budgetSpentLabel,
-	budgetStateOf,
-	budgetTextClass,
-	monthLabel,
-} from "@/lib/category-budgets";
 import { formatAmountInput, formatMoney } from "@/lib/format";
 import { vibrateIfEnabled } from "@/lib/motion-settings";
 import { bumpCategories } from "@/lib/category-refresh";
@@ -31,7 +22,6 @@ import {
 	SetCategoryBudget,
 	UpdateCategory,
 } from "../../bindings/mpesa-analyzer/parseservice";
-import type * as categories from "../../bindings/mpesa-analyzer/internal/categories/models";
 import type * as store from "../../bindings/mpesa-analyzer/internal/store/models";
 
 export type CategoryUsage = { count: number; amount: number };
@@ -42,10 +32,6 @@ export type CategoryEditSheetProps = {
 	category: store.Category | null;
 	/** Transactions labelled with it in the active dataset. */
 	usage?: CategoryUsage;
-	/** This month's spend and cap, for the live preview. */
-	budgetStatus?: categories.BudgetStatus;
-	/** "YYYY-MM" the preview belongs to, when known. */
-	budgetMonth?: string;
 	/** Position in the list, for the move buttons; both zero when new. */
 	index: number;
 	total: number;
@@ -58,16 +44,15 @@ export type CategoryEditSheetProps = {
 };
 
 /**
- * Create or edit one user category: icon, name, order and deletion. The
- * picker's inline create is deliberately narrower - this is the full form
- * behind the Categories page, where renaming and reordering live.
+ * Create or edit one user category: icon, name, monthly budget, the percentage
+ * where its warning starts, order and deletion. The picker's inline create is
+ * deliberately narrower - this is the full form behind the Categories page,
+ * where renaming, budgeting and reordering live.
  */
 export function CategoryEditSheet({
 	open,
 	category,
 	usage,
-	budgetStatus,
-	budgetMonth,
 	index,
 	total,
 	onOpenChange,
@@ -78,6 +63,7 @@ export function CategoryEditSheet({
 	const [icon, setIcon] = useState("tag");
 	const [name, setName] = useState("");
 	const [budget, setBudget] = useState("");
+	const [warn, setWarn] = useState("80");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState(false);
@@ -87,6 +73,9 @@ export function CategoryEditSheet({
 		setIcon(resolveCategoryIcon(category?.icon ?? "tag"));
 		setName(category?.name ?? "");
 		setBudget(category?.budget ? String(category.budget / 100) : "");
+		setWarn(
+			category?.warnPercent ? String(category.warnPercent) : "80",
+		);
 		setError(null);
 		setBusy(false);
 		setConfirmDelete(false);
@@ -99,29 +88,22 @@ export function CategoryEditSheet({
 	const budgetValid = budgetFinite && !budgetTooSmall && !budgetTooLarge;
 	const budgetCents =
 		budgetValid && budget !== "" ? Math.round(budgetShillings * 100) : 0;
-	const spent = budgetStatus?.spent ?? 0;
-	const previewStatus: categories.BudgetStatus = {
-		id: category?.id ?? "new",
-		name: name.trim() || "This category",
-		icon: icon,
-		budget: budgetCents,
-		spent,
-		remaining: budgetCents - spent,
-		count: budgetStatus?.count ?? 0,
-		percent: budgetCents > 0 ? (spent / budgetCents) * 100 : 0,
-		state:
-			budgetCents <= 0
-				? "none"
-				: spent > budgetCents
-					? "over"
-					: spent * 100 >= budgetCents * 80
-						? "near"
-						: "ok",
-	};
-	const previewState = budgetStateOf(previewStatus);
+
+	const warnPercent = Number(warn || 0);
+	const warnValid =
+		Number.isInteger(warnPercent) &&
+		warnPercent >= 1 &&
+		warnPercent <= 100;
+	// With no cap the warning field is hidden; a leftover invalid value must
+	// not block the save. Keep a valid choice for when a cap is set again.
+	const storedWarn = warnValid ? warnPercent : 80;
 
 	const canSave =
-		icon.trim() !== "" && name.trim() !== "" && budgetValid && !busy;
+		icon.trim() !== "" &&
+		name.trim() !== "" &&
+		budgetValid &&
+		(budgetCents === 0 || warnValid) &&
+		!busy;
 
 	async function save(e: FormEvent) {
 		e.preventDefault();
@@ -131,10 +113,10 @@ export function CategoryEditSheet({
 		try {
 			if (category) {
 				await UpdateCategory(category.id, name.trim(), icon.trim());
-				await SetCategoryBudget(category.id, budgetCents);
+				await SetCategoryBudget(category.id, budgetCents, storedWarn);
 			} else {
 				const created = await CreateCategory(name.trim(), icon.trim());
-				await SetCategoryBudget(created.id, budgetCents);
+				await SetCategoryBudget(created.id, budgetCents, storedWarn);
 			}
 			bumpCategories();
 			vibrateIfEnabled(10);
@@ -255,38 +237,51 @@ export function CategoryEditSheet({
 								? "Enter at least KES 1, or leave it empty."
 								: budgetTooLarge
 									? "The most you can set is KES 10,000,000."
-									: "Warns at 80% and when you pass it. Leave empty for no budget."}
+									: "Leave empty for no budget."}
 						</p>
 
 						{budgetCents > 0 ? (
-							<div className="space-y-1.5 bg-muted/40 p-3">
-								<div className="flex items-baseline justify-between gap-3 text-[12px]">
-									<span className="tabular-nums text-muted-foreground">
-										{budgetSpentLabel(previewStatus)}
-									</span>
-									<span
+							<div className="space-y-1.5 pt-1">
+								<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+									<label
+										htmlFor="category-warn"
+										className="text-[13px] font-medium text-foreground"
+									>
+										Warn me at
+									</label>
+									<div
 										className={cn(
-											"shrink-0 tabular-nums",
-											budgetTextClass(previewState),
+											"flex h-9 items-center gap-1.5 border border-input bg-muted/30 px-2.5",
+											!warnValid && "border-destructive",
 										)}
 									>
-										{budgetPercent(previewStatus)}%
-									</span>
+										<input
+											id="category-warn"
+											type="text"
+											inputMode="numeric"
+											autoComplete="off"
+											maxLength={3}
+											value={warn}
+											onChange={(e) =>
+												setWarn(
+													e.target.value
+														.replace(/\D/g, "")
+														.slice(0, 3),
+												)
+											}
+											aria-invalid={!warnValid}
+											className="w-8 bg-transparent text-right text-sm tabular-nums outline-none"
+										/>
+										<span className="text-[12px] text-muted-foreground">
+											% of budget
+										</span>
+									</div>
 								</div>
-								<BudgetProgress status={previewStatus} />
-								<div className="flex items-baseline justify-between gap-3 text-[12px]">
-									<span
-										className={cn(
-											"tabular-nums",
-											budgetTextClass(previewState),
-										)}
-									>
-										{budgetRemainingLabel(previewStatus)}
-									</span>
-									<span className="text-muted-foreground">
-										{budgetMonth ? monthLabel(budgetMonth) : "this month"}
-									</span>
-								</div>
+								{!warnValid ? (
+									<p className="text-[12px] text-destructive">
+										Choose 1 to 100.
+									</p>
+								) : null}
 							</div>
 						) : null}
 					</div>

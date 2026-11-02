@@ -429,10 +429,10 @@ func TestCategoryBudgets(t *testing.T) {
 	bills, _ := svc.Create("Bills", "zap")
 	travel, _ := svc.Create("Travel", "bus")
 
-	if err := svc.SetBudget(food.ID, 100_000); err != nil { // KES 1,000
+	if err := svc.SetBudget(food.ID, 100_000, 80); err != nil { // KES 1,000
 		t.Fatalf("SetBudget food: %v", err)
 	}
-	if err := svc.SetBudget(bills.ID, 50_000); err != nil { // KES 500
+	if err := svc.SetBudget(bills.ID, 50_000, 80); err != nil { // KES 500
 		t.Fatalf("SetBudget bills: %v", err)
 	}
 
@@ -477,8 +477,8 @@ func TestCategoryBudgets(t *testing.T) {
 	if foodStatus.ID != food.ID || foodStatus.Spent != 80_000 || foodStatus.Count != 2 {
 		t.Errorf("food = %+v, want gross July outflow 80000 over 2 rows", foodStatus)
 	}
-	if foodStatus.Remaining != 20_000 || foodStatus.Percent != 80 || foodStatus.State != categories.BudgetNear {
-		t.Errorf("food position = %+v, want 20000 left, 80%%, near", foodStatus)
+	if foodStatus.Remaining != 20_000 || foodStatus.Percent != 80 || foodStatus.WarnPercent != 80 || foodStatus.State != categories.BudgetNear {
+		t.Errorf("food position = %+v, want 20000 left, 80%% warn, near", foodStatus)
 	}
 
 	billsStatus := report.Statuses[1]
@@ -496,7 +496,7 @@ func TestCategoryBudgets(t *testing.T) {
 
 	// Reaching the cap exactly is "near", not "over": the user has not
 	// exceeded it until another shilling goes out.
-	if err := svc.SetBudget(food.ID, 80_000); err != nil {
+	if err := svc.SetBudget(food.ID, 80_000, 80); err != nil {
 		t.Fatalf("SetBudget exact: %v", err)
 	}
 	report, err = svc.BudgetReport(txs)
@@ -507,9 +507,32 @@ func TestCategoryBudgets(t *testing.T) {
 		t.Errorf("at the cap = %+v, want near with nothing left", got)
 	}
 
+	// The warning point is the category's own choice, not a fixed 80. At
+	// half the cap it warns; one point later the same spend is fine.
+	if err := svc.SetBudget(food.ID, 160_000, 50); err != nil {
+		t.Fatalf("SetBudget custom warn: %v", err)
+	}
+	report, err = svc.BudgetReport(txs)
+	if err != nil {
+		t.Fatalf("BudgetReport custom warn: %v", err)
+	}
+	if got := report.Statuses[0]; got.State != categories.BudgetNear || got.WarnPercent != 50 {
+		t.Errorf("at 50%% = %+v, want a near state at the custom threshold", got)
+	}
+	if err := svc.SetBudget(food.ID, 160_000, 51); err != nil {
+		t.Fatalf("SetBudget custom warn 51: %v", err)
+	}
+	report, err = svc.BudgetReport(txs)
+	if err != nil {
+		t.Fatalf("BudgetReport custom warn 51: %v", err)
+	}
+	if got := report.Statuses[0]; got.State != categories.BudgetOK {
+		t.Errorf("below 51%% = %+v, want ok", got)
+	}
+
 	// Clearing a budget keeps the category and its spend, but stops it
 	// counting toward a cap.
-	if err := svc.SetBudget(food.ID, 0); err != nil {
+	if err := svc.SetBudget(food.ID, 0, 80); err != nil {
 		t.Fatalf("clear budget: %v", err)
 	}
 	report, err = svc.BudgetReport(txs)
@@ -522,12 +545,17 @@ func TestCategoryBudgets(t *testing.T) {
 
 	// Values the UI can never send are still rejected at the service.
 	for _, bad := range []int64{-1, 50, 150, 1_000_000_100} {
-		if err := svc.SetBudget(bills.ID, bad); err == nil {
+		if err := svc.SetBudget(bills.ID, bad, 80); err == nil {
 			t.Errorf("budget %d should be rejected", bad)
 		}
 	}
-	if err := svc.SetBudget("does-not-exist", 10_000); err == nil {
+	if err := svc.SetBudget("does-not-exist", 10_000, 80); err == nil {
 		t.Fatal("a budget on an unknown category should fail")
+	}
+	for _, warn := range []int{-1, 0, 101} {
+		if err := svc.SetBudget(bills.ID, 50_000, warn); err == nil {
+			t.Errorf("warning %d should be rejected", warn)
+		}
 	}
 
 	// An empty dataset still returns every category, for the management
@@ -574,10 +602,10 @@ func TestCategoryBudgetColumnMigratesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCategories: %v", err)
 	}
-	if len(list) != 1 || list[0].Budget != 0 {
-		t.Fatalf("migrated categories = %+v, want the old row with no budget", list)
+	if len(list) != 1 || list[0].Budget != 0 || list[0].WarnPercent != 80 {
+		t.Fatalf("migrated categories = %+v, want the old row with no budget and the default warning", list)
 	}
-	if err := s.SetCategoryBudget("c1", 250_000); err != nil {
+	if err := s.SetCategoryBudget("c1", 250_000, 70); err != nil {
 		t.Fatalf("SetCategoryBudget: %v", err)
 	}
 	if err := s.Close(); err != nil {
@@ -593,7 +621,7 @@ func TestCategoryBudgetColumnMigratesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCategories after reopen: %v", err)
 	}
-	if len(list) != 1 || list[0].Budget != 250_000 {
-		t.Fatalf("budget after reopen = %+v, want 250000", list)
+	if len(list) != 1 || list[0].Budget != 250_000 || list[0].WarnPercent != 70 {
+		t.Fatalf("budget after reopen = %+v, want 250000 with a 70%% warning", list)
 	}
 }

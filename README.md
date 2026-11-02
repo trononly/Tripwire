@@ -115,7 +115,8 @@ donut's Manage link.
 
 Each user category can also carry a monthly spending cap. The **Categories**
 page compares the month in the active dataset with that cap, shows how much is
-left, and turns the row amber at 80% and red once spending passes it. When the
+left, and turns the row amber at the category's own warning percentage (80% by
+default, set per category) and red once spending passes the cap. When the
 dataset's newest month is the current month, the dashboard repeats the warning
 as a notice and a once-per-session toast, with a link straight back to the
 categories. The report is resolved through the same category rules as the

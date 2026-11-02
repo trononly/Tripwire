@@ -1,18 +1,13 @@
-import { TriangleAlert } from "lucide-react";
-
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneyShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import {
-	budgetTextClass,
-	monthLabel,
-	type BudgetSummary,
-} from "@/lib/category-budgets";
+import { monthLabel, type BudgetSummary } from "@/lib/category-budgets";
 
 /**
- * The Categories page's one-glance answer: how much of this month's budgeted
- * money is already spent, and whether any cap needs attention. The per-row
- * figures below carry the detail, so the total is not repeated there.
+ * The Categories page's one-glance figure: how much of this month's budgeted
+ * money is already spent. The rows below carry the per-category detail and the
+ * warnings, so the summary stops at the total and its bar rather than
+ * repeating the same sentences.
  */
 export function BudgetSummaryCard({
 	summary,
@@ -21,28 +16,8 @@ export function BudgetSummaryCard({
 	summary: BudgetSummary;
 	month: string;
 }) {
-	const riskTone = summary.over.length
-		? "over"
-		: summary.near.length
-			? "near"
-			: "ok";
-	// The aggregate bar speaks for its own ratio; the sentence beside it
-	// names the worst category, so a half-full bar is never painted red
-	// because one small category is over.
-	const aggregateTone =
-		summary.totalSpent > summary.totalBudget
-			? "over"
-			: summary.percent >= 80
-				? "near"
-				: "ok";
+	const over = summary.totalSpent > summary.totalBudget;
 	const fill = Math.min(100, Math.max(0, summary.percent));
-	const count = summary.budgeted.length;
-	const barClass =
-		aggregateTone === "over"
-			? "bg-destructive"
-			: aggregateTone === "near"
-				? "bg-amber-500"
-				: "bg-foreground/70";
 
 	return (
 		<Card>
@@ -72,39 +47,13 @@ export function BudgetSummaryCard({
 					className="block h-2 w-full overflow-hidden bg-muted"
 				>
 					<span
-						className={cn("block h-full", barClass)}
+						className={cn(
+							"block h-full",
+							over ? "bg-destructive" : "bg-foreground/70",
+						)}
 						style={{ width: `${fill}%` }}
 					/>
 				</span>
-
-				<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-					<p className="text-[12px] text-muted-foreground">
-						{summary.totalRemaining >= 0
-							? `${formatMoneyShort(summary.totalRemaining)} left this month across ${count} ${
-									count === 1 ? "category" : "categories"
-								}`
-							: `${formatMoneyShort(-summary.totalRemaining)} over the plan this month`}
-					</p>
-					{summary.atRisk.length > 0 ? (
-						<p
-							className={cn(
-								"flex items-center gap-1.5 text-[12px]",
-								budgetTextClass(riskTone),
-							)}
-						>
-							<TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-							{summary.over.length > 0
-								? summary.near.length > 0
-									? `${summary.over.length} over, ${summary.near.length} near the cap`
-									: `${summary.over.length} over the cap`
-								: `${summary.near.length} near the cap`}
-						</p>
-					) : (
-						<p className="text-[12px] text-muted-foreground">
-							All budgets on track
-						</p>
-					)}
-				</div>
 			</CardContent>
 		</Card>
 	);

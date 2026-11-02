@@ -351,15 +351,16 @@ func (p *ParseService) ReorderCategories(ids []string) error {
 	return svc.Reorder(ids)
 }
 
-// SetCategoryBudget stores a category's monthly spending cap in cents. Zero
-// clears the cap. The Categories page warns at 80% and once spending passes
-// the cap, and the dashboard repeats that warning when the month is current.
-func (p *ParseService) SetCategoryBudget(id string, budget int64) error {
+// SetCategoryBudget stores a category's monthly spending cap in cents and the
+// percentage of it where warnings begin. Zero clears the cap. The Categories
+// page and the dashboard use the chosen percentage, and the dashboard repeats
+// the warning when the month is current.
+func (p *ParseService) SetCategoryBudget(id string, budget int64, warnPercent int) error {
 	svc, err := p.categoryService()
 	if err != nil {
 		return err
 	}
-	return svc.SetBudget(id, budget)
+	return svc.SetBudget(id, budget, warnPercent)
 }
 
 // CategoryBudgetReport returns each category's spend for the dataset's newest

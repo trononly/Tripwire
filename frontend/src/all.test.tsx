@@ -1749,6 +1749,7 @@ function budgetStatus(
 		name: "Food",
 		icon: "utensils",
 		budget: 600_000,
+		warnPercent: 80,
 		spent: 0,
 		remaining: 600_000,
 		count: 0,
@@ -1892,8 +1893,7 @@ describe("budget surfaces", () => {
 		).toBeInTheDocument();
 		expect(screen.getByText("July 2026")).toBeInTheDocument();
 		expect(screen.getByText("KES 9,820")).toBeInTheDocument();
-		expect(screen.getByText("KES 180 left this month across 2 categories")).toBeInTheDocument();
-		expect(screen.getByText("1 over, 1 near the cap")).toBeInTheDocument();
+		expect(screen.getByText("of KES 10,000")).toBeInTheDocument();
 	});
 
 	it("leads the dashboard notice with the worst category", () => {

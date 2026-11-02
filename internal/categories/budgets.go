@@ -9,20 +9,22 @@ import (
 )
 
 // Budget states reported to the UI. A category with no cap is "none"; a cap
-// with nothing spent yet is "ok". "near" starts at 80% of the cap (and covers
-// the moment the cap is reached exactly), while "over" means spending has
-// passed it.
+// with nothing spent yet is "ok". "near" starts at the category's own warning
+// percentage (80% unless the user chose another; it covers the moment the cap
+// is reached exactly), while "over" means spending has passed it.
 const (
 	BudgetNone = "none"
 	BudgetOK   = "ok"
 	BudgetNear = "near"
 	BudgetOver = "over"
 
-	budgetNearPercent = 80
-	minBudgetCents    = 100           // KES 1
-	maxBudgetCents    = 1_000_000_000 // KES 10,000,000
-	centsPerShilling  = 100
-	percentScale      = 100
+	DefaultWarnPercent = 80
+	minWarnPercent     = 1
+	maxWarnPercent     = 100
+	minBudgetCents     = 100           // KES 1
+	maxBudgetCents     = 1_000_000_000 // KES 10,000,000
+	centsPerShilling   = 100
+	percentScale       = 100
 )
 
 // BudgetStatus is one category's position against its monthly cap. Spent is a
@@ -31,15 +33,16 @@ const (
 // it goes negative when the category is over. Percent is rounded to one
 // decimal and is 0 when there is no budget.
 type BudgetStatus struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Icon      string  `json:"icon"`
-	Budget    int64   `json:"budget"`
-	Spent     int64   `json:"spent"`
-	Remaining int64   `json:"remaining"`
-	Count     int     `json:"count"`
-	Percent   float64 `json:"percent"`
-	State     string  `json:"state"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Icon        string  `json:"icon"`
+	Budget      int64   `json:"budget"`
+	WarnPercent int     `json:"warnPercent"`
+	Spent       int64   `json:"spent"`
+	Remaining   int64   `json:"remaining"`
+	Count       int     `json:"count"`
+	Percent     float64 `json:"percent"`
+	State       string  `json:"state"`
 }
 
 // BudgetReport is the whole set of categories for one month. Month is
@@ -56,14 +59,18 @@ type BudgetReport struct {
 	Statuses []BudgetStatus `json:"statuses"`
 }
 
-// SetBudget stores a category's monthly spending cap. A zero clears the cap.
-// Budgets are whole shillings because the app's money entry is, and the cap is
-// validated here rather than in the UI so every caller shares one rule.
-func (s *Service) SetBudget(id string, budget int64) error {
+// SetBudget stores a category's monthly spending cap and the percentage of it
+// where warnings begin. A zero budget clears the cap. Budgets are whole
+// shillings because the app's money entry is, and both values are validated
+// here rather than in the UI so every caller shares one rule.
+func (s *Service) SetBudget(id string, budget int64, warnPercent int) error {
 	if err := cleanBudget(budget); err != nil {
 		return err
 	}
-	return s.store.SetCategoryBudget(id, budget)
+	if err := cleanWarnPercent(warnPercent); err != nil {
+		return err
+	}
+	return s.store.SetCategoryBudget(id, budget, warnPercent)
 }
 
 func cleanBudget(budget int64) error {
@@ -78,6 +85,13 @@ func cleanBudget(budget int64) error {
 	}
 	if budget%centsPerShilling != 0 {
 		return fmt.Errorf("monthly budgets are set in whole shillings")
+	}
+	return nil
+}
+
+func cleanWarnPercent(warnPercent int) error {
+	if warnPercent < minWarnPercent || warnPercent > maxWarnPercent {
+		return fmt.Errorf("choose a warning between %d%% and %d%%", minWarnPercent, maxWarnPercent)
 	}
 	return nil
 }
@@ -122,14 +136,19 @@ func (s *Service) BudgetReport(txs []parser.Transaction) (BudgetReport, error) {
 
 	for _, id := range ix.order {
 		c := ix.categories[id]
+		warnPercent := c.WarnPercent
+		if warnPercent < minWarnPercent || warnPercent > maxWarnPercent {
+			warnPercent = DefaultWarnPercent
+		}
 		st := BudgetStatus{
-			ID:     c.ID,
-			Name:   c.Name,
-			Icon:   c.Icon,
-			Budget: c.Budget,
-			Spent:  spent[c.ID],
-			Count:  counts[c.ID],
-			State:  BudgetNone,
+			ID:          c.ID,
+			Name:        c.Name,
+			Icon:        c.Icon,
+			Budget:      c.Budget,
+			WarnPercent: warnPercent,
+			Spent:       spent[c.ID],
+			Count:       counts[c.ID],
+			State:       BudgetNone,
 		}
 		if c.Budget > 0 {
 			st.Remaining = c.Budget - st.Spent
@@ -137,7 +156,7 @@ func (s *Service) BudgetReport(txs []parser.Transaction) (BudgetReport, error) {
 			switch {
 			case st.Spent > c.Budget:
 				st.State = BudgetOver
-			case st.Spent*percentScale >= c.Budget*budgetNearPercent:
+			case st.Spent*percentScale >= c.Budget*int64(warnPercent):
 				st.State = BudgetNear
 			default:
 				st.State = BudgetOK

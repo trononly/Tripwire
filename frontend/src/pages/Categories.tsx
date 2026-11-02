@@ -190,23 +190,17 @@ export default function Categories({
 															</span>
 														) : null}
 													</span>
-													<span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-														{hasBudget && budget
-															? budget.count === 0
-																? "No spending this month"
-																: `${budget.count} ${
-																		budget.count === 1
-																			? "transaction"
-																			: "transactions"
-																	} this month`
-															: usage
+													{!hasBudget ? (
+														<span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+															{usage
 																? `${usage.count} ${
 																		usage.count === 1
 																			? "transaction"
 																			: "transactions"
 																	}`
 																: "No transactions yet"}
-													</span>
+														</span>
+													) : null}
 													{hasBudget && budget ? (
 														<span className="mt-2 block space-y-1">
 															<span className="flex items-baseline justify-between gap-3 text-[12px]">
@@ -251,10 +245,6 @@ export default function Categories({
 				open={editing !== null}
 				category={editing?.category ?? null}
 				usage={editingUsage}
-				budgetStatus={
-					editing?.category ? budgetById.get(editing.category.id) : undefined
-				}
-				budgetMonth={budgetReport?.month}
 				index={editingIndex}
 				total={categories.length}
 				onOpenChange={(open) => {
